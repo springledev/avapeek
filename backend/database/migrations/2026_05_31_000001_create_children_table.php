@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('families', function (Blueprint $table) {
+        Schema::create('children', function (Blueprint $table) {
             $table->id();
             $table->string('name', 100);
+            $table->date('birth_date')->nullable();
+            $table->string('avatar_color', 7)->nullable();
             $table->foreignId('created_by')->constrained('users');
             $table->bigInteger('storage_limit_bytes')->default(5368709120); // 5 GB default
             $table->timestamps();
@@ -25,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('families');
+        Schema::dropIfExists('children');
     }
 };

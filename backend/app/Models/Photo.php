@@ -3,8 +3,57 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Photo extends Model
 {
-    //
+    protected $fillable = [
+        'album_id',
+        'child_id',
+        'uploaded_by',
+        'original_path',
+        'thumbnail_sm_path',
+        'thumbnail_md_path',
+        'thumbnail_lg_path',
+        'iv_original',
+        'iv_sm',
+        'iv_md',
+        'iv_lg',
+        'mime_type',
+        'size_bytes',
+        'width',
+        'height',
+        'exif_encrypted',
+        'iv_exif',
+        'thumbnail_status',
+        'taken_at',
+    ];
+
+    protected $casts = [
+        'taken_at' => 'datetime',
+    ];
+
+    /**
+     * Get the child that owns the photo.
+     */
+    public function child(): BelongsTo
+    {
+        return $this->belongsTo(Child::class);
+    }
+
+    /**
+     * Get the album that owns the photo.
+     */
+    public function album(): BelongsTo
+    {
+        return $this->belongsTo(Album::class);
+    }
+
+    /**
+     * Get the user who uploaded the photo.
+     */
+    public function uploader(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'uploaded_by');
+    }
 }

@@ -75,14 +75,14 @@ class AuthController extends Controller
             ]);
         }
 
-        // Load the user's encryption keys for all families they belong to
+        // Load the user's encryption keys for all children they belong to
         $encryptionKeys = $user->encryptionKeys()
-            ->with('family')
+            ->with('child')
             ->get()
             ->map(function ($key) {
                 return [
-                    'family_id' => $key->family_id,
-                    'family_name' => $key->family->name ?? null,
+                    'child_id' => $key->child_id,
+                    'child_name' => $key->child->name ?? null,
                     'encrypted_dek' => $key->encrypted_dek,
                     'key_version' => $key->key_version,
                 ];

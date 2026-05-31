@@ -10,11 +10,11 @@ export interface User {
 }
 
 /**
- * Wrapped encryption key for a family.
+ * Wrapped encryption key for a child.
  */
 export interface EncryptionKey {
-  family_id: number
-  family_name: string | null
+  child_id: number
+  child_name: string | null
   encrypted_dek: string
   key_version: number
 }

@@ -13,16 +13,16 @@ return new class extends Migration
     {
         Schema::create('encryption_keys', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('family_id')->constrained('families')->onDelete('cascade');
+            $table->foreignId('child_id')->constrained('children')->onDelete('cascade');
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->text('encrypted_dek');
             $table->integer('key_version')->default(1);
             $table->timestamp('created_at')->useCurrent();
-            $table->unique(['family_id', 'user_id', 'key_version']);
+            $table->unique(['child_id', 'user_id', 'key_version']);
         });
 
         Schema::table('encryption_keys', function (Blueprint $table) {
-            $table->index(['family_id', 'user_id'], 'idx_encryption_keys_family_user');
+            $table->index(['child_id', 'user_id'], 'idx_encryption_keys_child_user');
         });
     }
 
