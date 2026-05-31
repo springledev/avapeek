@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('storage_usage', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('family_id')->unique()->constrained('families')->onDelete('cascade');
+            $table->foreignId('child_id')->unique()->constrained('children')->onDelete('cascade');
             $table->bigInteger('used_bytes')->default(0);
             $table->timestamp('updated_at')->useCurrent();
         });

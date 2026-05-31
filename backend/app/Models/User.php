@@ -34,12 +34,12 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the families that the user belongs to.
+     * Get the children that the user belongs to.
      */
-    public function families(): BelongsToMany
+    public function children(): BelongsToMany
     {
-        return $this->belongsToMany(Family::class, 'family_users')
-            ->withPivot('role', 'joined_at')
+        return $this->belongsToMany(Child::class, 'child_users')
+            ->withPivot('role', 'relationship', 'joined_at')
             ->withTimestamps();
     }
 

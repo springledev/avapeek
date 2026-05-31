@@ -96,7 +96,7 @@ export async function unwrapDEK(wrappedDEK: string, kek: CryptoKey): Promise<Cry
 }
 
 /**
- * Generates an RSA key pair for DEK sharing during family invites.
+ * Generates an RSA key pair for DEK sharing during child invites.
  */
 export async function generateKeyPair(): Promise<CryptoKeyPair> {
   return await crypto.subtle.generateKey(

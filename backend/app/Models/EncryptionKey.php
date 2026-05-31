@@ -8,18 +8,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class EncryptionKey extends Model
 {
     protected $fillable = [
-        'family_id',
+        'child_id',
         'user_id',
         'encrypted_dek',
         'key_version',
     ];
 
     /**
-     * Get the family that this encryption key belongs to.
+     * Get the child that this encryption key belongs to.
      */
-    public function family(): BelongsTo
+    public function child(): BelongsTo
     {
-        return $this->belongsTo(Family::class);
+        return $this->belongsTo(Child::class);
     }
 
     /**

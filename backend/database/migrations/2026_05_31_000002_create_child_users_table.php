@@ -11,16 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('family_users', function (Blueprint $table) {
-            $table->foreignId('family_id')->constrained('families')->onDelete('cascade');
+        Schema::create('child_users', function (Blueprint $table) {
+            $table->foreignId('child_id')->constrained('children')->onDelete('cascade');
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->string('role', 20)->default('member');
+            $table->string('relationship', 30)->nullable();
             $table->timestamp('joined_at')->useCurrent();
-            $table->primary(['family_id', 'user_id']);
+            $table->primary(['child_id', 'user_id']);
         });
 
-        Schema::table('family_users', function (Blueprint $table) {
-            $table->index('user_id', 'idx_family_users_user_id');
+        Schema::table('child_users', function (Blueprint $table) {
+            $table->index('user_id', 'idx_child_users_user_id');
         });
     }
 
@@ -29,6 +30,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('family_users');
+        Schema::dropIfExists('child_users');
     }
 };

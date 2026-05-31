@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('photos', function (Blueprint $table) {
             $table->id();
             $table->foreignId('album_id')->constrained('albums')->onDelete('cascade');
-            $table->foreignId('family_id')->constrained('families')->onDelete('cascade');
+            $table->foreignId('child_id')->constrained('children')->onDelete('cascade');
             $table->foreignId('uploaded_by')->constrained('users');
 
             // Encrypted file paths in MinIO
@@ -49,7 +49,7 @@ return new class extends Migration
 
         Schema::table('photos', function (Blueprint $table) {
             $table->index('album_id', 'idx_photos_album_id');
-            $table->index('family_id', 'idx_photos_family_id');
+            $table->index('child_id', 'idx_photos_child_id');
             $table->index('thumbnail_status', 'idx_photos_thumbnail_status');
             $table->index('created_at', 'idx_photos_created_at');
             $table->index('taken_at', 'idx_photos_taken_at');
