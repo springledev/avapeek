@@ -1,0 +1,100 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: avapeek-postgres
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-avapeek}
+      POSTGRES_USER: ${DB_USERNAME:-avapeek}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-avapeek}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: avapeek-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: avapeek-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: avapeek-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin};
+      mc mb --ignore-existing local/photos;
+      mc mb --ignore-existing local/thumbnails;
+      echo 'Buckets created';
+      "
+
+  thumbnail-service:
+    build:
+      context: ./thumbnail-service
+      dockerfile: Dockerfile
+    container_name: avapeek-thumbnails
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET_PHOTOS: photos
+      MINIO_BUCKET_THUMBNAILS: thumbnails
+      LARAVEL_API_URL: http://host.docker.internal:8000
+      LARAVEL_API_KEY: ${THUMBNAIL_SERVICE_API_KEY:-changeme}
+    volumes:
+      - ./thumbnail-service:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: avapeek-mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      MP_MAX_MESSAGES: 5000
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:
