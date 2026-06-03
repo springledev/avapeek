@@ -61,30 +61,6 @@ services:
       echo 'Buckets created';
       "
 
-  thumbnail-service:
-    build:
-      context: ./thumbnail-service
-      dockerfile: Dockerfile
-    container_name: avapeek-thumbnails
-    depends_on:
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    environment:
-      REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKET_PHOTOS: photos
-      MINIO_BUCKET_THUMBNAILS: thumbnails
-      LARAVEL_API_URL: http://host.docker.internal:8000
-      LARAVEL_API_KEY: ${THUMBNAIL_SERVICE_API_KEY:-changeme}
-    volumes:
-      - ./thumbnail-service:/app
-      - /app/node_modules
-    restart: unless-stopped
-
   mailpit:
     image: axllent/mailpit:latest
     container_name: avapeek-mailpit

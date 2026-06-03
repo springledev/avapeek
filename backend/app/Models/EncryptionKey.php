@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EncryptionKey extends Model
 {
+    public $timestamps = false;
+
     protected $fillable = [
         'child_id',
         'user_id',
