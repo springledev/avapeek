@@ -8,6 +8,8 @@ class ChildUser extends Pivot
 {
     protected $table = 'child_users';
 
+    public $timestamps = false;
+
     protected $fillable = [
         'child_id',
         'user_id',
@@ -15,5 +17,10 @@ class ChildUser extends Pivot
         'relationship',
     ];
 
-    public $timestamps = true;
+    protected function casts(): array
+    {
+        return [
+            'joined_at' => 'datetime',
+        ];
+    }
 }

@@ -2,13 +2,19 @@
 
 namespace App\Models;
 
+use Database\Factories\ChildFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
+/** @use HasFactory<ChildFactory> */
 class Child extends Model
 {
+    /** @use HasFactory<ChildFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'name',
         'birth_date',
@@ -21,14 +27,17 @@ class Child extends Model
         'birth_date' => 'date',
     ];
 
+    protected $attributes = [
+        'storage_limit_bytes' => 5 * 1024 * 1024 * 1024,
+    ];
+
     /**
      * Get the users that belong to this child.
      */
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'child_users')
-            ->withPivot('role', 'relationship', 'joined_at')
-            ->withTimestamps();
+            ->withPivot('role', 'relationship', 'joined_at');
     }
 
     /**
