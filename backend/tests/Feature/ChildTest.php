@@ -21,8 +21,7 @@ describe('POST /api/children', function () {
             ->assertJsonPath('data.role', 'owner')
             ->assertJsonPath('data.relationship', 'parent')
             ->assertJsonPath('data.member_count', 1)
-            ->assertJsonPath('data.storage_used', 0)
-            ->assertJsonPath('data.storage_limit', 5368709120);
+            ->assertJsonPath('data.storage_used', 0);
 
         $this->assertDatabaseHas('children', [
             'name' => 'Emma',
@@ -260,8 +259,7 @@ describe('GET /api/children/{child}', function () {
         $response->assertStatus(200)
             ->assertJsonPath('data.name', 'Emma')
             ->assertJsonPath('data.birth_date', '2024-03-15')
-            ->assertJsonPath('data.storage_used', 1024)
-            ->assertJsonPath('data.storage_limit', 5368709120);
+            ->assertJsonPath('data.storage_used', 1024);
 
         $members = $response->json('data.members');
         expect($members)->toHaveCount(2);

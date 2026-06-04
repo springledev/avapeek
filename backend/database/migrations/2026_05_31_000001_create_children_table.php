@@ -17,7 +17,6 @@ return new class extends Migration
             $table->date('birth_date')->nullable();
             $table->string('avatar_color', 7)->nullable();
             $table->foreignId('created_by')->constrained('users');
-            $table->bigInteger('storage_limit_bytes')->default(5368709120); // 5 GB default
             $table->timestamps();
         });
     }

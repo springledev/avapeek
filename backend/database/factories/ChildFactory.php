@@ -18,7 +18,6 @@ class ChildFactory extends Factory
             'birth_date' => fake()->optional()->date(),
             'avatar_color' => fake()->hexColor(),
             'created_by' => User::factory(),
-            'storage_limit_bytes' => 5 * 1024 * 1024 * 1024,
         ];
     }
 }

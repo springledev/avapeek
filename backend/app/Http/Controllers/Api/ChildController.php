@@ -38,7 +38,6 @@ class ChildController extends Controller
                     'role' => $pivot?->role,
                     'relationship' => $pivot?->relationship,
                     'storage_used' => (int) ($child->storageUsage?->used_bytes ?? 0),
-                    'storage_limit' => (int) $child->storage_limit_bytes,
                     'created_at' => $child->created_at?->toISOString(),
                 ];
             });
@@ -91,7 +90,6 @@ class ChildController extends Controller
                 'role' => 'owner',
                 'relationship' => 'parent',
                 'storage_used' => 0,
-                'storage_limit' => (int) $child->storage_limit_bytes,
                 'created_at' => $child->created_at?->toISOString(),
             ],
         ], 201);
@@ -128,7 +126,6 @@ class ChildController extends Controller
                 'age' => $child->ageAt(),
                 'created_by' => $child->created_by,
                 'storage_used' => (int) ($child->storageUsage?->used_bytes ?? 0),
-                'storage_limit' => (int) $child->storage_limit_bytes,
                 'members' => $members,
                 'created_at' => $child->created_at?->toISOString(),
             ],

@@ -20,15 +20,10 @@ class Child extends Model
         'birth_date',
         'avatar_color',
         'created_by',
-        'storage_limit_bytes',
     ];
 
     protected $casts = [
         'birth_date' => 'date',
-    ];
-
-    protected $attributes = [
-        'storage_limit_bytes' => 5 * 1024 * 1024 * 1024,
     ];
 
     /**
