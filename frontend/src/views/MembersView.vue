@@ -2,13 +2,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useChildStore } from '@/stores/child'
-import { useAuthStore } from '@/stores/auth'
 import type { ChildDetail, InviteResponse } from '@/types/child'
+import AppHeader from '@/components/AppHeader.vue'
 
 const route = useRoute()
 const router = useRouter()
 const childStore = useChildStore()
-const authStore = useAuthStore()
 
 const childId = computed(() => Number(route.params.id))
 const child = ref<ChildDetail | null>(null)
@@ -42,6 +41,10 @@ async function loadChild() {
   } finally {
     hasLoaded.value = true
   }
+}
+
+function goBack() {
+  router.push(`/child/${childId.value}`)
 }
 
 function openInviteModal() {
@@ -125,26 +128,21 @@ function formatJoinedAt(dateStr: string): string {
 
 <template>
   <div class="min-h-screen bg-slate-50">
-    <nav class="nav-bar">
-      <div class="nav-container">
-        <div class="nav-content">
-          <div class="flex items-center gap-4">
-            <button @click="goBack" class="nav-back-link">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div>
-              <h1 class="text-lg font-bold text-slate-900">Members</h1>
-              <p class="text-sm text-slate-500">{{ child?.name }}</p>
-            </div>
-          </div>
-          <span class="text-sm text-slate-600">{{ authStore.currentUser?.display_name }}</span>
-        </div>
-      </div>
-    </nav>
+    <AppHeader />
 
     <main class="main-container">
+      <div class="flex items-center gap-4 mb-8">
+        <button @click="goBack" class="nav-back-link">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div>
+          <h1 class="text-lg font-bold text-slate-900">Members</h1>
+          <p class="text-sm text-slate-500">{{ child?.name }}</p>
+        </div>
+      </div>
+
       <div v-if="!hasLoaded" class="flex justify-center py-20">
         <span class="spinner-large"></span>
       </div>
