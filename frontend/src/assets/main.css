@@ -97,4 +97,68 @@
   .security-badge-text {
     @apply text-sm text-blue-800;
   }
+
+  /* Navigation */
+  .nav-bar {
+    @apply bg-white shadow-sm border-b border-slate-200;
+  }
+
+  .nav-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  .nav-content {
+    @apply flex justify-between items-center h-16;
+  }
+
+  .nav-back-link {
+    @apply text-slate-400 hover:text-slate-600 transition-colors;
+  }
+
+  /* Main Content */
+  .main-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12;
+  }
+
+  .main-container-narrow {
+    @apply max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12;
+  }
+
+  /* Cards */
+  .card-xl {
+    @apply bg-white rounded-2xl shadow-xl p-8;
+  }
+
+  .child-card {
+    @apply bg-white rounded-xl shadow-sm border border-slate-200 p-6 cursor-pointer hover:shadow-md hover:border-blue-300 transition-all duration-200;
+  }
+
+  /* Buttons */
+  .btn-action {
+    @apply inline-flex items-center gap-2 py-2.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200 text-sm;
+  }
+
+  .btn-logout {
+    @apply py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg transition-colors duration-200 text-sm;
+  }
+
+  /* Avatar */
+  .avatar-circle {
+    @apply w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-bold shrink-0;
+  }
+
+  /* Grid Layouts */
+  .child-grid {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6;
+  }
+
+  /* Loading States */
+  .spinner-large {
+    @apply inline-block w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin;
+  }
+
+  /* Empty States */
+  .empty-icon {
+    @apply w-20 h-20 mx-auto text-slate-300;
+  }
 }
