@@ -48,4 +48,51 @@ class EncryptionKeysController extends Controller
             ],
         ], 201);
     }
+
+    /**
+     * Store a DEK wrapped with the invitee's public key.
+     *
+     * Used during the invite flow after the invitee has accepted the invite.
+     * The inviter unwraps the child DEK with their KEK, fetches the invitee's
+     * public key, wraps the DEK with it, and uploads it here.
+     */
+    public function wrapForInvitee(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'child_id' => ['required', 'integer', 'exists:children,id'],
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'wrapped_dek' => ['required', 'string'],
+        ]);
+
+        $inviter = $request->user();
+
+        $isMember = $inviter->children()
+            ->where('child_id', $validated['child_id'])
+            ->exists();
+
+        if (! $isMember) {
+            return response()->json([
+                'message' => 'You are not a member of this child.',
+            ], 403);
+        }
+
+        EncryptionKey::updateOrCreate(
+            [
+                'child_id' => $validated['child_id'],
+                'user_id' => $validated['user_id'],
+                'key_version' => 1,
+            ],
+            [
+                'encrypted_dek' => $validated['wrapped_dek'],
+            ]
+        );
+
+        return response()->json([
+            'data' => [
+                'child_id' => $validated['child_id'],
+                'user_id' => $validated['user_id'],
+                'key_version' => 1,
+            ],
+        ], 201);
+    }
 }
