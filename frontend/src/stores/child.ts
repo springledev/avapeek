@@ -2,12 +2,13 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
-import { generateDEK, wrapDEK } from '@/crypto/keychain'
-import type { Child } from '@/types/child'
+import { generateDEK, wrapDEK, importPublicKey, wrapDEKWithPublicKey } from '@/crypto/keychain'
+import type { Child, ChildDetail, InviteResponse } from '@/types/child'
 
 export const useChildStore = defineStore('child', () => {
   const children = ref<Child[]>([])
   const currentChildId = ref<number | null>(null)
+  const currentChildDetail = ref<ChildDetail | null>(null)
   const deks = ref<Map<number, CryptoKey>>(new Map())
   const isLoading = ref(false)
   const error = ref<string | null>(null)
@@ -37,6 +38,23 @@ export const useChildStore = defineStore('child', () => {
     } catch (err: any) {
       console.error('Failed to fetch children:', err)
       error.value = err.response?.data?.message || 'Failed to load children.'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function fetchChildDetail(childId: number): Promise<ChildDetail> {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const response = await api.get<{ data: ChildDetail }>(`/children/${childId}`)
+      currentChildDetail.value = response.data.data
+      return response.data.data
+    } catch (err: any) {
+      console.error('Failed to fetch child detail:', err)
+      error.value = err.response?.data?.message || 'Failed to load child details.'
       throw err
     } finally {
       isLoading.value = false
@@ -85,6 +103,61 @@ export const useChildStore = defineStore('child', () => {
     }
   }
 
+  async function createInvite(childId: number, role: string, relationship: string | null): Promise<InviteResponse> {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const response = await api.post<{ data: InviteResponse }>(`/children/${childId}/invite`, {
+        role,
+        relationship,
+      })
+
+      return response.data.data
+    } catch (err: any) {
+      console.error('Failed to create invite:', err)
+      error.value = err.response?.data?.message || 'Failed to create invite.'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function grantAccess(childId: number, inviteeUserId: number): Promise<void> {
+    const authStore = useAuthStore()
+    if (!authStore.kek) {
+      throw new Error('KEK not available. Please log in again.')
+    }
+
+    const dek = deks.value.get(childId)
+    if (!dek) {
+      throw new Error('DEK not available for this child.')
+    }
+
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const publicKeyResponse = await api.get<{ data: { public_key: string } }>(`/users/${inviteeUserId}/public-key`)
+      const publicKeyJwk = publicKeyResponse.data.data.public_key
+
+      const publicKey = await importPublicKey(publicKeyJwk)
+      const wrappedDek = await wrapDEKWithPublicKey(dek, publicKey)
+
+      await api.post('/encryption-keys/wrap-for-invitee', {
+        child_id: childId,
+        user_id: inviteeUserId,
+        wrapped_dek: wrappedDek,
+      })
+    } catch (err: any) {
+      console.error('Failed to grant access:', err)
+      error.value = err.response?.data?.message || 'Failed to grant encrypted access.'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   function setCurrentChild(childId: number | null): void {
     currentChildId.value = childId
   }
@@ -96,6 +169,7 @@ export const useChildStore = defineStore('child', () => {
   return {
     children,
     currentChildId,
+    currentChildDetail,
     deks,
     isLoading,
     error,
@@ -104,7 +178,10 @@ export const useChildStore = defineStore('child', () => {
     getDEK,
     setDEK,
     fetchChildren,
+    fetchChildDetail,
     createChild,
+    createInvite,
+    grantAccess,
     setCurrentChild,
     clearError,
   }

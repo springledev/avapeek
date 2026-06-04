@@ -25,10 +25,46 @@ export interface CreateChildRequest {
 }
 
 /**
- * Request payload for inviting a user to a child.
+ * Response from creating an invite.
  */
-export interface InviteUserRequest {
-  email: string
-  role: 'owner' | 'admin' | 'member'
-  relationship?: string | null
+export interface InviteResponse {
+  id: number
+  token: string
+  url: string
+  role: string
+  relationship: string | null
+  expires_at: string
+  created_at: string
+}
+
+/**
+ * Response from fetching invite preview.
+ */
+export interface InvitePreview {
+  token: string
+  child_name: string
+  inviter_name: string
+  role: string
+  relationship: string | null
+  expires_at: string
+}
+
+/**
+ * A member of a child.
+ */
+export interface ChildMember {
+  id: number
+  display_name: string
+  role: string
+  relationship: string | null
+  joined_at: string
+}
+
+/**
+ * Child detail (with members).
+ */
+export interface ChildDetail extends Child {
+  created_by: number
+  members: ChildMember[]
+  role: string
 }

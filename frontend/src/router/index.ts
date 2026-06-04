@@ -36,6 +36,17 @@ const router = createRouter({
       component: () => import('@/views/HomeView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/child/:id/members',
+      name: 'child-members',
+      component: () => import('@/views/MembersView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/invite/:token',
+      name: 'invite-accept',
+      component: () => import('@/views/InviteAcceptView.vue'),
+    },
   ],
 })
 
@@ -43,7 +54,7 @@ router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next('/login')
+    next({ name: 'login', query: { redirect: to.fullPath } })
     return
   }
 

@@ -26,6 +26,7 @@ class Invite extends Model
         'invited_by',
         'expires_at',
         'accepted_at',
+        'accepted_by',
         'created_at',
     ];
 
