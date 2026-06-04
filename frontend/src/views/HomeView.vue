@@ -27,6 +27,12 @@ function goToChild(child: Child) {
   router.push(`/child/${child.id}`)
 }
 
+function goToMembers(child: Child, event: Event) {
+  event.stopPropagation()
+  childStore.setCurrentChild(child.id)
+  router.push(`/child/${child.id}/members`)
+}
+
 function goToCreateChild() {
   router.push('/child/create')
 }
@@ -120,7 +126,17 @@ function formatBytes(bytes: number): string {
           <div class="space-y-2">
             <div class="flex items-center justify-between text-sm">
               <span class="text-slate-500">{{ child.photo_count ?? 0 }} photos</span>
-              <span class="text-slate-500">{{ formatBytes(child.storage_used) }}</span>
+              <span class="text-slate-500" v-if="child.role === 'owner' || child.role === 'admin'">{{ formatBytes(child.storage_used) }}</span>
+            </div>
+            <div class="flex items-center justify-between text-sm"
+              v-if="child.role === 'owner' || child.role === 'admin'">
+              <span class="text-slate-500">{{ child.member_count ?? 1 }} {{ (child.member_count ?? 1) === 1 ? 'member' : 'members' }}</span>
+              <button
+                @click="goToMembers(child, $event)"
+                class="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Manage
+              </button>
             </div>
           </div>
         </div>

@@ -143,7 +143,10 @@ class InviteController extends Controller
             'relationship' => $invite->relationship,
         ]);
 
-        $invite->update(['accepted_at' => now()]);
+        $invite->update([
+            'accepted_at' => now(),
+            'accepted_by' => $user->id,
+        ]);
 
         return response()->json([
             'data' => [

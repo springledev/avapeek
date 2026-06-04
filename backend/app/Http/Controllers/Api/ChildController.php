@@ -97,25 +97,40 @@ class ChildController extends Controller
 
     /**
      * Show a single child's details including members and storage usage.
+     *
+     * Only owners and admins can see the full members list.
+     * Regular members only see their own membership info.
      */
-    public function show(Child $child): JsonResponse
+    public function show(Request $request, Child $child): JsonResponse
     {
+        $currentUser = $request->user();
+        $userRole = $currentUser->children()
+            ->where('child_id', $child->id)
+            ->first()?->pivot->role;
+
         $child->load([
-            'users' => function ($query) {
-                $query->select('users.id', 'display_name', 'role', 'relationship');
-            },
             'storageUsage',
         ]);
 
-        $members = $child->users->map(function ($user) {
-            return [
-                'id' => $user->id,
-                'display_name' => $user->display_name,
-                'role' => $user->pivot->role,
-                'relationship' => $user->pivot->relationship,
-                'joined_at' => $user->pivot->joined_at,
-            ];
-        });
+        $members = collect();
+
+        if (in_array($userRole, ['owner', 'admin'], true)) {
+            $child->load([
+                'users' => function ($query) {
+                    $query->select('users.id', 'display_name', 'role', 'relationship');
+                },
+            ]);
+
+            $members = $child->users->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'display_name' => $user->display_name,
+                    'role' => $user->pivot->role,
+                    'relationship' => $user->pivot->relationship,
+                    'joined_at' => $user->pivot->joined_at,
+                ];
+            });
+        }
 
         return response()->json([
             'data' => [
@@ -127,6 +142,7 @@ class ChildController extends Controller
                 'created_by' => $child->created_by,
                 'storage_used' => (int) ($child->storageUsage?->used_bytes ?? 0),
                 'members' => $members,
+                'role' => $userRole,
                 'created_at' => $child->created_at?->toISOString(),
             ],
         ]);

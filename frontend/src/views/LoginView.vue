@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const email = ref('')
@@ -27,8 +28,8 @@ async function handleSubmit() {
 
   try {
     await authStore.login(email.value, password.value)
-    // Redirect to dashboard or home after successful login
-    router.push('/')
+    const redirect = (route.query.redirect as string) || '/'
+    router.push(redirect)
   } catch (error: any) {
     // Handle validation errors from API
     if (error.response?.data?.errors) {

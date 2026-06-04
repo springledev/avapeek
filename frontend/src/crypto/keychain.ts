@@ -119,6 +119,29 @@ export async function exportPublicKey(publicKey: CryptoKey): Promise<string> {
   return JSON.stringify(jwk)
 }
 
+/**
+ * Imports a public key from JWK format (RSA-OAEP).
+ */
+export async function importPublicKey(publicKeyJwk: string): Promise<CryptoKey> {
+  const jwk = JSON.parse(publicKeyJwk)
+  return await crypto.subtle.importKey(
+    'jwk',
+    jwk,
+    { name: 'RSA-OAEP', hash: 'SHA-256' },
+    true,
+    ['wrapKey'],
+  )
+}
+
+/**
+ * Wraps a DEK using an invitee's RSA public key.
+ * Used during the invite flow to share the DEK with a new member.
+ */
+export async function wrapDEKWithPublicKey(dek: CryptoKey, publicKey: CryptoKey): Promise<string> {
+  const wrappedKey = await crypto.subtle.wrapKey('raw', dek, publicKey, { name: 'RSA-OAEP' })
+  return arrayBufferToBase64(wrappedKey)
+}
+
 // Utility functions for encoding/decoding
 
 function arrayBufferToHex(buffer: ArrayBuffer): string {
