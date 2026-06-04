@@ -24,20 +24,29 @@ const router = createRouter({
       component: () => import('@/views/HomeView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/child/create',
+      name: 'child-create',
+      component: () => import('@/views/CreateChildView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/child/:id',
+      name: 'child-dashboard',
+      component: () => import('@/views/HomeView.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 
-// Navigation guards
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
 
-  // Check if route requires authentication
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
     return
   }
 
-  // Check if route requires guest (not authenticated)
   if (to.meta.requiresGuest && authStore.isAuthenticated) {
     next('/')
     return
