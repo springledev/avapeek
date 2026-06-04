@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureChildAdmin;
 use App\Http\Middleware\EnsureChildMember;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -16,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'child.member' => EnsureChildMember::class,
+            'child.admin' => EnsureChildAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
