@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChildStore } from '@/stores/child'
 import { useAuthStore } from '@/stores/auth'
+import AppHeader from '@/components/AppHeader.vue'
 
 const router = useRouter()
 const childStore = useChildStore()
@@ -63,33 +64,22 @@ async function handleSubmit() {
 
 <template>
   <div class="min-h-screen bg-slate-50">
-    <nav class="nav-bar">
-      <div class="nav-container">
-        <div class="nav-content">
-          <div class="flex items-center gap-3">
-            <router-link to="/" class="nav-back-link">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-              </svg>
-            </router-link>
-            <div class="flex items-center gap-2">
-              <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <h1 class="text-xl font-bold text-slate-900">Avapeek</h1>
-            </div>
-          </div>
-        </div>
-      </div>
-    </nav>
+    <AppHeader />
 
     <main class="main-container-narrow">
-      <div class="card-xl">
-        <div class="mb-8">
+      <div class="flex items-center gap-3 mb-8">
+        <router-link to="/" class="nav-back-link">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+          </svg>
+        </router-link>
+        <div>
           <h2 class="text-2xl font-bold text-slate-900">Add a Child</h2>
           <p class="text-slate-600 mt-1">Create a new profile to start building their photo album.</p>
         </div>
+      </div>
 
+      <div class="card-xl">
         <div v-if="formErrors.general" class="alert-error mb-6">
           {{ formErrors.general }}
         </div>
