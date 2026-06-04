@@ -2,12 +2,20 @@
 
 namespace App\Models;
 
+use Database\Factories\AlbumFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @method static AlbumFactory factory(...$parameters)
+ */
 class Album extends Model
 {
+    /** @use HasFactory<AlbumFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'child_id',
         'title',
