@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
-import { generateDEK, wrapDEK, importPublicKey, wrapDEKWithPublicKey } from '@/crypto/keychain'
+import { generateDEK, wrapDEK, unwrapDEK, importPublicKey, wrapDEKWithPublicKey } from '@/crypto/keychain'
 import type { Child, ChildDetail, InviteResponse } from '@/types/child'
 
 export const useChildStore = defineStore('child', () => {
@@ -26,6 +26,25 @@ export const useChildStore = defineStore('child', () => {
 
   function setDEK(childId: number, dek: CryptoKey): void {
     deks.value.set(childId, dek)
+  }
+
+  async function ensureDEK(childId: number): Promise<CryptoKey> {
+    const existing = deks.value.get(childId)
+    if (existing) return existing
+
+    const authStore = useAuthStore()
+    if (!authStore.kek) {
+      throw new Error('Session expired. Please log in again.')
+    }
+
+    const ek = authStore.encryptionKeys.find((k) => k.child_id === childId)
+    if (!ek) {
+      throw new Error('No encryption key found for this child.')
+    }
+
+    const dek = await unwrapDEK(ek.encrypted_dek, authStore.kek)
+    deks.value.set(childId, dek)
+    return dek
   }
 
   async function fetchChildren(): Promise<void> {
@@ -177,6 +196,7 @@ export const useChildStore = defineStore('child', () => {
     hasChildren,
     getDEK,
     setDEK,
+    ensureDEK,
     fetchChildren,
     fetchChildDetail,
     createChild,

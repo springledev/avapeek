@@ -10,7 +10,11 @@ const router = useRouter()
 const childStore = useChildStore()
 
 const childId = computed(() => Number(route.params.id))
-const child = ref<ChildDetail | null>(null)
+const child = computed(() => {
+  const detail = childStore.currentChildDetail
+  if (detail && detail.id === childId.value) return detail
+  return null
+})
 const hasLoaded = ref(false)
 
 const showInviteModal = ref(false)
@@ -25,15 +29,21 @@ const isGranting = ref(false)
 
 const relationshipOptions = ['Parent', 'Grandparent', 'Aunt/Uncle', 'Godparent', 'Other']
 
-onMounted(() => {
+onMounted(async () => {
   childStore.setCurrentChild(childId.value)
-  loadChild()
-})
 
-async function loadChild() {
+  if (child.value) {
+    if (child.value.role !== 'owner' && child.value.role !== 'admin') {
+      router.push(`/child/${childId.value}`)
+    }
+    hasLoaded.value = true
+    return
+  }
+
   try {
-    child.value = await childStore.fetchChildDetail(childId.value)
-    if (child.value && child.value.role !== 'owner' && child.value.role !== 'admin') {
+    await childStore.fetchChildDetail(childId.value)
+    const detail = childStore.currentChildDetail
+    if (detail && detail.role !== 'owner' && detail.role !== 'admin') {
       router.push(`/child/${childId.value}`)
     }
   } catch {
@@ -41,7 +51,7 @@ async function loadChild() {
   } finally {
     hasLoaded.value = true
   }
-}
+})
 
 function goBack() {
   router.push(`/child/${childId.value}`)
@@ -103,7 +113,7 @@ async function handleGrantAccess() {
     await childStore.grantAccess(childId.value, grantToUserId)
     inviteGrantPhase.value = false
     closeInviteModal()
-    await loadChild()
+    await childStore.fetchChildDetail(childId.value)
   } catch (err: any) {
     grantError.value = err?.message || 'Failed to grant access.'
   } finally {
