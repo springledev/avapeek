@@ -13,8 +13,13 @@ export function ageAt(birthDate: string | null, date?: Date): string | null {
   const birth = new Date(birthDate)
   const at = date ?? new Date()
 
-  const months =
+  let months =
     (at.getFullYear() - birth.getFullYear()) * 12 + (at.getMonth() - birth.getMonth())
+
+  if (at.getDate() < birth.getDate()) {
+    months--
+  }
+  
   const years = Math.floor(months / 12)
   const remainingMonths = months % 12
 

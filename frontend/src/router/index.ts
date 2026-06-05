@@ -33,7 +33,7 @@ const router = createRouter({
     {
       path: '/child/:id',
       name: 'child-dashboard',
-      component: () => import('@/views/HomeView.vue'),
+      component: () => import('@/views/ChildDashboardView.vue'),
       meta: { requiresAuth: true },
     },
     {

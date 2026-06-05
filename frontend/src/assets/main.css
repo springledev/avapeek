@@ -208,4 +208,101 @@
   .modal-content {
     @apply bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md max-h-[90vh] overflow-y-auto;
   }
+
+  /* Upload Dropzone */
+  .dropzone {
+    @apply border-2 border-dashed border-slate-300 rounded-xl p-12 text-center cursor-pointer transition-all duration-200 hover:border-blue-400 hover:bg-blue-50/50;
+  }
+
+  .dropzone-active {
+    @apply border-blue-500 bg-blue-50;
+  }
+
+  .dropzone-icon {
+    @apply w-12 h-12 mx-auto text-slate-400 mb-3;
+  }
+
+  .dropzone-text {
+    @apply text-slate-600 text-sm;
+  }
+
+  .dropzone-hint {
+    @apply text-slate-400 text-xs mt-1;
+  }
+
+  /* File List */
+  .file-list {
+    @apply mt-4 space-y-2 max-h-60 overflow-y-auto;
+  }
+
+  .file-item {
+    @apply flex items-center gap-3 p-3 bg-slate-50 rounded-lg text-sm;
+  }
+
+  .file-name {
+    @apply flex-1 truncate text-slate-700;
+  }
+
+  .file-size {
+    @apply text-slate-400 shrink-0;
+  }
+
+  .heic-badge {
+    @apply px-2 py-0.5 bg-amber-100 text-amber-800 text-xs font-medium rounded-full shrink-0;
+  }
+
+  .remove-file-btn {
+    @apply text-slate-400 hover:text-red-500 transition-colors shrink-0 ml-1;
+  }
+
+  /* Processing Overlay */
+  .processing-overlay {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm;
+  }
+
+  .processing-card {
+    @apply bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg mx-4;
+  }
+
+  .processing-title {
+    @apply text-lg font-semibold text-slate-900 mb-4;
+  }
+
+  .progress-file-name {
+    @apply text-sm text-slate-600 truncate;
+  }
+
+  .progress-stage {
+    @apply text-xs text-slate-400;
+  }
+
+  .progress-bar-track {
+    @apply w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-1.5;
+  }
+
+  .progress-bar-fill {
+    @apply h-full bg-blue-500 rounded-full transition-all duration-300;
+  }
+
+  .upload-summary {
+    @apply flex items-center justify-between text-sm text-slate-500 mt-2;
+  }
+
+  /* Tag Input */
+  .tag-input {
+    @apply w-full px-4 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all duration-200 text-sm;
+  }
+
+  /* Page Header */
+  .page-header {
+    @apply flex items-center justify-between gap-4 mb-8;
+  }
+
+  .page-title {
+    @apply text-2xl font-bold text-slate-900;
+  }
+
+  .page-subtitle {
+    @apply text-sm text-slate-500;
+  }
 }
