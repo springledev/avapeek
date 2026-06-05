@@ -2,7 +2,6 @@
 
 namespace Database\Factories;
 
-use App\Models\Album;
 use App\Models\Child;
 use App\Models\Photo;
 use App\Models\User;
@@ -18,7 +17,6 @@ class PhotoFactory extends Factory
         $uuid = fake()->uuid();
 
         return [
-            'album_id' => Album::factory(),
             'child_id' => Child::factory(),
             'uploaded_by' => User::factory(),
             'original_path' => "{$uuid}/{$uuid}.webp.enc",
