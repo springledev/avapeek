@@ -15,7 +15,7 @@ class EnsureChildMember
     {
         $child = $request->route('child');
 
-        if (! $child) {
+        if (! $child || ! is_object($child)) {
             return $next($request);
         }
 

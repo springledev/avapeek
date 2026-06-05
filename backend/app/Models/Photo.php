@@ -6,6 +6,7 @@ use Database\Factories\PhotoFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
  * @method static PhotoFactory factory(...$parameters)
@@ -54,5 +55,14 @@ class Photo extends Model
     public function uploader(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by');
+    }
+
+    /**
+     * Get the tags for this photo.
+     */
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(Tag::class, 'photo_tags')
+            ->withPivot('created_at');
     }
 }
