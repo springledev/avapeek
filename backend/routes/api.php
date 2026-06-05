@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Api\AlbumController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ChildController;
 use App\Http\Controllers\Api\EncryptionKeysController;
@@ -42,16 +41,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware(['child.member', 'child.admin'])->group(function () {
         Route::post('/children/{child}/invite', [InviteController::class, 'store']);
     });
-
-    // Albums
-    Route::middleware('child.member')->group(function () {
-        Route::get('/children/{child}/albums', [AlbumController::class, 'index']);
-        Route::post('/children/{child}/albums', [AlbumController::class, 'store']);
-    });
-
-    Route::get('/albums/{album}', [AlbumController::class, 'show']);
-    Route::put('/albums/{album}', [AlbumController::class, 'update']);
-    Route::delete('/albums/{album}', [AlbumController::class, 'destroy']);
 
     // Invite acceptance
     Route::post('/invites/{token}/accept', [InviteController::class, 'accept']);

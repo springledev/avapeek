@@ -44,14 +44,6 @@ class Child extends Model
     }
 
     /**
-     * Get the albums for this child.
-     */
-    public function albums(): HasMany
-    {
-        return $this->hasMany(Album::class);
-    }
-
-    /**
      * Get the photos for this child.
      */
     public function photos(): HasMany

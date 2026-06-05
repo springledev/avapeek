@@ -59,14 +59,6 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the albums created by this user.
-     */
-    public function albums(): HasMany
-    {
-        return $this->hasMany(Album::class, 'created_by');
-    }
-
-    /**
      * Get the device tokens for this user.
      */
     public function deviceTokens(): HasMany

@@ -16,7 +16,6 @@ class Photo extends Model
     use HasFactory;
 
     protected $fillable = [
-        'album_id',
         'child_id',
         'uploaded_by',
         'original_path',
@@ -47,14 +46,6 @@ class Photo extends Model
     public function child(): BelongsTo
     {
         return $this->belongsTo(Child::class);
-    }
-
-    /**
-     * Get the album that owns the photo.
-     */
-    public function album(): BelongsTo
-    {
-        return $this->belongsTo(Album::class);
     }
 
     /**
