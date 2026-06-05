@@ -98,7 +98,7 @@ function formatBytes(bytes: number): string {
             </div>
             <div class="min-w-0">
               <h3 class="text-lg font-semibold text-slate-900 truncate">{{ child.name }}</h3>
-              <p class="text-sm text-slate-500">{{ ageAt(child.birth_date) }}</p>
+              <p class="text-sm text-slate-500">{{ child.age }}</p>
             </div>
           </div>
 

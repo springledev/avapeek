@@ -6,6 +6,7 @@ export interface Child {
   name: string
   birth_date: string | null
   avatar_color: string | null
+  age: string | null
   role: string
   relationship: string | null
   storage_used: number
