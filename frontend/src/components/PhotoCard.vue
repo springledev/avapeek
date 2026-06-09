@@ -79,10 +79,6 @@ onBeforeUnmount(() => {
       <span v-else class="skeleton w-8 h-8" />
     </div>
 
-    <div v-if="photo.taken_at" class="photo-card-age">
-      {{ photo.taken_at }}
-    </div>
-
     <div v-if="photo.tags && photo.tags.length > 0" class="photo-card-footer">
       <div class="photo-card-tags">
         <TagChip
