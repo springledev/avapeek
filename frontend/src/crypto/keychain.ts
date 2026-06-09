@@ -44,11 +44,33 @@ export async function deriveKEK(password: string, salt: string): Promise<CryptoK
     },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
-    false, // Not extractable
+    true, // Extractable so it can be persisted to sessionStorage
     ['wrapKey', 'unwrapKey'],
   )
 
   return kek
+}
+
+/**
+ * Exports a KEK to a JWK string for persistence in sessionStorage.
+ */
+export async function exportKEK(kek: CryptoKey): Promise<string> {
+  const jwk = await crypto.subtle.exportKey('jwk', kek)
+  return JSON.stringify(jwk)
+}
+
+/**
+ * Imports a KEK from a JWK string (previously exported via exportKEK).
+ */
+export async function importKEK(jwkString: string): Promise<CryptoKey> {
+  const jwk = JSON.parse(jwkString)
+  return await crypto.subtle.importKey(
+    'jwk',
+    jwk,
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['wrapKey', 'unwrapKey'],
+  )
 }
 
 /**

@@ -14,6 +14,8 @@ import {
   generateSalt,
   generateKeyPair,
   exportPublicKey,
+  exportKEK,
+  importKEK,
 } from '@/crypto/keychain'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -26,6 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Getters
   const isAuthenticated = computed(() => !!user.value)
+  const needsReauth = computed(() => !!user.value && !kek.value)
   const currentUser = computed(() => user.value)
 
   /**
@@ -66,6 +69,10 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = userData
       apiService.setAuthToken(token)
 
+      // Export KEK to sessionStorage for persistence across refreshes
+      const kekJwk = await exportKEK(derivedKEK)
+      sessionStorage.setItem('kek', kekJwk)
+
       // Store user data in localStorage for persistence
       localStorage.setItem('user', JSON.stringify(userData))
     } catch (err: any) {
@@ -101,7 +108,12 @@ export const useAuthStore = defineStore('auth', () => {
       // Store encryption keys
       if (encryption_keys) {
         encryptionKeys.value = encryption_keys
+        localStorage.setItem('encryption_keys', JSON.stringify(encryption_keys))
       }
+
+      // Export KEK to sessionStorage for persistence across refreshes
+      const kekJwk = await exportKEK(derivedKEK)
+      sessionStorage.setItem('kek', kekJwk)
 
       // Store user data in localStorage for persistence
       localStorage.setItem('user', JSON.stringify(userData))
@@ -134,15 +146,17 @@ export const useAuthStore = defineStore('auth', () => {
       kek.value = null
       apiService.clearAuthToken()
       localStorage.removeItem('user')
+      localStorage.removeItem('encryption_keys')
+      sessionStorage.removeItem('kek')
       isLoading.value = false
     }
   }
 
   /**
-   * Initializes auth state from localStorage (for page refreshes).
-   * Note: KEK must be re-derived by having the user log in again.
+   * Initializes auth state from localStorage/sessionStorage (for page refreshes).
+   * KEK is restored from sessionStorage; encryption keys from localStorage.
    */
-  function initializeAuth(): void {
+  async function initializeAuth(): Promise<void> {
     const storedUser = localStorage.getItem('user')
     if (storedUser) {
       try {
@@ -150,6 +164,26 @@ export const useAuthStore = defineStore('auth', () => {
       } catch (err) {
         console.error('Failed to parse stored user data:', err)
         localStorage.removeItem('user')
+      }
+    }
+
+    const storedEncryptionKeys = localStorage.getItem('encryption_keys')
+    if (storedEncryptionKeys) {
+      try {
+        encryptionKeys.value = JSON.parse(storedEncryptionKeys)
+      } catch (err) {
+        console.error('Failed to parse stored encryption keys:', err)
+        localStorage.removeItem('encryption_keys')
+      }
+    }
+
+    const storedKekJwk = sessionStorage.getItem('kek')
+    if (storedKekJwk) {
+      try {
+        kek.value = await importKEK(storedKekJwk)
+      } catch (err) {
+        console.error('Failed to import KEK from sessionStorage:', err)
+        sessionStorage.removeItem('kek')
       }
     }
   }
@@ -170,6 +204,7 @@ export const useAuthStore = defineStore('auth', () => {
     error,
     // Getters
     isAuthenticated,
+    needsReauth,
     currentUser,
     // Actions
     register,

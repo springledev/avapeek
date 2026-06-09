@@ -1,5 +1,5 @@
 import { api } from '@/services/api'
-import { decryptBlob, blobToObjectURL } from '@/crypto/encrypt'
+import { decryptBlob, blobToObjectURL, revokeObjectURL } from '@/crypto/encrypt'
 
 export async function fetchPresignedThumbnail(
   childId: number,
@@ -9,7 +9,7 @@ export async function fetchPresignedThumbnail(
   const response = await api.get(
     `/children/${childId}/photos/${photoId}/thumbnail/${size}`,
   )
-  return response.data.url as string
+  return response.data.data.presigned_url as string
 }
 
 export async function fetchPresignedOriginal(
@@ -17,7 +17,7 @@ export async function fetchPresignedOriginal(
   photoId: number,
 ): Promise<string> {
   const response = await api.get(`/children/${childId}/photos/${photoId}`)
-  return response.data.url as string
+  return response.data.data.presigned_url as string
 }
 
 export async function fetchEncryptedBlob(presignedUrl: string): Promise<ArrayBuffer> {
@@ -34,16 +34,37 @@ export async function fetchAndDecrypt(
   return await decryptBlob(encrypted, dek, iv)
 }
 
+const trackedUrls = new Map<string, string[]>()
+
+function trackObjectUrl(key: string, url: string) {
+  const urls = trackedUrls.get(key) || []
+  urls.push(url)
+  trackedUrls.set(key, urls)
+}
+
+export function cleanupComponent(key: string) {
+  const urls = trackedUrls.get(key)
+  if (urls) {
+    for (const url of urls) {
+      revokeObjectURL(url)
+    }
+    trackedUrls.delete(key)
+  }
+}
+
 export async function fetchThumbnail(
   childId: number,
   photoId: number,
   size: 'sm' | 'md' | 'lg',
   dek: CryptoKey,
   iv: string,
+  componentKey: string,
 ): Promise<string> {
   const presignedUrl = await fetchPresignedThumbnail(childId, photoId, size)
   const decrypted = await fetchAndDecrypt(presignedUrl, dek, iv)
-  return blobToObjectURL(decrypted, 'image/webp')
+  const objectUrl = blobToObjectURL(decrypted, 'image/webp')
+  trackObjectUrl(componentKey, objectUrl)
+  return objectUrl
 }
 
 export async function fetchOriginal(
@@ -54,5 +75,6 @@ export async function fetchOriginal(
 ): Promise<string> {
   const presignedUrl = await fetchPresignedOriginal(childId, photoId)
   const decrypted = await fetchAndDecrypt(presignedUrl, dek, iv)
-  return blobToObjectURL(decrypted, 'image/webp')
+  const objectUrl = blobToObjectURL(decrypted, 'image/webp')
+  return objectUrl
 }
