@@ -58,6 +58,11 @@ router.beforeEach((to, from, next) => {
     return
   }
 
+  if (to.meta.requiresAuth && authStore.needsReauth) {
+    next({ name: 'login', query: { redirect: to.fullPath, reauth: '1' } })
+    return
+  }
+
   if (to.meta.requiresGuest && authStore.isAuthenticated) {
     next('/')
     return

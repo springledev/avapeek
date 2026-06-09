@@ -137,7 +137,7 @@ async function processSingleFile(
   try {
     const exifr = await import('exifr')
     exifData = (await exifr.parse(file, {
-      pick: ['Make', 'Model', 'LensModel', 'ISO', 'FNumber', 'ExposureTime', 'FocalLength', 'DateTimeOriginal'],
+      pick: ['Make', 'Model', 'LensModel', 'ISO', 'FNumber', 'ExposureTime', 'FocalLength', 'DateTimeOriginal', 'CreateDate', 'DateTime'],
     })) || {}
   } catch {
     // EXIF extraction is best-effort
@@ -194,9 +194,9 @@ async function processSingleFile(
   formData.append('width', String(width))
   formData.append('height', String(height))
 
-  if (exifData.DateTimeOriginal) {
-    formData.append('taken_at', exifData.DateTimeOriginal as string)
-  }
+  const dateValue = exifData.DateTimeOriginal ?? exifData.CreateDate ?? exifData.DateTime ?? new Date(file.lastModified)
+
+  formData.append('taken_at', (dateValue as Date).toISOString())
 
   for (const tag of tags.value) {
     formData.append('tags[]', tag)

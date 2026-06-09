@@ -7,6 +7,7 @@ export interface Photo {
   id: number
   child_id: number
   uploaded_by: number
+  uploader_name?: string
   original_path: string
   thumbnail_sm_path: string
   thumbnail_md_path: string

@@ -77,6 +77,11 @@ async function handleSubmit() {
         {{ authStore.error }}
       </div>
 
+      <!-- Reauth Message -->
+      <div v-if="route.query.reauth === '1'" class="alert-warning">
+        Your session expired. Please sign in again to access your encrypted photos.
+      </div>
+
       <!-- Login Form -->
       <form @submit.prevent="handleSubmit" class="space-y-4">
         <!-- Email Field -->
