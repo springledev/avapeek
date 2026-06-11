@@ -1,9 +1,9 @@
 #!/bin/sh
 set -e
 
-# Cache Laravel config and routes with the correct production env
-php artisan config:cache
-php artisan route:cache
+if [ "${APP_ENV}" = "production" ]; then
+    php artisan config:cache
+    php artisan route:cache
+fi
 
-# Execute the main container command (frankenphp run ...)
 exec "$@"
