@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useChildStore } from '@/stores/child'
+import { useAuthStore } from '@/stores/auth'
 import { ageAt, getAvatarColor, getInitials } from '@/utils/childHelpers'
 import { api } from '@/services/api'
 import AppHeader from '@/components/AppHeader.vue'
@@ -9,6 +10,7 @@ import UploadDropzone from '@/components/UploadDropzone.vue'
 import PhotoGrid from '@/components/PhotoGrid.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
 import TagSidebar from '@/components/TagSidebar.vue'
+import QuotaBar from '@/components/QuotaBar.vue'
 import type { TagItem } from '@/components/TagSidebar.vue'
 import type { Photo } from '@/types/photo'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
@@ -16,6 +18,7 @@ import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 const route = useRoute()
 const router = useRouter()
 const childStore = useChildStore()
+const authStore = useAuthStore()
 
 const childId = computed(() => Number(route.params.id))
 const showUpload = ref(false)
@@ -26,8 +29,22 @@ const activeDateFilter = ref<string | null>(null)
 const tags = ref<TagItem[]>([])
 const viewerPhoto = ref<Photo | null>(null)
 const allPhotos = ref<Photo[]>([])
+const quotaBarRef = ref<InstanceType<typeof QuotaBar> | null>(null)
 
 const child = computed(() => childStore.currentChildDetail)
+
+const userRole = computed(() => child.value?.role ?? 'member')
+const userId = computed(() => authStore.user?.id)
+const isAdmin = computed(() => userRole.value === 'owner' || userRole.value === 'admin')
+
+const canDeletePhoto = (photo: Photo): boolean => {
+  if (isAdmin.value) return true
+  return photo.uploaded_by === userId.value
+}
+
+const canDeleteCurrentPhoto = computed(() =>
+  viewerPhoto.value ? canDeletePhoto(viewerPhoto.value) : false,
+)
 
 const viewerIndex = computed(() =>
   viewerPhoto.value ? allPhotos.value.findIndex((p) => p.id === viewerPhoto.value!.id) : -1,
@@ -54,7 +71,6 @@ async function fetchTags() {
 }
 
 async function refreshPhotos() {
-  // PhotoGrid fetches internally, but we track for viewer navigation
   try {
     const response = await api.get(`/children/${childId.value}/photos`, {
       params: { per_page: 200 },
@@ -83,7 +99,7 @@ function createTag(name: string) {
 }
 
 function openViewer(photo: Photo) {
-  viewerPhoto.value = photo
+  viewerPhoto.value = { ...photo }
   document.body.style.overflow = 'hidden'
 }
 
@@ -94,13 +110,13 @@ function closeViewer() {
 
 function viewerPrev() {
   if (viewerIndex.value > 0) {
-    viewerPhoto.value = allPhotos.value[viewerIndex.value - 1]!
+    viewerPhoto.value = { ...allPhotos.value[viewerIndex.value - 1]! }
   }
 }
 
 function viewerNext() {
   if (viewerIndex.value < allPhotos.value.length - 1) {
-    viewerPhoto.value = allPhotos.value[viewerIndex.value + 1]!
+    viewerPhoto.value = { ...allPhotos.value[viewerIndex.value + 1]! }
   }
 }
 
@@ -108,6 +124,84 @@ function onPhotoUploaded() {
   showUpload.value = false
   refreshPhotos()
   fetchTags()
+  quotaBarRef.value?.refresh()
+}
+
+async function handleDeletePhoto(photoId: number) {
+  try {
+    await api.delete(`/children/${childId.value}/photos/${photoId}`)
+    allPhotos.value = allPhotos.value.filter((p) => p.id !== photoId)
+    closeViewer()
+    await Promise.all([fetchTags(), quotaBarRef.value?.refresh()])
+  } catch {
+    alert('Failed to delete photo. You may not have permission.')
+  }
+}
+
+async function handleTagAdded(photoId: number, tagName: string) {
+  try {
+    let tagId = tags.value.find((t) => t.name === tagName)?.id
+
+    if (!tagId) {
+      const response = await api.post(`/children/${childId.value}/tags`, { name: tagName })
+      const newTag = response.data.data
+      tagId = newTag.id
+      await fetchTags()
+    }
+
+    await api.post(`/children/${childId.value}/photos/${photoId}/tags`, {
+      tag_ids: [tagId],
+    })
+
+    const photoIdx = allPhotos.value.findIndex((p) => p.id === photoId)
+    if (photoIdx !== -1) {
+      const updatedPhoto = { ...allPhotos.value[photoIdx]! }
+      if (!updatedPhoto.tags?.find((t) => t.id === tagId)) {
+        updatedPhoto.tags = [...(updatedPhoto.tags ?? []), { id: tagId, name: tagName }]
+      }
+      allPhotos.value[photoIdx] = updatedPhoto
+      if (viewerPhoto.value?.id === photoId) {
+        viewerPhoto.value = { ...allPhotos.value[photoIdx]! }
+      }
+    }
+
+    await fetchTags()
+  } catch {
+    alert('Failed to add tag.')
+  }
+}
+
+async function handleTagRemoved(photoId: number, tagId: number) {
+  try {
+    await api.delete(`/children/${childId.value}/photos/${photoId}/tags/${tagId}`)
+    await fetchTags()
+    const photoIdx = allPhotos.value.findIndex((p) => p.id === photoId)
+    if (photoIdx !== -1) {
+      const updated = { ...allPhotos.value[photoIdx]! }
+      updated.tags = updated.tags?.filter((t) => t.id !== tagId) ?? []
+      allPhotos.value[photoIdx] = updated
+    }
+    if (viewerPhoto.value?.id === photoId) {
+      viewerPhoto.value = { ...allPhotos.value[photoIdx]! }
+    }
+  } catch {
+    alert('Failed to remove tag.')
+  }
+}
+
+async function handleDeleteTag(tagId: number) {
+  try {
+    await api.delete(`/children/${childId.value}/tags/${tagId}`)
+    if (activeTag.value) {
+      const deletedTag = tags.value.find((t) => t.id === tagId)
+      if (deletedTag && activeTag.value === deletedTag.name) {
+        activeTag.value = null
+      }
+    }
+    await Promise.all([fetchTags(), refreshPhotos()])
+  } catch {
+    alert('Failed to delete tag. You may not have permission.')
+  }
 }
 
 function goBack() {
@@ -172,6 +266,9 @@ onMounted(init)
           </div>
         </div>
 
+        <!-- Storage Quota Bar -->
+        <QuotaBar :child-id="childId" ref="quotaBarRef" />
+
         <!-- Upload Section -->
         <div v-if="showUpload" class="card-xl mb-8">
           <h2 class="text-lg font-semibold text-slate-900 mb-2">Upload Photos</h2>
@@ -212,8 +309,10 @@ onMounted(init)
               :tags="tags"
               :active-tag="activeTag"
               :total-photos="allPhotos.length"
+              :can-delete-tag="isAdmin"
               @select="selectTag"
               @create="createTag"
+              @delete-tag="handleDeleteTag"
             />
           </div>
 
@@ -254,8 +353,10 @@ onMounted(init)
                   :tags="tags"
                   :active-tag="activeTag"
                   :total-photos="allPhotos.length"
+                  :can-delete-tag="isAdmin"
                   @select="(tag) => { selectTag(tag); showMobileTags = false }"
                   @create="createTag"
+                  @delete-tag="(tagId) => { handleDeleteTag(tagId); showMobileTags = false }"
                 />
               </div>
             </div>
@@ -272,7 +373,7 @@ onMounted(init)
             />
           </div>
 
-          <!-- Date filter (optional dropdown) -->
+          <!-- Date filter sidebar -->
           <div class="hidden lg:block w-40 shrink-0">
             <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 pl-1">Jump to</div>
             <div class="space-y-0.5">
@@ -293,7 +394,7 @@ onMounted(init)
               <button
                 class="tag-item w-full text-left"
                 :class="{ 'tag-item-active': activeDateFilter === new Date().getFullYear().toString() }"
-                @click="activeDateFilter = '2026'"
+                @click="activeDateFilter = new Date().getFullYear().toString()"
               >
                 This year
               </button>
@@ -309,9 +410,15 @@ onMounted(init)
       :photo="viewerPhoto"
       :has-prev="viewerIndex > 0"
       :has-next="viewerIndex < allPhotos.length - 1"
+      :can-delete="canDeleteCurrentPhoto"
+      :child-birth-date="child?.birth_date ?? null"
+      :all-tags="tags"
       @close="closeViewer"
       @prev="viewerPrev"
       @next="viewerNext"
+      @delete="handleDeletePhoto"
+      @tag-added="handleTagAdded"
+      @tag-removed="handleTagRemoved"
     />
   </div>
 </template>
