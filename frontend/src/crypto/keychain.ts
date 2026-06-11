@@ -9,7 +9,7 @@
 export function generateSalt(): string {
   const buffer = new Uint8Array(32)
   crypto.getRandomValues(buffer)
-  return arrayBufferToHex(buffer)
+  return arrayBufferToHex(buffer.buffer)
 }
 
 /**
@@ -26,13 +26,10 @@ export async function deriveKEK(password: string, salt: string): Promise<CryptoK
   const saltBuffer = hexToArrayBuffer(salt)
 
   // Import password as key material
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    passwordBuffer,
-    'PBKDF2',
-    false,
-    ['deriveBits', 'deriveKey'],
-  )
+  const keyMaterial = await crypto.subtle.importKey('raw', passwordBuffer, 'PBKDF2', false, [
+    'deriveBits',
+    'deriveKey',
+  ])
 
   // Derive KEK using PBKDF2 (600,000 iterations as per OWASP recommendations)
   const kek = await crypto.subtle.deriveKey(
@@ -64,13 +61,10 @@ export async function exportKEK(kek: CryptoKey): Promise<string> {
  */
 export async function importKEK(jwkString: string): Promise<CryptoKey> {
   const jwk = JSON.parse(jwkString)
-  return await crypto.subtle.importKey(
-    'jwk',
-    jwk,
-    { name: 'AES-GCM', length: 256 },
-    true,
-    ['wrapKey', 'unwrapKey'],
-  )
+  return await crypto.subtle.importKey('jwk', jwk, { name: 'AES-GCM', length: 256 }, true, [
+    'wrapKey',
+    'unwrapKey',
+  ])
 }
 
 /**
@@ -91,7 +85,10 @@ export async function generateDEK(): Promise<CryptoKey> {
  * @returns Promise resolving to base64-encoded wrapped DEK
  */
 export async function wrapDEK(dek: CryptoKey, kek: CryptoKey): Promise<string> {
-  const wrappedKey = await crypto.subtle.wrapKey('raw', dek, kek, { name: 'AES-GCM', iv: new Uint8Array(12) })
+  const wrappedKey = await crypto.subtle.wrapKey('raw', dek, kek, {
+    name: 'AES-GCM',
+    iv: new Uint8Array(12),
+  })
 
   return arrayBufferToBase64(wrappedKey)
 }
@@ -146,13 +143,9 @@ export async function exportPublicKey(publicKey: CryptoKey): Promise<string> {
  */
 export async function importPublicKey(publicKeyJwk: string): Promise<CryptoKey> {
   const jwk = JSON.parse(publicKeyJwk)
-  return await crypto.subtle.importKey(
-    'jwk',
-    jwk,
-    { name: 'RSA-OAEP', hash: 'SHA-256' },
-    true,
-    ['wrapKey'],
-  )
+  return await crypto.subtle.importKey('jwk', jwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, true, [
+    'wrapKey',
+  ])
 }
 
 /**
@@ -184,7 +177,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   let binary = ''
   for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i])
+    binary += String.fromCharCode(bytes[i]!)
   }
   return btoa(binary)
 }

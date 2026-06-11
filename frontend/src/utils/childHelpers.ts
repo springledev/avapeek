@@ -13,13 +13,12 @@ export function ageAt(birthDate: string | null, date?: Date): string | null {
   const birth = new Date(birthDate)
   const at = date ?? new Date()
 
-  let months =
-    (at.getFullYear() - birth.getFullYear()) * 12 + (at.getMonth() - birth.getMonth())
+  let months = (at.getFullYear() - birth.getFullYear()) * 12 + (at.getMonth() - birth.getMonth())
 
   if (at.getDate() < birth.getDate()) {
     months--
   }
-  
+
   const years = Math.floor(months / 12)
   const remainingMonths = months % 12
 
@@ -55,7 +54,7 @@ export function getAvatarColor(id: number): string {
     '#BB8FCE',
     '#85C1E9',
   ]
-  return palette[id % palette.length]
+  return palette[id % palette.length]!
 }
 
 /**

@@ -1,0 +1,35 @@
+FROM dunglas/frankenphp:1.12-php8.5-alpine
+
+RUN install-php-extensions \
+    pdo_pgsql \
+    gd \
+    zip \
+    opcache \
+    pcntl \
+    intl
+
+RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
+
+COPY --from=composer:2.10 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /app
+
+COPY backend/ .
+
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+RUN php artisan config:cache \
+    && php artisan route:cache
+
+RUN chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
+
+ENV FRANKENPHP_CONFIG="worker ./public/index.php"
+ENV SERVER_NAME=:80
+
+COPY docker/php/Caddyfile /etc/caddy/Caddyfile
+COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
+
+EXPOSE 80
+
+CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile"]

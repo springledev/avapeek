@@ -39,16 +39,13 @@ async function handleSubmit() {
   isSubmitting.value = true
 
   try {
-    const child = await childStore.createChild(
-      name.value.trim(),
-      birthDate.value || null,
-    )
+    const child = await childStore.createChild(name.value.trim(), birthDate.value || null)
     router.push(`/child/${child.id}`)
   } catch (err: any) {
     if (err.response?.data?.errors) {
       formErrors.value = Object.entries(err.response.data.errors).reduce(
         (acc, [key, messages]) => {
-          acc[key] = (messages as string[])[0]
+          acc[key] = (messages as string[])[0] ?? ''
           return acc
         },
         {} as Record<string, string>,
@@ -70,12 +67,19 @@ async function handleSubmit() {
       <div class="flex items-center gap-3 mb-8">
         <router-link to="/" class="nav-back-link">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M15 19l-7-7 7-7"
+            />
           </svg>
         </router-link>
         <div>
           <h2 class="text-2xl font-bold text-slate-900">Add a Child</h2>
-          <p class="text-slate-600 mt-1">Create a new profile to start building their photo album.</p>
+          <p class="text-slate-600 mt-1">
+            Create a new profile to start building their photo album.
+          </p>
         </div>
       </div>
 
@@ -101,7 +105,9 @@ async function handleSubmit() {
           </div>
 
           <div class="form-group">
-            <label for="birthDate" class="form-label">Birth Date <span class="text-slate-400 font-normal">(optional)</span></label>
+            <label for="birthDate" class="form-label"
+              >Birth Date <span class="text-slate-400 font-normal">(optional)</span></label
+            >
             <input
               id="birthDate"
               v-model="birthDate"
@@ -112,11 +118,7 @@ async function handleSubmit() {
             />
           </div>
 
-          <button
-            type="submit"
-            class="btn-primary"
-            :disabled="isSubmitting"
-          >
+          <button type="submit" class="btn-primary" :disabled="isSubmitting">
             <span v-if="isSubmitting" class="flex items-center justify-center gap-2">
               <span class="spinner"></span>
               Creating Profile...

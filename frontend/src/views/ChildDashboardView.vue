@@ -52,7 +52,10 @@ const viewerIndex = computed(() =>
 
 const currentMonthLabel = computed(() => {
   if (!activeDateFilter.value) return null
-  return new Date(activeDateFilter.value).toLocaleString('default', { month: 'long', year: 'numeric' })
+  return new Date(activeDateFilter.value).toLocaleString('default', {
+    month: 'long',
+    year: 'numeric',
+  })
 })
 
 function roleBadgeClass(role: string): string {
@@ -93,9 +96,7 @@ function selectTag(tag: string | null) {
 }
 
 function createTag(name: string) {
-  api
-    .post(`/children/${childId.value}/tags`, { name })
-    .then(() => fetchTags())
+  api.post(`/children/${childId.value}/tags`, { name }).then(() => fetchTags())
 }
 
 function openViewer(photo: Photo) {
@@ -140,9 +141,12 @@ async function handleDeletePhoto(photoId: number) {
 
 async function handleTagAdded(photoId: number, tagName: string) {
   try {
-    let tagId = tags.value.find((t) => t.name === tagName)?.id
+    const existing = tags.value.find((t) => t.name === tagName)
+    let tagId: number
 
-    if (!tagId) {
+    if (existing) {
+      tagId = existing.id
+    } else {
       const response = await api.post(`/children/${childId.value}/tags`, { name: tagName })
       const newTag = response.data.data
       tagId = newTag.id
@@ -226,13 +230,15 @@ onMounted(init)
           <div class="flex items-center gap-4">
             <button @click="goBack" class="nav-back-link">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 19l-7-7 7-7"
+                />
               </svg>
             </button>
-            <div
-              class="avatar-circle"
-              :style="{ backgroundColor: getAvatarColor(child.id) }"
-            >
+            <div class="avatar-circle" :style="{ backgroundColor: getAvatarColor(child.id) }">
               {{ getInitials(child.name) }}
             </div>
             <div>
@@ -250,16 +256,10 @@ onMounted(init)
             </div>
           </div>
           <div class="flex gap-3">
-            <button
-              class="btn-action"
-              @click="router.push(`/child/${childId}/members`)"
-            >
+            <button class="btn-action" @click="router.push(`/child/${childId}/members`)">
               Members
             </button>
-            <button
-              class="btn-action"
-              @click="showUpload = !showUpload"
-            >
+            <button class="btn-action" @click="showUpload = !showUpload">
               <template v-if="showUpload">Cancel</template>
               <template v-else>Upload</template>
             </button>
@@ -275,27 +275,17 @@ onMounted(init)
           <p class="text-sm text-slate-500 mb-6">
             Photos are encrypted on your device before upload.
           </p>
-          <UploadDropzone
-            :child-id="childId"
-            @uploaded="onPhotoUploaded"
-            @done="onPhotoUploaded"
-          />
+          <UploadDropzone :child-id="childId" @uploaded="onPhotoUploaded" @done="onPhotoUploaded" />
         </div>
 
         <!-- Active filter indicator -->
         <div v-if="activeTag || activeDateFilter" class="flex items-center gap-2 mb-4">
           <span class="text-sm text-slate-500">Filtering:</span>
-          <span
-            v-if="activeTag"
-            class="tag-chip bg-blue-100 text-blue-700"
-          >
+          <span v-if="activeTag" class="tag-chip bg-blue-100 text-blue-700">
             {{ activeTag }}
             <button class="tag-chip-remove" @click="activeTag = null">&times;</button>
           </span>
-          <span
-            v-if="currentMonthLabel"
-            class="tag-chip bg-purple-100 text-purple-700"
-          >
+          <span v-if="currentMonthLabel" class="tag-chip bg-purple-100 text-purple-700">
             {{ currentMonthLabel }}
             <button class="tag-chip-remove" @click="activeDateFilter = null">&times;</button>
           </span>
@@ -317,12 +307,14 @@ onMounted(init)
           </div>
 
           <!-- Mobile tag toggle -->
-          <button
-            class="tag-toggle-btn mb-3"
-            @click="showMobileTags = true"
-          >
+          <button class="tag-toggle-btn mb-3" @click="showMobileTags = true">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h10M7 11h10M7 15h10" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M7 7h10M7 11h10M7 15h10"
+              />
             </svg>
             Tags
           </button>
@@ -334,10 +326,7 @@ onMounted(init)
               class="fixed inset-0 z-40 bg-black/50"
               @click="showMobileTags = false"
             >
-              <div
-                class="tag-sidebar-mobile"
-                @click.stop
-              >
+              <div class="tag-sidebar-mobile" @click.stop>
                 <div class="flex items-center justify-between mb-4">
                   <h2 class="text-lg font-semibold text-slate-900">Tags</h2>
                   <button
@@ -345,7 +334,12 @@ onMounted(init)
                     @click="showMobileTags = false"
                   >
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -354,9 +348,19 @@ onMounted(init)
                   :active-tag="activeTag"
                   :total-photos="allPhotos.length"
                   :can-delete-tag="isAdmin"
-                  @select="(tag) => { selectTag(tag); showMobileTags = false }"
+                  @select="
+                    (tag) => {
+                      selectTag(tag)
+                      showMobileTags = false
+                    }
+                  "
                   @create="createTag"
-                  @delete-tag="(tagId) => { handleDeleteTag(tagId); showMobileTags = false }"
+                  @delete-tag="
+                    (tagId) => {
+                      handleDeleteTag(tagId)
+                      showMobileTags = false
+                    }
+                  "
                 />
               </div>
             </div>
@@ -375,7 +379,9 @@ onMounted(init)
 
           <!-- Date filter sidebar -->
           <div class="hidden lg:block w-40 shrink-0">
-            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 pl-1">Jump to</div>
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 pl-1">
+              Jump to
+            </div>
             <div class="space-y-0.5">
               <button
                 class="tag-item w-full text-left"
@@ -386,14 +392,18 @@ onMounted(init)
               </button>
               <button
                 class="tag-item w-full text-left"
-                :class="{ 'tag-item-active': activeDateFilter === new Date().toISOString().slice(0, 7) }"
+                :class="{
+                  'tag-item-active': activeDateFilter === new Date().toISOString().slice(0, 7),
+                }"
                 @click="activeDateFilter = new Date().toISOString().slice(0, 7)"
               >
                 This month
               </button>
               <button
                 class="tag-item w-full text-left"
-                :class="{ 'tag-item-active': activeDateFilter === new Date().getFullYear().toString() }"
+                :class="{
+                  'tag-item-active': activeDateFilter === new Date().getFullYear().toString(),
+                }"
                 @click="activeDateFilter = new Date().getFullYear().toString()"
               >
                 This year
