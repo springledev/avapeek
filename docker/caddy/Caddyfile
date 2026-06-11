@@ -1,6 +1,6 @@
 :80 {
     # API routes -> FrankenPHP/Laravel backend
-    handle_path /api/* {
+    handle /api/* {
         reverse_proxy backend:80 {
             header_up X-Forwarded-Proto {scheme}
         }
@@ -29,5 +29,5 @@
         -Server
     }
 
-    encode zstd br gzip
+    encode zstd gzip
 }
