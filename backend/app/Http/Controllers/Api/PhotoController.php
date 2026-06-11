@@ -10,6 +10,7 @@ use App\Services\QuotaService;
 use App\Services\StorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class PhotoController extends Controller
 {
@@ -191,6 +192,48 @@ class PhotoController extends Controller
                 'presigned_url' => $url,
             ],
         ]);
+    }
+
+    /**
+     * Delete a photo and all its encrypted blobs from storage.
+     *
+     * Restricted to owner/admin or the original uploader.
+     */
+    public function destroy(Request $request, Child $child, Photo $photo): JsonResponse
+    {
+        $user = $request->user();
+        $role = $user->children()
+            ->where('child_id', $child->id)
+            ->first()?->pivot->role;
+
+        if (! in_array($role, ['owner', 'admin'], true) && $photo->uploaded_by !== $user->id) {
+            return response()->json([
+                'message' => 'You do not have permission to delete this photo.',
+            ], 403);
+        }
+
+        $paths = [
+            $photo->original_path,
+            $photo->thumbnail_sm_path,
+            $photo->thumbnail_md_path,
+            $photo->thumbnail_lg_path,
+        ];
+
+        $totalBytes = 0;
+        foreach ($paths as $path) {
+            $size = Storage::disk('s3')->size($path);
+            if ($size !== false) {
+                $totalBytes += $size;
+            }
+        }
+
+        $this->storageService->deleteMultiple($paths);
+
+        $this->quotaService->removeUsage($child, $totalBytes);
+
+        $photo->delete();
+
+        return response()->json(null, 204);
     }
 
     private function formatPhoto(Photo $photo): array
