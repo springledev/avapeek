@@ -6,7 +6,8 @@ RUN install-php-extensions \
     zip \
     opcache \
     pcntl \
-    intl
+    intl \
+    redis
 
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
@@ -18,9 +19,6 @@ COPY backend/ .
 
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-RUN php artisan config:cache \
-    && php artisan route:cache
-
 RUN chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
@@ -29,7 +27,11 @@ ENV SERVER_NAME=:80
 
 COPY docker/php/Caddyfile /etc/caddy/Caddyfile
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
+COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+COPY docker/php/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 80
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile"]
