@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\ChildController;
 use App\Http\Controllers\Api\EncryptionKeysController;
 use App\Http\Controllers\Api\InviteController;
 use App\Http\Controllers\Api\PhotoController;
+use App\Http\Controllers\Api\QuotaController;
 use App\Http\Controllers\Api\StorageInfoController;
 use App\Http\Controllers\Api\TagController;
 use App\Models\User;
@@ -48,6 +49,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/children/{child}/photos/upload', [PhotoController::class, 'upload']);
         Route::get('/children/{child}/photos/{photo}', [PhotoController::class, 'show']);
         Route::get('/children/{child}/photos/{photo}/thumbnail/{size}', [PhotoController::class, 'thumbnail']);
+        Route::delete('/children/{child}/photos/{photo}', [PhotoController::class, 'destroy']);
+
+        // Quota
+        Route::get('/children/{child}/quota', [QuotaController::class, 'show']);
 
         // Tags
         Route::get('/children/{child}/tags', [TagController::class, 'index']);

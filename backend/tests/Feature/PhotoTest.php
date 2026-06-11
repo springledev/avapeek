@@ -631,3 +631,181 @@ describe('GET /api/storage/disk-info', function () {
         $response->assertStatus(401);
     });
 });
+
+describe('DELETE /api/children/{child}/photos/{photo}', function () {
+    it('allows owner to delete a photo', function () {
+        Storage::fake('s3');
+        $disk = Storage::disk('s3');
+
+        $user = User::factory()->create();
+        $child = Child::factory()->create(['created_by' => $user->id]);
+        ChildUser::create([
+            'child_id' => $child->id,
+            'user_id' => $user->id,
+            'role' => 'owner',
+        ]);
+        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 5000]);
+
+        $photo = Photo::factory()->create([
+            'child_id' => $child->id,
+            'uploaded_by' => $user->id,
+        ]);
+
+        $disk->put($photo->original_path, str_repeat('a', 1000));
+        $disk->put($photo->thumbnail_sm_path, str_repeat('b', 100));
+        $disk->put($photo->thumbnail_md_path, str_repeat('c', 200));
+        $disk->put($photo->thumbnail_lg_path, str_repeat('d', 400));
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}");
+
+        $response->assertStatus(204);
+
+        $this->assertDatabaseMissing('photos', ['id' => $photo->id]);
+
+        $disk->assertMissing($photo->original_path);
+        $disk->assertMissing($photo->thumbnail_sm_path);
+        $disk->assertMissing($photo->thumbnail_md_path);
+        $disk->assertMissing($photo->thumbnail_lg_path);
+
+        expect((int) $child->storageUsage->fresh()->used_bytes)->toBeLessThan(5000);
+    });
+
+    it('allows admin to delete a photo', function () {
+        Storage::fake('s3');
+        $disk = Storage::disk('s3');
+
+        $owner = User::factory()->create();
+        $admin = User::factory()->create();
+        $child = Child::factory()->create(['created_by' => $owner->id]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $owner->id, 'role' => 'owner']);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $admin->id, 'role' => 'admin']);
+        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 2000]);
+
+        $photo = Photo::factory()->create([
+            'child_id' => $child->id,
+            'uploaded_by' => $owner->id,
+        ]);
+
+        $disk->put($photo->original_path, str_repeat('a', 500));
+        $disk->put($photo->thumbnail_sm_path, str_repeat('b', 50));
+        $disk->put($photo->thumbnail_md_path, str_repeat('c', 100));
+        $disk->put($photo->thumbnail_lg_path, str_repeat('d', 200));
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}");
+
+        $response->assertStatus(204);
+
+        $this->assertDatabaseMissing('photos', ['id' => $photo->id]);
+    });
+
+    it('allows uploader with member role to delete their own photo', function () {
+        Storage::fake('s3');
+        $disk = Storage::disk('s3');
+
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+        $child = Child::factory()->create(['created_by' => $owner->id]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $owner->id, 'role' => 'owner']);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $member->id, 'role' => 'member']);
+        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 2000]);
+
+        $photo = Photo::factory()->create([
+            'child_id' => $child->id,
+            'uploaded_by' => $member->id,
+        ]);
+
+        $disk->put($photo->original_path, str_repeat('a', 500));
+        $disk->put($photo->thumbnail_sm_path, str_repeat('b', 50));
+        $disk->put($photo->thumbnail_md_path, str_repeat('c', 100));
+        $disk->put($photo->thumbnail_lg_path, str_repeat('d', 200));
+
+        $response = $this->actingAs($member, 'sanctum')
+            ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}");
+
+        $response->assertStatus(204);
+
+        $this->assertDatabaseMissing('photos', ['id' => $photo->id]);
+    });
+
+    it('prevents non-uploader member from deleting another members photo', function () {
+        Storage::fake('s3');
+
+        $owner = User::factory()->create();
+        $member1 = User::factory()->create();
+        $member2 = User::factory()->create();
+        $child = Child::factory()->create(['created_by' => $owner->id]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $owner->id, 'role' => 'owner']);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $member1->id, 'role' => 'member']);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $member2->id, 'role' => 'member']);
+        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
+
+        $photo = Photo::factory()->create([
+            'child_id' => $child->id,
+            'uploaded_by' => $member1->id,
+        ]);
+
+        $response = $this->actingAs($member2, 'sanctum')
+            ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}");
+
+        $response->assertStatus(403);
+
+        $this->assertDatabaseHas('photos', ['id' => $photo->id]);
+    });
+
+    it('cascades deletion of photo_tags associations', function () {
+        Storage::fake('s3');
+        $disk = Storage::disk('s3');
+
+        $user = User::factory()->create();
+        $child = Child::factory()->create(['created_by' => $user->id]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => 'owner']);
+        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 2000]);
+
+        $photo = Photo::factory()->create([
+            'child_id' => $child->id,
+            'uploaded_by' => $user->id,
+        ]);
+
+        $tag = Tag::factory()->create(['child_id' => $child->id, 'name' => 'Spain 2026']);
+        $photo->tags()->attach($tag->id);
+
+        $disk->put($photo->original_path, str_repeat('a', 500));
+        $disk->put($photo->thumbnail_sm_path, str_repeat('b', 50));
+        $disk->put($photo->thumbnail_md_path, str_repeat('c', 100));
+        $disk->put($photo->thumbnail_lg_path, str_repeat('d', 200));
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}");
+
+        $response->assertStatus(204);
+
+        $this->assertDatabaseMissing('photo_tags', ['photo_id' => $photo->id, 'tag_id' => $tag->id]);
+    });
+
+    it('prevents non-members from deleting photos', function () {
+        $owner = User::factory()->create();
+        $user = User::factory()->create();
+        $child = Child::factory()->create(['created_by' => $owner->id]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $owner->id, 'role' => 'owner']);
+
+        $photo = Photo::factory()->create([
+            'child_id' => $child->id,
+            'uploaded_by' => $owner->id,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}");
+
+        $response->assertStatus(403);
+    });
+
+    it('requires authentication', function () {
+        $photo = Photo::factory()->create();
+
+        $response = $this->deleteJson("/api/children/{$photo->child_id}/photos/{$photo->id}");
+
+        $response->assertStatus(401);
+    });
+});
