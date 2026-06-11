@@ -115,12 +115,12 @@ services:
     image: chrislusf/seaweedfs:4.32
     container_name: avapeek_seaweedfs
     restart: unless-stopped
-    command: "server -s3 -master.dir=/data/master -volume.dir=/data/volume -filer.dir=/data/filer"
+    command: "server -s3 -filer -dir=/data"
     ports:
-      - "9333:9333"
-      - "8333:8333"
-      - "8888:8888"
-      - "8334:8334"
+      - "9333:9333"   # Master
+      - "8089:8080"   # Volume server
+      - "8888:8888"   # Filer
+      - "8333:8333"   # S3 Gateway
     volumes:
       - seaweeddata:/data
     networks:
