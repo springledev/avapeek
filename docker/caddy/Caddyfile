@@ -1,0 +1,33 @@
+:80 {
+    # API routes -> FrankenPHP/Laravel backend
+    handle_path /api/* {
+        reverse_proxy backend:80 {
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Proxy MinIO bucket requests — used for presigned URLs.
+    # Override the Host header so MinIO's signature validation matches.
+    handle /photos/* {
+        reverse_proxy minio:9000 {
+            header_up Host minio:9000
+        }
+    }
+
+    # All other routes -> Vue SPA frontend
+    handle {
+        reverse_proxy frontend:80 {
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    header {
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    encode zstd br gzip
+}

@@ -7,9 +7,18 @@
 	root * /app/public
 	encode zstd br gzip
 
+	# Proxy MinIO bucket requests — used for presigned URLs.
+	# Override the Host header so MinIO's signature validation matches.
+	handle /photos/* {
+		reverse_proxy minio:9000 {
+			header_up Host minio:9000
+		}
+	}
+
 	php_server
 
-	# Security headers
+	# Security headers (duplicated by reverse proxy in production;
+	# needed when FrankenPHP is exposed directly, e.g. in dev)
 	header {
 		X-Frame-Options "SAMEORIGIN"
 		X-Content-Type-Options "nosniff"

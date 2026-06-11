@@ -26,7 +26,7 @@ ENV FRANKENPHP_CONFIG="worker ./public/index.php"
 ENV SERVER_NAME=:80
 
 COPY docker/php/Caddyfile /etc/caddy/Caddyfile
-COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
+COPY docker/php/opcache.prod.ini /usr/local/etc/php/conf.d/opcache.ini
 COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 COPY docker/php/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
