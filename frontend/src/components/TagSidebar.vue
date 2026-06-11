@@ -7,19 +7,22 @@ export interface TagItem {
   photo_count: number
 }
 
-defineProps<{
+const props = defineProps<{
   tags: TagItem[]
   activeTag: string | null
   totalPhotos: number
+  canDeleteTag: boolean
 }>()
 
 const emit = defineEmits<{
   select: [tag: string | null]
   create: [name: string]
+  deleteTag: [tagId: number]
 }>()
 
 const showCreate = ref(false)
 const newTagName = ref('')
+const showDeleteConfirm = ref<number | null>(null)
 
 function handleCreate() {
   const name = newTagName.value.trim()
@@ -51,7 +54,6 @@ function handleCreate() {
           class="tag-create-input"
           placeholder="Tag name..."
           maxlength="100"
-          ref="createInput"
         />
         <button
           class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shrink-0"
@@ -74,13 +76,41 @@ function handleCreate() {
       <li
         v-for="tag in tags"
         :key="tag.id"
-        class="tag-item"
+        class="tag-item group"
         :class="{ 'tag-item-active': activeTag === tag.name }"
         @click="emit('select', tag.name)"
       >
-        {{ tag.name }}
-        <span class="tag-item-count">{{ tag.photo_count }}</span>
+        <span class="truncate">{{ tag.name }}</span>
+        <span class="flex items-center gap-1 shrink-0 ml-1">
+          <span class="tag-item-count">{{ tag.photo_count }}</span>
+          <button
+            v-if="canDeleteTag"
+            class="tag-delete-btn"
+            @click.stop="showDeleteConfirm = tag.id"
+          >
+            &times;
+          </button>
+        </span>
       </li>
     </ul>
+
+    <!-- Delete tag confirmation -->
+    <div v-if="showDeleteConfirm !== null" class="confirm-overlay" @click.self="showDeleteConfirm = null">
+      <div class="confirm-card">
+        <h3 class="confirm-title">Delete tag?</h3>
+        <p class="confirm-message">
+          Remove "{{ tags.find(t => t.id === showDeleteConfirm)?.name }}" from all photos? This doesn't delete any photos.
+        </p>
+        <div class="confirm-actions">
+          <button class="btn-cancel" @click="showDeleteConfirm = null">Cancel</button>
+          <button
+            class="btn-danger"
+            @click="emit('deleteTag', showDeleteConfirm); showDeleteConfirm = null"
+          >
+            Delete tag
+          </button>
+        </div>
+      </div>
+    </div>
   </nav>
 </template>
