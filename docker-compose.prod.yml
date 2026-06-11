@@ -1,0 +1,137 @@
+services:
+  # --- Backend: FrankenPHP + Laravel Octane ---
+  backend:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: avapeek_backend
+    restart: unless-stopped
+    env_file:
+      - backend/.env.production
+    volumes:
+      - storage:/app/storage
+    ports:
+      - "8080:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # --- Queue Worker ---
+  queue:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: avapeek_queue
+    restart: unless-stopped
+    env_file:
+      - backend/.env.production
+    volumes:
+      - storage:/app/storage
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=3", "--tries=3", "--max-time=3600"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # --- Scheduler ---
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: avapeek_scheduler
+    restart: unless-stopped
+    env_file:
+      - backend/.env.production
+    volumes:
+      - storage:/app/storage
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["while true; do php artisan schedule:run --verbose --no-interaction >> /dev/null 2>&1; sleep 60; done"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # --- Frontend: Vue SPA via Nginx ---
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/node/Dockerfile
+    container_name: avapeek_frontend
+    restart: unless-stopped
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  # --- PostgreSQL 18 ---
+  postgres:
+    image: postgres:18-alpine
+    container_name: avapeek_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # --- Redis 8.2 ---
+  redis:
+    image: redis:8.2-alpine
+    container_name: avapeek_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # --- SeaweedFS 4.32 ---
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.32
+    container_name: avapeek_seaweedfs
+    restart: unless-stopped
+    command: "server -s3 -master.dir=/data/master -volume.dir=/data/volume -filer.dir=/data/filer"
+    ports:
+      - "9333:9333"
+      - "8333:8333"
+      - "8888:8888"
+      - "8334:8334"
+    volumes:
+      - seaweeddata:/data
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+  redisdata:
+  seaweeddata:
+  storage:
+
+networks:
+  app-network:
+    driver: bridge

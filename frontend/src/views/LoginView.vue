@@ -35,7 +35,7 @@ async function handleSubmit() {
     if (error.response?.data?.errors) {
       formErrors.value = Object.entries(error.response.data.errors).reduce(
         (acc, [key, messages]) => {
-          acc[key] = (messages as string[])[0]
+          acc[key] = (messages as string[])[0] ?? ''
           return acc
         },
         {} as Record<string, string>,
@@ -56,12 +56,7 @@ async function handleSubmit() {
 
       <!-- Security Badge -->
       <div class="security-badge">
-        <svg
-          class="w-5 h-5 text-blue-600"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
+        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
