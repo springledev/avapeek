@@ -153,10 +153,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Initializes auth state from localStorage/sessionStorage (for page refreshes).
-   * KEK is restored from sessionStorage; encryption keys from localStorage.
+   * Initializes auth state from localStorage (synchronous).
+   * Must be called before router initialization to ensure guards have correct state.
    */
-  async function initializeAuth(): Promise<void> {
+  function initializeAuth(): void {
     const storedUser = localStorage.getItem('user')
     if (storedUser) {
       try {
@@ -176,7 +176,13 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.removeItem('encryption_keys')
       }
     }
+  }
 
+  /**
+   * Restores KEK from sessionStorage (asynchronous).
+   * Called after app mount to avoid blocking initial render.
+   */
+  async function restoreKEK(): Promise<void> {
     const storedKekJwk = sessionStorage.getItem('kek')
     if (storedKekJwk) {
       try {
@@ -211,6 +217,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     logout,
     initializeAuth,
+    restoreKEK,
     clearError,
   }
 })

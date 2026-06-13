@@ -5,8 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 const authStore = useAuthStore()
 
 onMounted(async () => {
-  // Initialize auth state from localStorage/sessionStorage on app mount
-  await authStore.initializeAuth()
+  await authStore.restoreKEK()
 })
 </script>
 

@@ -63,7 +63,7 @@ router.beforeEach((to, from, next) => {
     return
   }
 
-  if (to.meta.requiresGuest && authStore.isAuthenticated) {
+  if (to.meta.requiresGuest && authStore.isAuthenticated && !authStore.needsReauth) {
     next('/')
     return
   }
