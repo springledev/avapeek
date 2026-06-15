@@ -6,12 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Models\Child;
 use App\Models\ChildUser;
 use App\Models\StorageUsage;
+use App\Models\Tag;
+use App\Services\QuotaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class ChildController extends Controller
 {
+    public function __construct(
+        protected QuotaService $quotaService,
+    ) {}
+
     private const AVATAR_PALETTE = [
         '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
         '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
@@ -138,6 +144,19 @@ class ChildController extends Controller
             });
         }
 
+        $tags = Tag::where('child_id', $child->id)
+            ->withCount('photos')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Tag $tag) => [
+                'id' => $tag->id,
+                'name' => $tag->name,
+                'photo_count' => $tag->photos_count,
+                'created_at' => $tag->created_at?->toISOString(),
+            ]);
+
+        $quota = $this->quotaService->getUsage($child);
+
         return response()->json([
             'data' => [
                 'id' => $child->id,
@@ -147,9 +166,12 @@ class ChildController extends Controller
                 'avatar_color' => $child->avatar_color,
                 'age' => $child->ageAt(),
                 'created_by' => $child->created_by,
-                'storage_used' => (int) ($child->storageUsage?->used_bytes ?? 0),
+                'storage_used' => $quota['used_bytes'],
+                'storage_limit_bytes' => $quota['limit_bytes'],
+                'storage_percentage' => $quota['percentage'],
                 'members' => $members,
                 'role' => $userRole,
+                'tags' => $tags,
                 'created_at' => $child->created_at?->toISOString(),
             ],
         ]);

@@ -131,7 +131,9 @@ class PhotoController extends Controller
             ->paginate(50);
 
         return response()->json([
-            'data' => $photos->getCollection()->map(fn (Photo $photo) => $this->formatPhoto($photo)),
+            'data' => $photos->getCollection()->map(fn (Photo $photo) => array_merge($this->formatPhoto($photo), [
+                'thumbnail_url' => $this->storageService->presignedUrl($photo->thumbnail_path, 30),
+            ])),
             'meta' => [
                 'current_page' => $photos->currentPage(),
                 'last_page' => $photos->lastPage(),

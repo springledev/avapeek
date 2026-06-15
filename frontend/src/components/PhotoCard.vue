@@ -35,6 +35,7 @@ async function decryptThumbnail() {
       dek,
       props.photo.iv_thumbnail,
       componentKey,
+      props.photo.thumbnail_url,
     )
   } catch {
     error.value = true
@@ -44,6 +45,11 @@ async function decryptThumbnail() {
 }
 
 onMounted(() => {
+  if (props.photo.thumbnail_url) {
+    observed.value = true
+    decryptThumbnail()
+    return
+  }
   if (!elRef.value) return
   observer = new IntersectionObserver(
     (entries) => {
