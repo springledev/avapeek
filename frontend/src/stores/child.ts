@@ -109,6 +109,14 @@ export const useChildStore = defineStore('child', () => {
         wrapped_dek: wrappedDek,
       })
 
+      authStore.encryptionKeys.push({
+        child_id: child.id,
+        child_name: child.name,
+        encrypted_dek: wrappedDek,
+        key_version: 1,
+      })
+      localStorage.setItem('encryption_keys', JSON.stringify(authStore.encryptionKeys))
+
       deks.value.set(child.id, dek)
       children.value.push(child)
 

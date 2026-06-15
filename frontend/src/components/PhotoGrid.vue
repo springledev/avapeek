@@ -114,6 +114,12 @@ const scrollerItems = computed(() =>
     size: Math.ceil(g.photos.length / 3) * 280 + 50,
   })),
 )
+
+function refresh(): void {
+  fetchPhotos(true)
+}
+
+defineExpose({ refresh })
 </script>
 
 <template>

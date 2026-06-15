@@ -23,13 +23,13 @@ onMounted(async () => {
 
 function goToChild(child: Child) {
   childStore.setCurrentChild(child.id)
-  router.push(`/child/${child.id}`)
+  router.push(`/child/${child.slug}`)
 }
 
 function goToMembers(child: Child, event: Event) {
   event.stopPropagation()
   childStore.setCurrentChild(child.id)
-  router.push(`/child/${child.id}/members`)
+  router.push(`/child/${child.slug}/members`)
 }
 
 function goToCreateChild() {

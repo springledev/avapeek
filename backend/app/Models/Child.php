@@ -17,6 +17,7 @@ class Child extends Model
 
     protected $fillable = [
         'name',
+        'slug',
         'birth_date',
         'avatar_color',
         'created_by',

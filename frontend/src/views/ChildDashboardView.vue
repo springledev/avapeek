@@ -20,7 +20,8 @@ const router = useRouter()
 const childStore = useChildStore()
 const authStore = useAuthStore()
 
-const childId = computed(() => Number(route.params.id))
+const childSlug = computed(() => route.params.slug as string)
+const childId = ref(0)
 const showUpload = ref(false)
 const showMobileTags = ref(false)
 const isLoading = ref(true)
@@ -30,6 +31,7 @@ const tags = ref<TagItem[]>([])
 const viewerPhoto = ref<Photo | null>(null)
 const allPhotos = ref<Photo[]>([])
 const quotaBarRef = ref<InstanceType<typeof QuotaBar> | null>(null)
+const photoGridRef = ref<InstanceType<typeof PhotoGrid> | null>(null)
 
 const child = computed(() => childStore.currentChildDetail)
 
@@ -86,6 +88,20 @@ async function refreshPhotos() {
 
 async function init() {
   isLoading.value = true
+
+  const slug = childSlug.value
+
+  // Resolve slug to numeric ID
+  if (childStore.children.length === 0) {
+    await childStore.fetchChildren()
+  }
+  const found = childStore.children.find((c) => c.slug === slug)
+  if (!found) {
+    router.push('/')
+    return
+  }
+  childId.value = found.id
+
   await childStore.fetchChildDetail(childId.value)
   await Promise.all([fetchTags(), refreshPhotos()])
   isLoading.value = false
@@ -126,6 +142,7 @@ function onPhotoUploaded() {
   refreshPhotos()
   fetchTags()
   quotaBarRef.value?.refresh()
+  photoGridRef.value?.refresh()
 }
 
 async function handleDeletePhoto(photoId: number) {
@@ -133,6 +150,7 @@ async function handleDeletePhoto(photoId: number) {
     await api.delete(`/children/${childId.value}/photos/${photoId}`)
     allPhotos.value = allPhotos.value.filter((p) => p.id !== photoId)
     closeViewer()
+    photoGridRef.value?.refresh()
     await Promise.all([fetchTags(), quotaBarRef.value?.refresh()])
   } catch {
     alert('Failed to delete photo. You may not have permission.')
@@ -256,7 +274,7 @@ onMounted(init)
             </div>
           </div>
           <div class="flex gap-3">
-            <button class="btn-action" @click="router.push(`/child/${childId}/members`)">
+            <button class="btn-action" @click="router.push(`/child/${childSlug}/members`)">
               Members
             </button>
             <button class="btn-action" @click="showUpload = !showUpload">
@@ -369,6 +387,7 @@ onMounted(init)
           <!-- Main feed -->
           <div class="feed-main">
             <PhotoGrid
+              ref="photoGridRef"
               :key="`${childId}-${activeTag || ''}-${activeDateFilter || ''}`"
               :child-id="childId"
               :tag-filter="activeTag"

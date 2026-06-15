@@ -40,7 +40,7 @@ async function handleSubmit() {
 
   try {
     const child = await childStore.createChild(name.value.trim(), birthDate.value || null)
-    router.push(`/child/${child.id}`)
+    router.push(`/child/${child.slug}`)
   } catch (err: any) {
     if (err.response?.data?.errors) {
       formErrors.value = Object.entries(err.response.data.errors).reduce(

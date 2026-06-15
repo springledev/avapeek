@@ -31,13 +31,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
-      path: '/child/:id',
+      path: '/child/:slug',
       name: 'child-dashboard',
       component: () => import('@/views/ChildDashboardView.vue'),
       meta: { requiresAuth: true },
     },
     {
-      path: '/child/:id/members',
+      path: '/child/:slug/members',
       name: 'child-members',
       component: () => import('@/views/MembersView.vue'),
       meta: { requiresAuth: true },
