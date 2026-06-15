@@ -1,13 +1,13 @@
 import { api } from '@/services/api'
 import { decryptBlob, blobToObjectURL, revokeObjectURL } from '@/crypto/encrypt'
+import { decodeHeicBuffer } from '@/crypto/heic'
 
 export async function fetchPresignedThumbnail(
   childId: number,
   photoId: number,
-  size: 'sm' | 'md' | 'lg',
 ): Promise<string> {
   const response = await api.get(
-    `/children/${childId}/photos/${photoId}/thumbnail/${size}`,
+    `/children/${childId}/photos/${photoId}/thumbnail`,
   )
   return response.data.data.presigned_url as string
 }
@@ -34,6 +34,23 @@ export async function fetchAndDecrypt(
   return await decryptBlob(encrypted, dek, iv)
 }
 
+async function decryptedToDisplayableUrl(
+  decrypted: ArrayBuffer,
+  mimeType: string,
+): Promise<string> {
+  if (mimeType === 'image/heic' || mimeType === 'image/heif') {
+    const bitmap = await decodeHeicBuffer(decrypted)
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Could not get OffscreenCanvas context')
+    ctx.drawImage(bitmap, 0, 0)
+    const blob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.92 })
+    bitmap.close()
+    return blobToObjectURL(await blob.arrayBuffer(), 'image/webp')
+  }
+  return blobToObjectURL(decrypted, mimeType)
+}
+
 const trackedUrls = new Map<string, string[]>()
 
 function trackObjectUrl(key: string, url: string) {
@@ -55,12 +72,11 @@ export function cleanupComponent(key: string) {
 export async function fetchThumbnail(
   childId: number,
   photoId: number,
-  size: 'sm' | 'md' | 'lg',
   dek: CryptoKey,
   iv: string,
   componentKey: string,
 ): Promise<string> {
-  const presignedUrl = await fetchPresignedThumbnail(childId, photoId, size)
+  const presignedUrl = await fetchPresignedThumbnail(childId, photoId)
   const decrypted = await fetchAndDecrypt(presignedUrl, dek, iv)
   const objectUrl = blobToObjectURL(decrypted, 'image/webp')
   trackObjectUrl(componentKey, objectUrl)
@@ -72,9 +88,11 @@ export async function fetchOriginal(
   photoId: number,
   dek: CryptoKey,
   iv: string,
+  mimeType: string,
 ): Promise<string> {
   const presignedUrl = await fetchPresignedOriginal(childId, photoId)
   const decrypted = await fetchAndDecrypt(presignedUrl, dek, iv)
-  const objectUrl = blobToObjectURL(decrypted, 'image/webp')
+  const objectUrl = await decryptedToDisplayableUrl(decrypted, mimeType)
+  trackObjectUrl('photoviewer', objectUrl)
   return objectUrl
 }

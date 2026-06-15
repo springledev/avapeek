@@ -124,6 +124,7 @@ async function loadImage() {
       props.photo.id,
       dek,
       props.photo.iv_original,
+      props.photo.mime_type,
     )
   } finally {
     isLoading.value = false

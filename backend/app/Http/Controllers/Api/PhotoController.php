@@ -20,9 +20,11 @@ class PhotoController extends Controller
     ) {}
 
     /**
-     * Upload an encrypted photo with thumbnails.
+     * Upload an encrypted photo with a single thumbnail.
      *
-     * Receives 4 encrypted blobs (original + 3 thumbnails) + metadata.
+     * Receives 2 encrypted blobs (original + thumbnail) + metadata.
+     * The original is stored in its original format (HEIC, JPEG, PNG, WebP).
+     * The thumbnail is always WebP at 1200×900 max, quality 0.85.
      * No DEK is transmitted to the server.
      */
     public function upload(Request $request, Child $child): JsonResponse
@@ -30,13 +32,10 @@ class PhotoController extends Controller
         $validated = $request->validate([
             'file' => ['required', 'file'],
             'iv' => ['required', 'string', 'size:32'],
-            'thumbnail_sm' => ['required', 'file'],
-            'iv_sm' => ['required', 'string', 'size:32'],
-            'thumbnail_md' => ['required', 'file'],
-            'iv_md' => ['required', 'string', 'size:32'],
-            'thumbnail_lg' => ['required', 'file'],
-            'iv_lg' => ['required', 'string', 'size:32'],
+            'thumbnail' => ['required', 'file'],
+            'iv_thumbnail' => ['required', 'string', 'size:32'],
             'mime_type' => ['required', 'string', 'max:50'],
+            'original_extension' => ['required', 'string', 'max:10'],
             'size_bytes' => ['required', 'integer', 'min:1'],
             'width' => ['nullable', 'integer', 'min:1'],
             'height' => ['nullable', 'integer', 'min:1'],
@@ -48,14 +47,10 @@ class PhotoController extends Controller
         ]);
 
         $fileObj = $request->file('file');
-        $smObj = $request->file('thumbnail_sm');
-        $mdObj = $request->file('thumbnail_md');
-        $lgObj = $request->file('thumbnail_lg');
+        $thumbObj = $request->file('thumbnail');
 
         $totalBytes = $fileObj->getSize()
-            + $smObj->getSize()
-            + $mdObj->getSize()
-            + $lgObj->getSize();
+            + $thumbObj->getSize();
 
         if (! $this->quotaService->checkQuota($child, $totalBytes)) {
             return response()->json([
@@ -64,28 +59,21 @@ class PhotoController extends Controller
         }
 
         $uuid = (string) str()->uuid();
+        $ext = $validated['original_extension'];
 
-        $originalPath = "{$child->id}/{$uuid}.webp.enc";
-        $smPath = "{$child->id}/{$uuid}_sm.webp.enc";
-        $mdPath = "{$child->id}/{$uuid}_md.webp.enc";
-        $lgPath = "{$child->id}/{$uuid}_lg.webp.enc";
+        $originalPath = "{$child->id}/{$uuid}.{$ext}.enc";
+        $thumbPath = "{$child->id}/{$uuid}_thumb.webp.enc";
 
         $this->storageService->upload($originalPath, file_get_contents($fileObj->getPathname()));
-        $this->storageService->upload($smPath, file_get_contents($smObj->getPathname()));
-        $this->storageService->upload($mdPath, file_get_contents($mdObj->getPathname()));
-        $this->storageService->upload($lgPath, file_get_contents($lgObj->getPathname()));
+        $this->storageService->upload($thumbPath, file_get_contents($thumbObj->getPathname()));
 
         $photo = Photo::create([
             'child_id' => $child->id,
             'uploaded_by' => $request->user()->id,
             'original_path' => $originalPath,
-            'thumbnail_sm_path' => $smPath,
-            'thumbnail_md_path' => $mdPath,
-            'thumbnail_lg_path' => $lgPath,
+            'thumbnail_path' => $thumbPath,
             'iv_original' => $validated['iv'],
-            'iv_sm' => $validated['iv_sm'],
-            'iv_md' => $validated['iv_md'],
-            'iv_lg' => $validated['iv_lg'],
+            'iv_thumbnail' => $validated['iv_thumbnail'],
             'mime_type' => $validated['mime_type'],
             'size_bytes' => $validated['size_bytes'],
             'width' => $validated['width'] ?? null,
@@ -169,26 +157,14 @@ class PhotoController extends Controller
     }
 
     /**
-     * Get a presigned URL for a thumbnail at the requested size.
+     * Get a presigned URL for the photo's single thumbnail.
      */
-    public function thumbnail(Request $request, Child $child, Photo $photo, string $size): JsonResponse
+    public function thumbnail(Request $request, Child $child, Photo $photo): JsonResponse
     {
-        $path = match ($size) {
-            'sm' => $photo->thumbnail_sm_path,
-            'md' => $photo->thumbnail_md_path,
-            'lg' => $photo->thumbnail_lg_path,
-            default => null,
-        };
-
-        if ($path === null) {
-            return response()->json(['message' => 'Invalid thumbnail size. Use sm, md, or lg.'], 422);
-        }
-
-        $url = $this->storageService->presignedUrl($path, 10);
+        $url = $this->storageService->presignedUrl($photo->thumbnail_path, 10);
 
         return response()->json([
             'data' => [
-                'size' => $size,
                 'presigned_url' => $url,
             ],
         ]);
@@ -214,9 +190,7 @@ class PhotoController extends Controller
 
         $paths = [
             $photo->original_path,
-            $photo->thumbnail_sm_path,
-            $photo->thumbnail_md_path,
-            $photo->thumbnail_lg_path,
+            $photo->thumbnail_path,
         ];
 
         $totalBytes = 0;
@@ -244,13 +218,9 @@ class PhotoController extends Controller
             'uploaded_by' => $photo->uploaded_by,
             'uploader_name' => $photo->uploader?->display_name,
             'original_path' => $photo->original_path,
-            'thumbnail_sm_path' => $photo->thumbnail_sm_path,
-            'thumbnail_md_path' => $photo->thumbnail_md_path,
-            'thumbnail_lg_path' => $photo->thumbnail_lg_path,
+            'thumbnail_path' => $photo->thumbnail_path,
             'iv_original' => $photo->iv_original,
-            'iv_sm' => $photo->iv_sm,
-            'iv_md' => $photo->iv_md,
-            'iv_lg' => $photo->iv_lg,
+            'iv_thumbnail' => $photo->iv_thumbnail,
             'mime_type' => $photo->mime_type,
             'size_bytes' => $photo->size_bytes,
             'width' => $photo->width,

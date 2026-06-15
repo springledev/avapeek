@@ -18,15 +18,11 @@ return new class extends Migration
 
             // Encrypted file paths in MinIO
             $table->string('original_path', 500);
-            $table->string('thumbnail_sm_path', 500)->nullable();
-            $table->string('thumbnail_md_path', 500)->nullable();
-            $table->string('thumbnail_lg_path', 500)->nullable();
+            $table->string('thumbnail_path', 500)->nullable();
 
             // Encryption metadata
             $table->string('iv_original', 32);
-            $table->string('iv_sm', 32)->nullable();
-            $table->string('iv_md', 32)->nullable();
-            $table->string('iv_lg', 32)->nullable();
+            $table->string('iv_thumbnail', 32)->nullable();
 
             // File metadata
             $table->string('mime_type', 50);

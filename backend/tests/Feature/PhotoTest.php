@@ -10,7 +10,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
 describe('POST /api/children/{child}/photos/upload', function () {
-    it('uploads a photo with encrypted blobs and thumbnails', function () {
+    it('uploads a photo with encrypted blob and thumbnail', function () {
         Storage::fake('s3');
 
         $user = User::factory()->create();
@@ -22,42 +22,35 @@ describe('POST /api/children/{child}/photos/upload', function () {
         ]);
         StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
 
-        $file = UploadedFile::fake()->create('photo.webp.enc', 1024);
-        $sm = UploadedFile::fake()->create('thumb_sm.webp.enc', 100);
-        $md = UploadedFile::fake()->create('thumb_md.webp.enc', 300);
-        $lg = UploadedFile::fake()->create('thumb_lg.webp.enc', 600);
+        $file = UploadedFile::fake()->create('photo.heic', 1024);
+        $thumb = UploadedFile::fake()->create('thumb.webp.enc', 600);
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson("/api/children/{$child->id}/photos/upload", [
                 'file' => $file,
                 'iv' => str_repeat('a', 32),
-                'thumbnail_sm' => $sm,
-                'iv_sm' => str_repeat('b', 32),
-                'thumbnail_md' => $md,
-                'iv_md' => str_repeat('c', 32),
-                'thumbnail_lg' => $lg,
-                'iv_lg' => str_repeat('d', 32),
-                'mime_type' => 'image/webp',
+                'thumbnail' => $thumb,
+                'iv_thumbnail' => str_repeat('b', 32),
+                'mime_type' => 'image/heic',
+                'original_extension' => 'heic',
                 'size_bytes' => 1024,
                 'width' => 4000,
                 'height' => 3000,
                 'exif_encrypted' => 'encrypted-exif-data',
-                'iv_exif' => str_repeat('e', 32),
+                'iv_exif' => str_repeat('c', 32),
                 'taken_at' => '2026-06-01T12:00:00Z',
             ]);
 
         $response->assertStatus(201)
             ->assertJsonPath('data.child_id', $child->id)
             ->assertJsonPath('data.uploaded_by', $user->id)
-            ->assertJsonPath('data.mime_type', 'image/webp')
+            ->assertJsonPath('data.mime_type', 'image/heic')
             ->assertJsonPath('data.size_bytes', 1024)
             ->assertJsonPath('data.width', 4000)
             ->assertJsonPath('data.height', 3000)
             ->assertJsonPath('data.thumbnail_status', 'ready')
             ->assertJsonPath('data.iv_original', str_repeat('a', 32))
-            ->assertJsonPath('data.iv_sm', str_repeat('b', 32))
-            ->assertJsonPath('data.iv_md', str_repeat('c', 32))
-            ->assertJsonPath('data.iv_lg', str_repeat('d', 32));
+            ->assertJsonPath('data.iv_thumbnail', str_repeat('b', 32));
 
         $this->assertDatabaseHas('photos', [
             'child_id' => $child->id,
@@ -81,22 +74,17 @@ describe('POST /api/children/{child}/photos/upload', function () {
         ]);
         StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
 
-        $file = UploadedFile::fake()->create('photo.webp.enc', 1024);
-        $sm = UploadedFile::fake()->create('thumb_sm.webp.enc', 100);
-        $md = UploadedFile::fake()->create('thumb_md.webp.enc', 200);
-        $lg = UploadedFile::fake()->create('thumb_lg.webp.enc', 400);
+        $file = UploadedFile::fake()->create('photo.heic', 1024);
+        $thumb = UploadedFile::fake()->create('thumb.webp.enc', 400);
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson("/api/children/{$child->id}/photos/upload", [
                 'file' => $file,
                 'iv' => str_repeat('a', 32),
-                'thumbnail_sm' => $sm,
-                'iv_sm' => str_repeat('b', 32),
-                'thumbnail_md' => $md,
-                'iv_md' => str_repeat('c', 32),
-                'thumbnail_lg' => $lg,
-                'iv_lg' => str_repeat('d', 32),
-                'mime_type' => 'image/webp',
+                'thumbnail' => $thumb,
+                'iv_thumbnail' => str_repeat('b', 32),
+                'mime_type' => 'image/heic',
+                'original_extension' => 'heic',
                 'size_bytes' => 1024,
                 'tags' => ['Spain 2026', 'Beach'],
             ]);
@@ -131,22 +119,17 @@ describe('POST /api/children/{child}/photos/upload', function () {
 
         Tag::factory()->create(['child_id' => $child->id, 'name' => 'Spain 2026']);
 
-        $file = UploadedFile::fake()->create('photo.webp.enc', 1024);
-        $sm = UploadedFile::fake()->create('thumb_sm.webp.enc', 100);
-        $md = UploadedFile::fake()->create('thumb_md.webp.enc', 200);
-        $lg = UploadedFile::fake()->create('thumb_lg.webp.enc', 400);
+        $file = UploadedFile::fake()->create('photo.heic', 1024);
+        $thumb = UploadedFile::fake()->create('thumb.webp.enc', 400);
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson("/api/children/{$child->id}/photos/upload", [
                 'file' => $file,
                 'iv' => str_repeat('a', 32),
-                'thumbnail_sm' => $sm,
-                'iv_sm' => str_repeat('b', 32),
-                'thumbnail_md' => $md,
-                'iv_md' => str_repeat('c', 32),
-                'thumbnail_lg' => $lg,
-                'iv_lg' => str_repeat('d', 32),
-                'mime_type' => 'image/webp',
+                'thumbnail' => $thumb,
+                'iv_thumbnail' => str_repeat('b', 32),
+                'mime_type' => 'image/heic',
+                'original_extension' => 'heic',
                 'size_bytes' => 1024,
                 'tags' => ['Spain 2026'],
             ]);
@@ -168,22 +151,17 @@ describe('POST /api/children/{child}/photos/upload', function () {
         ]);
         StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 5 * 1024 * 1024 * 1024 - 100]);
 
-        $file = UploadedFile::fake()->create('photo.webp.enc', 1024);
-        $sm = UploadedFile::fake()->create('thumb_sm.webp.enc', 100);
-        $md = UploadedFile::fake()->create('thumb_md.webp.enc', 200);
-        $lg = UploadedFile::fake()->create('thumb_lg.webp.enc', 400);
+        $file = UploadedFile::fake()->create('photo.heic', 1024);
+        $thumb = UploadedFile::fake()->create('thumb.webp.enc', 400);
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson("/api/children/{$child->id}/photos/upload", [
                 'file' => $file,
                 'iv' => str_repeat('a', 32),
-                'thumbnail_sm' => $sm,
-                'iv_sm' => str_repeat('b', 32),
-                'thumbnail_md' => $md,
-                'iv_md' => str_repeat('c', 32),
-                'thumbnail_lg' => $lg,
-                'iv_lg' => str_repeat('d', 32),
-                'mime_type' => 'image/webp',
+                'thumbnail' => $thumb,
+                'iv_thumbnail' => str_repeat('b', 32),
+                'mime_type' => 'image/heic',
+                'original_extension' => 'heic',
                 'size_bytes' => 1024,
             ]);
 
@@ -203,7 +181,7 @@ describe('POST /api/children/{child}/photos/upload', function () {
             ->postJson("/api/children/{$child->id}/photos/upload", []);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['file', 'iv', 'thumbnail_sm', 'iv_sm', 'thumbnail_md', 'iv_md', 'thumbnail_lg', 'iv_lg', 'mime_type', 'size_bytes']);
+            ->assertJsonValidationErrors(['file', 'iv', 'thumbnail', 'iv_thumbnail', 'mime_type', 'original_extension', 'size_bytes']);
     });
 
     it('validates IV length is exactly 32', function () {
@@ -218,22 +196,17 @@ describe('POST /api/children/{child}/photos/upload', function () {
         ]);
         StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
 
-        $file = UploadedFile::fake()->create('photo.webp.enc', 1024);
-        $sm = UploadedFile::fake()->create('thumb_sm.webp.enc', 100);
-        $md = UploadedFile::fake()->create('thumb_md.webp.enc', 200);
-        $lg = UploadedFile::fake()->create('thumb_lg.webp.enc', 400);
+        $file = UploadedFile::fake()->create('photo.heic', 1024);
+        $thumb = UploadedFile::fake()->create('thumb.webp.enc', 400);
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson("/api/children/{$child->id}/photos/upload", [
                 'file' => $file,
                 'iv' => 'short',
-                'thumbnail_sm' => $sm,
-                'iv_sm' => str_repeat('b', 32),
-                'thumbnail_md' => $md,
-                'iv_md' => str_repeat('c', 32),
-                'thumbnail_lg' => $lg,
-                'iv_lg' => str_repeat('d', 32),
-                'mime_type' => 'image/webp',
+                'thumbnail' => $thumb,
+                'iv_thumbnail' => str_repeat('b', 32),
+                'mime_type' => 'image/heic',
+                'original_extension' => 'heic',
                 'size_bytes' => 1024,
             ]);
 
@@ -251,22 +224,17 @@ describe('POST /api/children/{child}/photos/upload', function () {
             'role' => 'owner',
         ]);
 
-        $file = UploadedFile::fake()->create('photo.webp.enc', 1024);
-        $sm = UploadedFile::fake()->create('thumb_sm.webp.enc', 100);
-        $md = UploadedFile::fake()->create('thumb_md.webp.enc', 200);
-        $lg = UploadedFile::fake()->create('thumb_lg.webp.enc', 400);
+        $file = UploadedFile::fake()->create('photo.heic', 1024);
+        $thumb = UploadedFile::fake()->create('thumb.webp.enc', 400);
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson("/api/children/{$child->id}/photos/upload", [
                 'file' => $file,
                 'iv' => str_repeat('a', 32),
-                'thumbnail_sm' => $sm,
-                'iv_sm' => str_repeat('b', 32),
-                'thumbnail_md' => $md,
-                'iv_md' => str_repeat('c', 32),
-                'thumbnail_lg' => $lg,
-                'iv_lg' => str_repeat('d', 32),
-                'mime_type' => 'image/webp',
+                'thumbnail' => $thumb,
+                'iv_thumbnail' => str_repeat('b', 32),
+                'mime_type' => 'image/heic',
+                'original_extension' => 'heic',
                 'size_bytes' => 1024,
             ]);
 
@@ -484,8 +452,8 @@ describe('GET /api/children/{child}/photos/{photo}', function () {
     });
 });
 
-describe('GET /api/children/{child}/photos/{photo}/thumbnail/{size}', function () {
-    it('returns a presigned URL for a small thumbnail', function () {
+describe('GET /api/children/{child}/photos/{photo}/thumbnail', function () {
+    it('returns a presigned URL for the thumbnail', function () {
         Storage::fake('s3');
 
         $user = User::factory()->create();
@@ -500,86 +468,13 @@ describe('GET /api/children/{child}/photos/{photo}/thumbnail/{size}', function (
         $photo = Photo::factory()->create([
             'child_id' => $child->id,
             'uploaded_by' => $user->id,
-            'thumbnail_sm_path' => 'test/thumb_sm.webp.enc',
         ]);
 
         $response = $this->actingAs($user, 'sanctum')
-            ->getJson("/api/children/{$child->id}/photos/{$photo->id}/thumbnail/sm");
+            ->getJson("/api/children/{$child->id}/photos/{$photo->id}/thumbnail");
 
         $response->assertStatus(200)
-            ->assertJsonPath('data.size', 'sm')
-            ->assertJsonStructure(['data' => ['size', 'presigned_url']]);
-    });
-
-    it('returns a presigned URL for a medium thumbnail', function () {
-        Storage::fake('s3');
-
-        $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
-
-        $photo = Photo::factory()->create([
-            'child_id' => $child->id,
-            'uploaded_by' => $user->id,
-            'thumbnail_md_path' => 'test/thumb_md.webp.enc',
-        ]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->getJson("/api/children/{$child->id}/photos/{$photo->id}/thumbnail/md");
-
-        $response->assertStatus(200)
-            ->assertJsonPath('data.size', 'md');
-    });
-
-    it('returns a presigned URL for a large thumbnail', function () {
-        Storage::fake('s3');
-
-        $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
-
-        $photo = Photo::factory()->create([
-            'child_id' => $child->id,
-            'uploaded_by' => $user->id,
-            'thumbnail_lg_path' => 'test/thumb_lg.webp.enc',
-        ]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->getJson("/api/children/{$child->id}/photos/{$photo->id}/thumbnail/lg");
-
-        $response->assertStatus(200)
-            ->assertJsonPath('data.size', 'lg');
-    });
-
-    it('returns 422 for an invalid thumbnail size', function () {
-        $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
-
-        $photo = Photo::factory()->create([
-            'child_id' => $child->id,
-            'uploaded_by' => $user->id,
-        ]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->getJson("/api/children/{$child->id}/photos/{$photo->id}/thumbnail/xl");
-
-        $response->assertStatus(422);
+            ->assertJsonStructure(['data' => ['presigned_url']]);
     });
 
     it('prevents non-members from accessing thumbnails', function () {
@@ -598,7 +493,7 @@ describe('GET /api/children/{child}/photos/{photo}/thumbnail/{size}', function (
         ]);
 
         $response = $this->actingAs($user, 'sanctum')
-            ->getJson("/api/children/{$child->id}/photos/{$photo->id}/thumbnail/sm");
+            ->getJson("/api/children/{$child->id}/photos/{$photo->id}/thumbnail");
 
         $response->assertStatus(403);
     });
@@ -606,7 +501,7 @@ describe('GET /api/children/{child}/photos/{photo}/thumbnail/{size}', function (
     it('requires authentication', function () {
         $photo = Photo::factory()->create();
 
-        $response = $this->getJson("/api/children/{$photo->child_id}/photos/{$photo->id}/thumbnail/sm");
+        $response = $this->getJson("/api/children/{$photo->child_id}/photos/{$photo->id}/thumbnail");
 
         $response->assertStatus(401);
     });
@@ -652,9 +547,7 @@ describe('DELETE /api/children/{child}/photos/{photo}', function () {
         ]);
 
         $disk->put($photo->original_path, str_repeat('a', 1000));
-        $disk->put($photo->thumbnail_sm_path, str_repeat('b', 100));
-        $disk->put($photo->thumbnail_md_path, str_repeat('c', 200));
-        $disk->put($photo->thumbnail_lg_path, str_repeat('d', 400));
+        $disk->put($photo->thumbnail_path, str_repeat('b', 400));
 
         $response = $this->actingAs($user, 'sanctum')
             ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}");
@@ -664,9 +557,7 @@ describe('DELETE /api/children/{child}/photos/{photo}', function () {
         $this->assertDatabaseMissing('photos', ['id' => $photo->id]);
 
         $disk->assertMissing($photo->original_path);
-        $disk->assertMissing($photo->thumbnail_sm_path);
-        $disk->assertMissing($photo->thumbnail_md_path);
-        $disk->assertMissing($photo->thumbnail_lg_path);
+        $disk->assertMissing($photo->thumbnail_path);
 
         expect((int) $child->storageUsage->fresh()->used_bytes)->toBeLessThan(5000);
     });
@@ -688,9 +579,7 @@ describe('DELETE /api/children/{child}/photos/{photo}', function () {
         ]);
 
         $disk->put($photo->original_path, str_repeat('a', 500));
-        $disk->put($photo->thumbnail_sm_path, str_repeat('b', 50));
-        $disk->put($photo->thumbnail_md_path, str_repeat('c', 100));
-        $disk->put($photo->thumbnail_lg_path, str_repeat('d', 200));
+        $disk->put($photo->thumbnail_path, str_repeat('b', 200));
 
         $response = $this->actingAs($admin, 'sanctum')
             ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}");
@@ -717,9 +606,7 @@ describe('DELETE /api/children/{child}/photos/{photo}', function () {
         ]);
 
         $disk->put($photo->original_path, str_repeat('a', 500));
-        $disk->put($photo->thumbnail_sm_path, str_repeat('b', 50));
-        $disk->put($photo->thumbnail_md_path, str_repeat('c', 100));
-        $disk->put($photo->thumbnail_lg_path, str_repeat('d', 200));
+        $disk->put($photo->thumbnail_path, str_repeat('b', 200));
 
         $response = $this->actingAs($member, 'sanctum')
             ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}");
@@ -772,9 +659,7 @@ describe('DELETE /api/children/{child}/photos/{photo}', function () {
         $photo->tags()->attach($tag->id);
 
         $disk->put($photo->original_path, str_repeat('a', 500));
-        $disk->put($photo->thumbnail_sm_path, str_repeat('b', 50));
-        $disk->put($photo->thumbnail_md_path, str_repeat('c', 100));
-        $disk->put($photo->thumbnail_lg_path, str_repeat('d', 200));
+        $disk->put($photo->thumbnail_path, str_repeat('b', 200));
 
         $response = $this->actingAs($user, 'sanctum')
             ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}");
