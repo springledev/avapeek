@@ -1,3 +1,6 @@
+const THUMBNAIL_MAX_DIM = 1200
+const THUMBNAIL_QUALITY = 0.85
+
 export function fitInside(
   srcWidth: number,
   srcHeight: number,
@@ -41,7 +44,6 @@ async function stepDownResize(
     const dims = fitInside(w, h, targetMaxDim)
     steps.push(dims)
 
-    // If we've reached the target, use fitInside for final sizing
     if (dims.width <= targetMaxDim && dims.height <= targetMaxDim) {
       break
     }
@@ -52,7 +54,6 @@ async function stepDownResize(
     return await bitmapToWebPBlob(bitmap, dims.width, dims.height, quality)
   }
 
-  // Step down: first resize by 50% steps, then final resize
   let canvas = new OffscreenCanvas(
     steps.length > 0 ? steps[0]!.width * 2 : bitmap.width,
     steps.length > 0 ? steps[0]!.height * 2 : bitmap.height,
@@ -79,23 +80,7 @@ async function stepDownResize(
   )
 }
 
-export async function generateThumbnails(bitmap: ImageBitmap): Promise<{
-  sm: Blob
-  md: Blob
-  lg: Blob
-}> {
-  const [sm, md, lg] = await Promise.all([
-    stepDownResize(bitmap, 200, 0.8),
-    stepDownResize(bitmap, 600, 0.8),
-    stepDownResize(bitmap, 1200, 0.8),
-  ])
-  return { sm, md, lg }
-}
-
-export async function encodeOriginal(bitmap: ImageBitmap): Promise<Blob> {
-  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Could not get OffscreenCanvas context')
-  ctx.drawImage(bitmap, 0, 0)
-  return await canvas.convertToBlob({ type: 'image/webp', quality: 0.92 })
+export async function generateThumbnail(bitmap: ImageBitmap): Promise<{ thumb: Blob }> {
+  const thumb = await stepDownResize(bitmap, THUMBNAIL_MAX_DIM, THUMBNAIL_QUALITY)
+  return { thumb }
 }

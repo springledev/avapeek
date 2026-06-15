@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { generateThumbnails, encodeOriginal } from '@/crypto/thumbnails'
+import { generateThumbnail } from '@/crypto/thumbnails'
 import { encryptBuffer, encryptString } from '@/crypto/encrypt'
 import { isHeic, decodeHeic } from '@/crypto/heic'
 import { api } from '@/services/api'
@@ -124,10 +124,7 @@ async function processSingleFile(
     )
   }
 
-  const [thumbnails, originalBlob] = await Promise.all([
-    generateThumbnails(bitmap),
-    encodeOriginal(bitmap),
-  ])
+  const { thumb } = await generateThumbnail(bitmap)
 
   const { width, height } = bitmap
   bitmap.close()
@@ -151,21 +148,15 @@ async function processSingleFile(
   }
   await new Promise((r) => setTimeout(r, 0))
 
-  const originalBuffer = await originalBlob.arrayBuffer()
-  const smBuffer = await thumbnails.sm.arrayBuffer()
-  const mdBuffer = await thumbnails.md.arrayBuffer()
-  const lgBuffer = await thumbnails.lg.arrayBuffer()
+  const originalBuffer = await file.arrayBuffer()
+  const thumbBuffer = await thumb.arrayBuffer()
 
   const [
     encryptedOriginal,
-    encryptedSm,
-    encryptedMd,
-    encryptedLg,
+    encryptedThumb,
   ] = await Promise.all([
     encryptBuffer(originalBuffer, dek),
-    encryptBuffer(smBuffer, dek),
-    encryptBuffer(mdBuffer, dek),
-    encryptBuffer(lgBuffer, dek),
+    encryptBuffer(thumbBuffer, dek),
   ])
 
   const encryptedExif = await encryptString(JSON.stringify(exifData), dek)
@@ -178,18 +169,18 @@ async function processSingleFile(
   }
   await new Promise((r) => setTimeout(r, 0))
 
+  const extension = file.name.split('.').pop()?.toLowerCase() ?? 'bin'
+  const mimeType = file.type || `image/${extension === 'jpg' ? 'jpeg' : extension}`
+
   const formData = new FormData()
-  formData.append('file', new Blob([encryptedOriginal.encrypted]), 'original.webp.enc')
+  formData.append('file', new Blob([encryptedOriginal.encrypted]), `original.${extension}.enc`)
   formData.append('iv', encryptedOriginal.iv)
-  formData.append('thumbnail_sm', new Blob([encryptedSm.encrypted]), 'sm.webp.enc')
-  formData.append('iv_sm', encryptedSm.iv)
-  formData.append('thumbnail_md', new Blob([encryptedMd.encrypted]), 'md.webp.enc')
-  formData.append('iv_md', encryptedMd.iv)
-  formData.append('thumbnail_lg', new Blob([encryptedLg.encrypted]), 'lg.webp.enc')
-  formData.append('iv_lg', encryptedLg.iv)
+  formData.append('thumbnail', new Blob([encryptedThumb.encrypted]), 'thumb.webp.enc')
+  formData.append('iv_thumbnail', encryptedThumb.iv)
   formData.append('exif_encrypted', encryptedExif.encrypted)
   formData.append('iv_exif', encryptedExif.iv)
-  formData.append('mime_type', 'image/webp')
+  formData.append('mime_type', mimeType)
+  formData.append('original_extension', extension)
   formData.append('size_bytes', String(file.size))
   formData.append('width', String(width))
   formData.append('height', String(height))

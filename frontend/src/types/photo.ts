@@ -9,13 +9,9 @@ export interface Photo {
   uploaded_by: number
   uploader_name?: string
   original_path: string
-  thumbnail_sm_path: string
-  thumbnail_md_path: string
-  thumbnail_lg_path: string
+  thumbnail_path: string
   iv_original: string
-  iv_sm: string
-  iv_md: string
-  iv_lg: string
+  iv_thumbnail: string
   mime_type: string
   size_bytes: number
   width: number | null

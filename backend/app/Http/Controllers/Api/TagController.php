@@ -8,7 +8,6 @@ use App\Models\Photo;
 use App\Models\Tag;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class TagController extends Controller
 {

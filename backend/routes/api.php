@@ -48,7 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/children/{child}/photos', [PhotoController::class, 'index']);
         Route::post('/children/{child}/photos/upload', [PhotoController::class, 'upload']);
         Route::get('/children/{child}/photos/{photo}', [PhotoController::class, 'show']);
-        Route::get('/children/{child}/photos/{photo}/thumbnail/{size}', [PhotoController::class, 'thumbnail']);
+        Route::get('/children/{child}/photos/{photo}/thumbnail', [PhotoController::class, 'thumbnail']);
         Route::delete('/children/{child}/photos/{photo}', [PhotoController::class, 'destroy']);
 
         // Quota

@@ -32,9 +32,8 @@ async function decryptThumbnail() {
     thumbnailUrl.value = await fetchThumbnail(
       props.childId,
       props.photo.id,
-      'lg',
       dek,
-      props.photo.iv_lg,
+      props.photo.iv_thumbnail,
       componentKey,
     )
   } catch {

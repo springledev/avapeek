@@ -18,9 +18,18 @@ export async function decodeHeic(file: File): Promise<ImageBitmap> {
   try {
     return await createImageBitmap(file)
   } catch {
-    // Safari didn't handle it natively, try WASM
+    // fall through to WASM
   }
 
   const buffer = await file.arrayBuffer()
   return await heicToImageBitmap(buffer)
+}
+
+export async function decodeHeicBuffer(data: ArrayBuffer): Promise<ImageBitmap> {
+  try {
+    const blob = new Blob([data], { type: 'image/heic' })
+    return await createImageBitmap(blob)
+  } catch {
+    return await heicToImageBitmap(data)
+  }
 }
