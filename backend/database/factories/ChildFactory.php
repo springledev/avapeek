@@ -13,8 +13,11 @@ class ChildFactory extends Factory
 {
     public function definition(): array
     {
+        $name = fake()->firstName();
+
         return [
-            'name' => fake()->firstName(),
+            'name' => $name,
+            'slug' => fake()->unique()->slug(2),
             'birth_date' => fake()->optional()->date(),
             'avatar_color' => fake()->hexColor(),
             'created_by' => User::factory(),

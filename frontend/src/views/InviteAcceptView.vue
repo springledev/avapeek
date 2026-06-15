@@ -39,9 +39,9 @@ async function acceptInvite() {
   error.value = null
 
   try {
-    const response = await api.post<{ data: { child_id: number; child_name: string } }>(`/invites/${token}/accept`)
+    const response = await api.post<{ data: { child_id: number; child_slug: string; child_name: string } }>(`/invites/${token}/accept`)
 
-    router.push(`/child/${response.data.data.child_id}`)
+    router.push(`/child/${response.data.data.child_slug}`)
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Failed to accept invite.'
     isAccepting.value = false

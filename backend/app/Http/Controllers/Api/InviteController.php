@@ -132,7 +132,10 @@ class InviteController extends Controller
         if ($alreadyMember) {
             return response()->json([
                 'message' => 'You are already a member of this child.',
-                'data' => ['child_id' => $invite->child_id],
+                'data' => [
+                    'child_id' => $invite->child_id,
+                    'child_slug' => $invite->child->slug,
+                ],
             ], 200);
         }
 
@@ -151,6 +154,7 @@ class InviteController extends Controller
         return response()->json([
             'data' => [
                 'child_id' => $invite->child_id,
+                'child_slug' => $invite->child->slug,
                 'child_name' => $invite->child->name,
             ],
         ], 200);

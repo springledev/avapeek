@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('children', function (Blueprint $table) {
             $table->id();
             $table->string('name', 100);
+            $table->string('slug', 100)->unique();
             $table->date('birth_date')->nullable();
             $table->string('avatar_color', 7)->nullable();
             $table->foreignId('created_by')->constrained('users');

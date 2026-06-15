@@ -8,6 +8,7 @@ use App\Models\ChildUser;
 use App\Models\StorageUsage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class ChildController extends Controller
 {
@@ -30,6 +31,7 @@ class ChildController extends Controller
 
                 return [
                     'id' => $child->id,
+                    'slug' => $child->slug,
                     'name' => $child->name,
                     'birth_date' => $child->birth_date?->toDateString(),
                     'avatar_color' => $child->avatar_color,
@@ -58,8 +60,11 @@ class ChildController extends Controller
             'birth_date' => ['nullable', 'date'],
         ]);
 
+        $slug = $this->generateUniqueSlug($validated['name']);
+
         $child = Child::create([
             'name' => $validated['name'],
+            'slug' => $slug,
             'birth_date' => $validated['birth_date'] ?? null,
             'created_by' => $request->user()->id,
         ]);
@@ -82,6 +87,7 @@ class ChildController extends Controller
         return response()->json([
             'data' => [
                 'id' => $child->id,
+                'slug' => $child->slug,
                 'name' => $child->name,
                 'birth_date' => $child->birth_date?->toDateString(),
                 'avatar_color' => $child->avatar_color,
@@ -135,6 +141,7 @@ class ChildController extends Controller
         return response()->json([
             'data' => [
                 'id' => $child->id,
+                'slug' => $child->slug,
                 'name' => $child->name,
                 'birth_date' => $child->birth_date?->toDateString(),
                 'avatar_color' => $child->avatar_color,
@@ -146,5 +153,19 @@ class ChildController extends Controller
                 'created_at' => $child->created_at?->toISOString(),
             ],
         ]);
+    }
+
+    private function generateUniqueSlug(string $name): string
+    {
+        $base = Str::slug($name);
+        $slug = $base;
+        $counter = 2;
+
+        while (Child::where('slug', $slug)->exists()) {
+            $slug = "{$base}-{$counter}";
+            $counter++;
+        }
+
+        return $slug;
     }
 }

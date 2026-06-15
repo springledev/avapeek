@@ -9,7 +9,8 @@ const route = useRoute()
 const router = useRouter()
 const childStore = useChildStore()
 
-const childId = computed(() => Number(route.params.id))
+const childSlug = computed(() => route.params.slug as string)
+const childId = ref(0)
 const child = computed(() => {
   const detail = childStore.currentChildDetail
   if (detail && detail.id === childId.value) return detail
@@ -30,11 +31,24 @@ const isGranting = ref(false)
 const relationshipOptions = ['Parent', 'Grandparent', 'Aunt/Uncle', 'Godparent', 'Other']
 
 onMounted(async () => {
+  const slug = childSlug.value
+
+  // Resolve slug to numeric ID
+  if (childStore.children.length === 0) {
+    await childStore.fetchChildren()
+  }
+  const found = childStore.children.find((c) => c.slug === slug)
+  if (!found) {
+    router.push('/')
+    return
+  }
+  childId.value = found.id
+
   childStore.setCurrentChild(childId.value)
 
   if (child.value) {
     if (child.value.role !== 'owner' && child.value.role !== 'admin') {
-      router.push(`/child/${childId.value}`)
+      router.push(`/child/${slug}`)
     }
     hasLoaded.value = true
     return
@@ -44,7 +58,7 @@ onMounted(async () => {
     await childStore.fetchChildDetail(childId.value)
     const detail = childStore.currentChildDetail
     if (detail && detail.role !== 'owner' && detail.role !== 'admin') {
-      router.push(`/child/${childId.value}`)
+      router.push(`/child/${slug}`)
     }
   } catch {
     // handled by store
@@ -54,7 +68,7 @@ onMounted(async () => {
 })
 
 function goBack() {
-  router.push(`/child/${childId.value}`)
+  router.push(`/child/${childSlug.value}`)
 }
 
 function openInviteModal() {
