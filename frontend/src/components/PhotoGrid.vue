@@ -29,6 +29,10 @@ const hasMore = ref(true)
 const loadingMore = ref(false)
 const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
 
+const flatPhotos = computed<Photo[]>(() =>
+  groups.value.flatMap((g) => g.photos),
+)
+
 function groupByMonth(photos: Photo[]): MonthGroup[] {
   const map = new Map<string, Photo[]>()
   for (const photo of photos) {
@@ -119,7 +123,7 @@ function refresh(): void {
   fetchPhotos(true)
 }
 
-defineExpose({ refresh })
+defineExpose({ refresh, flatPhotos })
 </script>
 
 <template>

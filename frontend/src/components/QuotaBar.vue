@@ -10,6 +10,7 @@ interface QuotaData {
 
 const props = defineProps<{
   childId: number
+  initial?: QuotaData | null
 }>()
 
 const quota = ref<QuotaData | null>(null)
@@ -52,9 +53,21 @@ async function fetchQuota() {
   }
 }
 
-onMounted(fetchQuota)
+onMounted(() => {
+  if (props.initial) {
+    quota.value = props.initial
+  } else {
+    fetchQuota()
+  }
+})
 
-watch(() => props.childId, fetchQuota)
+watch(() => props.childId, () => {
+  if (props.initial) {
+    quota.value = props.initial
+  } else {
+    fetchQuota()
+  }
+})
 
 defineExpose({ refresh: fetchQuota })
 </script>

@@ -1,6 +1,9 @@
-/**
- * Child data from the API.
- */
+export interface ChildTag {
+  id: number
+  name: string
+  photo_count: number
+}
+
 export interface Child {
   id: number
   slug: string
@@ -63,10 +66,13 @@ export interface ChildMember {
 }
 
 /**
- * Child detail (with members).
+ * Child detail (with members, tags, and quota).
  */
 export interface ChildDetail extends Child {
   created_by: number
   members: ChildMember[]
   role: string
+  tags: ChildTag[]
+  storage_limit_bytes: number
+  storage_percentage: number
 }

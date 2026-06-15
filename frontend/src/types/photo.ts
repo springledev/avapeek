@@ -10,6 +10,7 @@ export interface Photo {
   uploader_name?: string
   original_path: string
   thumbnail_path: string
+  thumbnail_url?: string
   iv_original: string
   iv_thumbnail: string
   mime_type: string

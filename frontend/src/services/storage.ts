@@ -75,9 +75,10 @@ export async function fetchThumbnail(
   dek: CryptoKey,
   iv: string,
   componentKey: string,
+  presignedUrl?: string,
 ): Promise<string> {
-  const presignedUrl = await fetchPresignedThumbnail(childId, photoId)
-  const decrypted = await fetchAndDecrypt(presignedUrl, dek, iv)
+  const url = presignedUrl ?? await fetchPresignedThumbnail(childId, photoId)
+  const decrypted = await fetchAndDecrypt(url, dek, iv)
   const objectUrl = blobToObjectURL(decrypted, 'image/webp')
   trackObjectUrl(componentKey, objectUrl)
   return objectUrl

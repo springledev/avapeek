@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useChildStore } from '@/stores/child'
 import { useAuthStore } from '@/stores/auth'
@@ -39,6 +39,12 @@ const userRole = computed(() => child.value?.role ?? 'member')
 const userId = computed(() => authStore.user?.id)
 const isAdmin = computed(() => userRole.value === 'owner' || userRole.value === 'admin')
 
+const childQuota = computed(() => child.value ? {
+  used_bytes: child.value.storage_used,
+  limit_bytes: child.value.storage_limit_bytes,
+  percentage: child.value.storage_percentage,
+} : null)
+
 const canDeletePhoto = (photo: Photo): boolean => {
   if (isAdmin.value) return true
   return photo.uploaded_by === userId.value
@@ -75,23 +81,11 @@ async function fetchTags() {
   }
 }
 
-async function refreshPhotos() {
-  try {
-    const response = await api.get(`/children/${childId.value}/photos`, {
-      params: { per_page: 200 },
-    })
-    allPhotos.value = response.data.data as Photo[]
-  } catch {
-    allPhotos.value = []
-  }
-}
-
 async function init() {
   isLoading.value = true
 
   const slug = childSlug.value
 
-  // Resolve slug to numeric ID
   if (childStore.children.length === 0) {
     await childStore.fetchChildren()
   }
@@ -103,9 +97,17 @@ async function init() {
   childId.value = found.id
 
   await childStore.fetchChildDetail(childId.value)
-  await Promise.all([fetchTags(), refreshPhotos()])
+  tags.value = childStore.currentChildDetail?.tags ?? []
   isLoading.value = false
 }
+
+watch(
+  () => photoGridRef.value?.flatPhotos,
+  (photos) => {
+    if (photos) allPhotos.value = photos
+  },
+  { immediate: true },
+)
 
 function selectTag(tag: string | null) {
   activeTag.value = tag
@@ -139,7 +141,6 @@ function viewerNext() {
 
 function onPhotoUploaded() {
   showUpload.value = false
-  refreshPhotos()
   fetchTags()
   quotaBarRef.value?.refresh()
   photoGridRef.value?.refresh()
@@ -148,7 +149,6 @@ function onPhotoUploaded() {
 async function handleDeletePhoto(photoId: number) {
   try {
     await api.delete(`/children/${childId.value}/photos/${photoId}`)
-    allPhotos.value = allPhotos.value.filter((p) => p.id !== photoId)
     closeViewer()
     photoGridRef.value?.refresh()
     await Promise.all([fetchTags(), quotaBarRef.value?.refresh()])
@@ -220,7 +220,7 @@ async function handleDeleteTag(tagId: number) {
         activeTag.value = null
       }
     }
-    await Promise.all([fetchTags(), refreshPhotos()])
+    await Promise.all([fetchTags(), photoGridRef.value?.refresh()])
   } catch {
     alert('Failed to delete tag. You may not have permission.')
   }
@@ -285,7 +285,7 @@ onMounted(init)
         </div>
 
         <!-- Storage Quota Bar -->
-        <QuotaBar :child-id="childId" ref="quotaBarRef" />
+        <QuotaBar :child-id="childId" :initial="childQuota" ref="quotaBarRef" />
 
         <!-- Upload Section -->
         <div v-if="showUpload" class="card-xl mb-8">
