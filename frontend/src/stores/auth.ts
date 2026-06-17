@@ -157,6 +157,13 @@ export const useAuthStore = defineStore('auth', () => {
    * Must be called before router initialization to ensure guards have correct state.
    */
   function initializeAuth(): void {
+    const token = localStorage.getItem('auth_token')
+    if (!token) {
+      localStorage.removeItem('user')
+      localStorage.removeItem('encryption_keys')
+      return
+    }
+
     const storedUser = localStorage.getItem('user')
     if (storedUser) {
       try {

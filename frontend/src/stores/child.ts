@@ -47,6 +47,25 @@ export const useChildStore = defineStore('child', () => {
     return dek
   }
 
+  async function tryGetChildDEK(childId: number): Promise<CryptoKey | null> {
+    const existing = deks.value.get(childId)
+    if (existing) return existing
+
+    const authStore = useAuthStore()
+    if (!authStore.kek) return null
+
+    const ek = authStore.encryptionKeys.find((k) => k.child_id === childId)
+    if (!ek) return null
+
+    try {
+      const dek = await unwrapDEK(ek.encrypted_dek, authStore.kek)
+      deks.value.set(childId, dek)
+      return dek
+    } catch {
+      return null
+    }
+  }
+
   async function fetchChildren(): Promise<void> {
     isLoading.value = true
     error.value = null
@@ -205,6 +224,7 @@ export const useChildStore = defineStore('child', () => {
     getDEK,
     setDEK,
     ensureDEK,
+    tryGetChildDEK,
     fetchChildren,
     fetchChildDetail,
     createChild,

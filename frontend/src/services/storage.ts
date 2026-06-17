@@ -1,24 +1,9 @@
 import { api } from '@/services/api'
 import { decryptBlob, blobToObjectURL, revokeObjectURL } from '@/crypto/encrypt'
+import { unwrapPEK } from '@/crypto/keychain'
+import { useChildStore } from '@/stores/child'
 import { decodeHeicBuffer } from '@/crypto/heic'
-
-export async function fetchPresignedThumbnail(
-  childId: number,
-  photoId: number,
-): Promise<string> {
-  const response = await api.get(
-    `/children/${childId}/photos/${photoId}/thumbnail`,
-  )
-  return response.data.data.presigned_url as string
-}
-
-export async function fetchPresignedOriginal(
-  childId: number,
-  photoId: number,
-): Promise<string> {
-  const response = await api.get(`/children/${childId}/photos/${photoId}`)
-  return response.data.data.presigned_url as string
-}
+import type { PhotoChild } from '@/types/photo'
 
 export async function fetchEncryptedBlob(presignedUrl: string): Promise<ArrayBuffer> {
   const response = await fetch(presignedUrl)
@@ -32,6 +17,17 @@ export async function fetchAndDecrypt(
 ): Promise<ArrayBuffer> {
   const encrypted = await fetchEncryptedBlob(presignedUrl)
   return await decryptBlob(encrypted, dek, iv)
+}
+
+export async function getPEKForPhoto(children: PhotoChild[]): Promise<CryptoKey | null> {
+  const childStore = useChildStore()
+  for (const child of children) {
+    const dek = await childStore.tryGetChildDEK(child.id)
+    if (dek) {
+      return unwrapPEK(child.encrypted_pek, child.iv_pek, dek)
+    }
+  }
+  return null
 }
 
 async function decryptedToDisplayableUrl(
@@ -70,29 +66,32 @@ export function cleanupComponent(key: string) {
 }
 
 export async function fetchThumbnail(
-  childId: number,
   photoId: number,
-  dek: CryptoKey,
+  pek: CryptoKey,
   iv: string,
   componentKey: string,
   presignedUrl?: string,
 ): Promise<string> {
-  const url = presignedUrl ?? await fetchPresignedThumbnail(childId, photoId)
-  const decrypted = await fetchAndDecrypt(url, dek, iv)
+  let url = presignedUrl
+  if (!url) {
+    const response = await api.get(`/photos/${photoId}/thumbnail`)
+    url = response.data.data.presigned_url as string
+  }
+  const decrypted = await fetchAndDecrypt(url, pek, iv)
   const objectUrl = blobToObjectURL(decrypted, 'image/webp')
   trackObjectUrl(componentKey, objectUrl)
   return objectUrl
 }
 
 export async function fetchOriginal(
-  childId: number,
   photoId: number,
-  dek: CryptoKey,
+  pek: CryptoKey,
   iv: string,
   mimeType: string,
 ): Promise<string> {
-  const presignedUrl = await fetchPresignedOriginal(childId, photoId)
-  const decrypted = await fetchAndDecrypt(presignedUrl, dek, iv)
+  const response = await api.get(`/photos/${photoId}`)
+  const presignedUrl = response.data.data.presigned_url as string
+  const decrypted = await fetchAndDecrypt(presignedUrl, pek, iv)
   const objectUrl = await decryptedToDisplayableUrl(decrypted, mimeType)
   trackObjectUrl('photoviewer', objectUrl)
   return objectUrl

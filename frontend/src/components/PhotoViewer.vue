@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
-import { fetchOriginal, cleanupComponent } from '@/services/storage'
-import { useChildStore } from '@/stores/child'
+import { fetchOriginal, cleanupComponent, getPEKForPhoto } from '@/services/storage'
 import { decryptBlob, revokeObjectURL } from '@/crypto/encrypt'
 import { ageAt } from '@/utils/childHelpers'
 import TagChip from '@/components/TagChip.vue'
@@ -26,7 +25,6 @@ const emit = defineEmits<{
   tagRemoved: [photoId: number, tagId: number]
 }>()
 
-const childStore = useChildStore()
 const componentKey = 'photoviewer'
 
 const imageUrl = ref<string | null>(null)
@@ -104,11 +102,12 @@ function onKeydown(event: KeyboardEvent) {
 async function decryptExif() {
   if (!props.photo.exif_encrypted || !props.photo.iv_exif) return
   try {
-    const dek = await childStore.ensureDEK(props.photo.child_id)
+    const pek = await getPEKForPhoto(props.photo.children)
+    if (!pek) return
     const binary = atob(props.photo.exif_encrypted)
     const bytes = new Uint8Array(binary.length)
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-    const decrypted = await decryptBlob(bytes.buffer, dek, props.photo.iv_exif)
+    const decrypted = await decryptBlob(bytes.buffer, pek, props.photo.iv_exif)
     const text = new TextDecoder().decode(decrypted)
     exifData.value = JSON.parse(text)
   } catch {
@@ -120,13 +119,16 @@ async function loadImage() {
   isLoading.value = true
   hasError.value = false
   try {
-    const dek = await childStore.ensureDEK(props.photo.child_id)
+    const pek = await getPEKForPhoto(props.photo.children)
+    if (!pek) {
+      hasError.value = true
+      return
+    }
     imageUrl.value = await fetchOriginal(
-      props.photo.child_id,
       props.photo.id,
-      dek,
+      pek,
       props.photo.iv_original,
-      props.photo.mime_type,
+      props.photo.original_mime,
     )
   } catch {
     hasError.value = true
@@ -195,200 +197,3 @@ onBeforeUnmount(() => {
   cleanupComponent(componentKey)
 })
 </script>
-
-<template>
-  <div class="photo-viewer-overlay" @click.self="emit('close')">
-    <!-- Close -->
-    <button class="photo-viewer-close" @click="emit('close')">
-      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-      </svg>
-    </button>
-
-    <!-- Info toggle -->
-    <button class="photo-viewer-info-btn" @click="showInfo = !showInfo">
-      <template v-if="showInfo">Hide info</template>
-      <template v-else>Info</template>
-    </button>
-
-    <!-- Image -->
-    <div class="flex items-center justify-center w-full h-full" @wheel="onWheel">
-      <div v-if="isLoading" class="flex flex-col items-center gap-3">
-        <span class="spinner-large border-white/30 border-t-white" />
-        <span class="text-white/50 text-sm">Decrypting...</span>
-      </div>
-      <div v-else-if="hasError" class="flex flex-col items-center gap-3 text-center px-8">
-        <svg class="w-12 h-12 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-        <span class="text-white/50 text-sm">Failed to decrypt photo.</span>
-        <button class="text-blue-400 hover:text-blue-300 text-sm font-medium" @click="loadImage">
-          Try again
-        </button>
-      </div>
-      <img
-        v-else-if="imageUrl"
-        :src="imageUrl"
-        class="photo-viewer-image"
-        :style="{ transform: `scale(${zoom})`, cursor: zoom > 1 ? 'grab' : 'zoom-in' }"
-        @dblclick="zoom === 1 ? zoomIn() : resetZoom()"
-      />
-    </div>
-
-    <!-- Navigation -->
-    <button
-      v-if="hasPrev"
-      class="photo-viewer-nav left-4"
-      @click.stop="emit('prev')"
-    >
-      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-      </svg>
-    </button>
-    <button
-      v-if="hasNext"
-      class="photo-viewer-nav right-4"
-      @click.stop="emit('next')"
-    >
-      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-      </svg>
-    </button>
-
-    <!-- Zoom controls -->
-    <div class="zoom-controls">
-      <button class="zoom-btn" @click="zoomOut" :disabled="zoom <= 0.5">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
-        </svg>
-      </button>
-      <span class="zoom-level">{{ Math.round(zoom * 100) }}%</span>
-      <button class="zoom-btn" @click="zoomIn" :disabled="zoom >= 4">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-      </button>
-    </div>
-
-    <!-- Metadata sidebar -->
-    <div v-if="showInfo" class="photo-viewer-sidebar">
-      <h3 class="text-lg font-semibold text-slate-900 mb-4 dark:text-slate-100">Details</h3>
-
-      <div class="photo-viewer-meta">
-        <div>
-          <p class="photo-viewer-meta-label">Taken</p>
-          <p class="photo-viewer-meta-value">{{ formatDate(photo.taken_at) }}</p>
-        </div>
-        <div v-if="photoAge">
-          <p class="photo-viewer-meta-label">Age at photo</p>
-          <p class="photo-viewer-meta-value">{{ photoAge }}</p>
-        </div>
-        <div>
-          <p class="photo-viewer-meta-label">Uploaded by</p>
-          <p class="photo-viewer-meta-value">{{ photo.uploader_name || 'Unknown' }}</p>
-        </div>
-        <div>
-          <p class="photo-viewer-meta-label">File size</p>
-          <p class="photo-viewer-meta-value">{{ formatBytes(photo.size_bytes) }}</p>
-        </div>
-        <div v-if="photo.width && photo.height">
-          <p class="photo-viewer-meta-label">Dimensions</p>
-          <p class="photo-viewer-meta-value">{{ photo.width }} &times; {{ photo.height }}</p>
-        </div>
-
-        <div v-if="exifData">
-          <div v-if="exifData.Make || exifData.Model">
-            <p class="photo-viewer-meta-label">Camera</p>
-            <p class="photo-viewer-meta-value">{{ [exifData.Make, exifData.Model].filter(Boolean).join(' ') }}</p>
-          </div>
-          <div v-if="exifData.LensModel">
-            <p class="photo-viewer-meta-label">Lens</p>
-            <p class="photo-viewer-meta-value">{{ exifData.LensModel }}</p>
-          </div>
-          <div v-if="exifData.ISO !== undefined">
-            <p class="photo-viewer-meta-label">ISO</p>
-            <p class="photo-viewer-meta-value">{{ exifData.ISO }}</p>
-          </div>
-          <div v-if="exifData.ExposureTime">
-            <p class="photo-viewer-meta-label">Shutter speed</p>
-            <p class="photo-viewer-meta-value">{{ formatShutterSpeed(exifData.ExposureTime) }}</p>
-          </div>
-          <div v-if="exifData.FocalLength">
-            <p class="photo-viewer-meta-label">Focal length</p>
-            <p class="photo-viewer-meta-value">{{ exifData.FocalLength }}</p>
-          </div>
-        </div>
-
-        <div v-if="photo.tags && photo.tags.length > 0 || canDelete">
-          <p class="photo-viewer-meta-label mt-3">Tags</p>
-          <div class="photo-viewer-actions">
-            <TagChip
-              v-for="tag in photo.tags"
-              :key="tag.id"
-              :name="tag.name"
-              :clickable="true"
-              :removable="canDelete"
-              @remove="handleRemoveTag(tag.id)"
-            />
-            <span v-if="canDelete && availableTagsToAdd.length > 0 || !showNewTagInput" class="tag-add-wrapper">
-              <button class="tag-add-btn" @click="toggleAddTag">
-                + Add tag
-              </button>
-              <div v-if="showAddTagDropdown" class="tag-dropdown" @click.stop>
-                <input
-                  v-if="showNewTagInput"
-                  v-model="newTagName"
-                  class="tag-dropdown-input"
-                  type="text"
-                  placeholder="Type tag name..."
-                  maxlength="100"
-                  @keyup.enter="submitNewTag"
-                  @keyup.escape="showAddTagDropdown = false; showNewTagInput = false"
-                />
-                <button
-                  v-for="tag in availableTagsToAdd"
-                  :key="tag.id"
-                  class="tag-dropdown-item"
-                  @click="handleAddTag(tag.name)"
-                >
-                  {{ tag.name }}
-                </button>
-                <button
-                  v-if="!showNewTagInput"
-                  class="tag-dropdown-item-new"
-                  @click="handleShowNewTagInput"
-                >
-                  + Create new tag
-                </button>
-              </div>
-            </span>
-          </div>
-        </div>
-
-        <!-- Delete button -->
-        <div v-if="canDelete" class="pt-4 mt-2 border-t border-slate-100 dark:border-slate-700">
-          <button class="btn-danger w-full justify-center" @click="showDeleteConfirm = true">
-            Delete photo
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Delete confirmation dialog -->
-    <div v-if="showDeleteConfirm" class="confirm-overlay" @click.self="showDeleteConfirm = false">
-      <div class="confirm-card">
-        <h3 class="confirm-title">Delete this photo?</h3>
-        <p class="confirm-message">
-          This will permanently delete the photo and all its copies from storage. This action cannot be undone.
-        </p>
-        <div class="confirm-actions">
-          <button class="btn-cancel" @click="showDeleteConfirm = false">Cancel</button>
-          <button class="btn-danger" :disabled="isDeleting" @click="handleDelete">
-            <span v-if="isDeleting" class="spinner" />
-            Delete
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>

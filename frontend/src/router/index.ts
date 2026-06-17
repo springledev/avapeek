@@ -7,6 +7,10 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
+      path: '/',
+      redirect: '/feed',
+    },
+    {
       path: '/login',
       name: 'login',
       component: LoginView,
@@ -19,27 +23,49 @@ const router = createRouter({
       meta: { requiresGuest: true },
     },
     {
-      path: '/',
-      name: 'home',
-      component: () => import('@/views/HomeView.vue'),
-      meta: { requiresAuth: true },
+      path: '/feed',
+      name: 'feed',
+      component: () => import('@/views/FeedView.vue'),
+      meta: { requiresAuth: true, layout: 'app-shell' },
+    },
+    {
+      path: '/recents',
+      name: 'recents',
+      component: () => import('@/views/RecentsView.vue'),
+      meta: { requiresAuth: true, layout: 'app-shell' },
+    },
+    {
+      path: '/settings',
+      component: () => import('@/views/SettingsView.vue'),
+      meta: { requiresAuth: true, layout: 'app-shell' },
+      children: [
+        {
+          path: '',
+          name: 'settings',
+          component: () => import('@/views/ProfileSettingsView.vue'),
+        },
+        {
+          path: 'children',
+          name: 'settings-children',
+          component: () => import('@/views/ChildrenSettingsView.vue'),
+        },
+        {
+          path: 'children/:id',
+          name: 'settings-child',
+          component: () => import('@/views/ChildSettingsView.vue'),
+          props: true,
+        },
+        {
+          path: 'profile',
+          name: 'settings-profile',
+          component: () => import('@/views/ProfileSettingsView.vue'),
+        },
+      ],
     },
     {
       path: '/child/create',
       name: 'child-create',
       component: () => import('@/views/CreateChildView.vue'),
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/child/:slug',
-      name: 'child-dashboard',
-      component: () => import('@/views/ChildDashboardView.vue'),
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/child/:slug/members',
-      name: 'child-members',
-      component: () => import('@/views/MembersView.vue'),
       meta: { requiresAuth: true },
     },
     {
@@ -64,7 +90,7 @@ router.beforeEach((to, from, next) => {
   }
 
   if (to.meta.requiresGuest && authStore.isAuthenticated && !authStore.needsReauth) {
-    next('/')
+    next('/feed')
     return
   }
 

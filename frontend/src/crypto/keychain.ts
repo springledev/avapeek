@@ -9,7 +9,7 @@
 export function generateSalt(): string {
   const buffer = new Uint8Array(32)
   crypto.getRandomValues(buffer)
-  return arrayBufferToHex(buffer.buffer)
+  return arrayBufferToHex(buffer.buffer as ArrayBuffer)
 }
 
 /**
@@ -155,6 +155,50 @@ export async function importPublicKey(publicKeyJwk: string): Promise<CryptoKey> 
 export async function wrapDEKWithPublicKey(dek: CryptoKey, publicKey: CryptoKey): Promise<string> {
   const wrappedKey = await crypto.subtle.wrapKey('raw', dek, publicKey, { name: 'RSA-OAEP' })
   return arrayBufferToBase64(wrappedKey)
+}
+
+export async function generatePEK(): Promise<CryptoKey> {
+  return await crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt'],
+  )
+}
+
+export async function wrapPEKWithDEK(
+  pek: CryptoKey,
+  dek: CryptoKey,
+): Promise<{ encrypted_pek: string; iv_pek: string }> {
+  const pekBytes = await crypto.subtle.exportKey('raw', pek)
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    dek,
+    pekBytes,
+  )
+  return {
+    encrypted_pek: arrayBufferToBase64(encrypted),
+    iv_pek: arrayBufferToBase64(iv.buffer as ArrayBuffer),
+  }
+}
+
+export async function unwrapPEK(
+  encryptedPek: string,
+  ivPek: string,
+  dek: CryptoKey,
+): Promise<CryptoKey> {
+  const pekBytes = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: base64ToArrayBuffer(ivPek) },
+    dek,
+    base64ToArrayBuffer(encryptedPek),
+  )
+  return await crypto.subtle.importKey(
+    'raw',
+    pekBytes,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt'],
+  )
 }
 
 // Utility functions for encoding/decoding
