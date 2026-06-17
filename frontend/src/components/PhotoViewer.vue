@@ -197,3 +197,201 @@ onBeforeUnmount(() => {
   cleanupComponent(componentKey)
 })
 </script>
+
+<template>
+  <div class="photo-viewer-overlay" @click.self="emit('close')">
+    <button class="photo-viewer-close" @click="emit('close')">
+      <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </button>
+
+    <button class="photo-viewer-info-btn" @click="showInfo = !showInfo">
+      {{ showInfo ? 'Hide info' : 'Info' }}
+    </button>
+
+    <div class="flex h-full w-full items-center justify-center" @wheel="onWheel">
+      <div v-if="isLoading" class="flex flex-col items-center gap-3">
+        <span class="spinner-large border-white/30 border-t-white" />
+        <span class="text-sm text-white/50">Decrypting...</span>
+      </div>
+
+      <div v-else-if="hasError" class="flex flex-col items-center gap-3 px-8 text-center">
+        <svg class="h-12 w-12 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <span class="text-sm text-white/50">Failed to decrypt photo.</span>
+        <button class="text-sm font-medium text-blue-400 hover:text-blue-300" @click="loadImage">Try again</button>
+      </div>
+
+      <img
+        v-else-if="imageUrl"
+        :src="imageUrl"
+        class="photo-viewer-image"
+        :style="{ transform: `scale(${zoom})` }"
+        alt=""
+        @dblclick="resetZoom"
+      />
+    </div>
+
+    <div v-if="hasPrev" class="photo-viewer-nav left-4" @click="emit('prev')">
+      <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+      </svg>
+    </div>
+
+    <div v-if="hasNext" class="photo-viewer-nav right-4" @click="emit('next')">
+      <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+      </svg>
+    </div>
+
+    <div class="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 text-white">
+      <button @click="zoomOut" class="rounded p-1 hover:bg-white/20" title="Zoom out">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" /></svg>
+      </button>
+      <span class="min-w-[3ch] text-center text-xs">{{ Math.round(zoom * 100) }}%</span>
+      <button @click="zoomIn" class="rounded p-1 hover:bg-white/20" title="Zoom in">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+      </button>
+    </div>
+
+    <Transition name="slide">
+      <div v-if="showInfo" class="photo-viewer-sidebar">
+        <div class="photo-viewer-meta">
+          <div>
+            <span class="photo-viewer-meta-label">Taken</span>
+            <span class="photo-viewer-meta-value">{{ formatDate(props.photo.taken_at) }}</span>
+          </div>
+          <div v-if="photoAge">
+            <span class="photo-viewer-meta-label">Age in photo</span>
+            <span class="photo-viewer-meta-value">{{ photoAge }}</span>
+          </div>
+          <div>
+            <span class="photo-viewer-meta-label">Uploaded by</span>
+            <span class="photo-viewer-meta-value">{{ props.photo.uploader_name || 'Unknown' }}</span>
+          </div>
+          <div>
+            <span class="photo-viewer-meta-label">File size</span>
+            <span class="photo-viewer-meta-value">{{ formatBytes(props.photo.size_bytes) }}</span>
+          </div>
+          <div v-if="props.photo.width && props.photo.height">
+            <span class="photo-viewer-meta-label">Dimensions</span>
+            <span class="photo-viewer-meta-value">{{ props.photo.width }} × {{ props.photo.height }}</span>
+          </div>
+        </div>
+
+        <div v-if="exifData" class="border-t border-gray-200 px-4 py-3 dark:border-slate-600">
+          <h4 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Camera Info</h4>
+          <div class="photo-viewer-meta">
+            <div v-if="exifData.Make || exifData.Model">
+              <span class="photo-viewer-meta-label mr-2">Camera</span>
+              <span class="photo-viewer-meta-value">{{ [exifData.Make, exifData.Model].filter(Boolean).join(' ') }}</span>
+            </div>
+            <div v-if="exifData.LensModel">
+              <span class="photo-viewer-meta-label">Lens</span>
+              <span class="photo-viewer-meta-value">{{ exifData.LensModel }}</span>
+            </div>
+            <div v-if="exifData.ISO">
+              <span class="photo-viewer-meta-label">ISO</span>
+              <span class="photo-viewer-meta-value">{{ exifData.ISO }}</span>
+            </div>
+            <div v-if="exifData.FNumber">
+              <span class="photo-viewer-meta-label">Aperture</span>
+              <span class="photo-viewer-meta-value">f/{{ exifData.FNumber }}</span>
+            </div>
+            <div v-if="exifData.ExposureTime">
+              <span class="photo-viewer-meta-label">Shutter</span>
+              <span class="photo-viewer-meta-value">{{ formatShutterSpeed(exifData.ExposureTime) }}</span>
+            </div>
+            <div v-if="exifData.FocalLength">
+              <span class="photo-viewer-meta-label">Focal Length</span>
+              <span class="photo-viewer-meta-value">{{ exifData.FocalLength }}mm</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="photo-viewer-actions">
+          <div class="flex flex-wrap gap-1.5">
+            <TagChip
+              v-for="tag in props.photo.tags || []"
+              :key="tag.id"
+              :name="tag.name"
+              removable
+              @remove="handleRemoveTag(tag.id)"
+            />
+            <div class="relative">
+              <button
+                @click="toggleAddTag"
+                class="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-0.5 text-xs text-slate-500 hover:border-slate-400 dark:border-slate-500 dark:text-slate-400"
+              >
+                + Add tag
+              </button>
+              <div
+                v-if="showAddTagDropdown"
+                class="absolute bottom-full left-0 z-30 mb-2 w-48 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+              >
+                <div v-if="!showNewTagInput">
+                  <button
+                    v-for="tag in availableTagsToAdd"
+                    :key="tag.id"
+                    @click="handleAddTag(tag.name)"
+                    class="w-full rounded px-2 py-1 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700"
+                  >
+                    {{ tag.name }}
+                  </button>
+                  <button
+                    @click="handleShowNewTagInput"
+                    class="mt-1 w-full rounded px-2 py-1 text-left text-sm text-indigo-600 hover:bg-gray-100 dark:text-indigo-400 dark:hover:bg-slate-700"
+                  >
+                    + Create new tag
+                  </button>
+                </div>
+                <div v-else class="flex gap-1">
+                  <input
+                    v-model="newTagName"
+                    type="text"
+                    placeholder="Tag name"
+                    class="flex-1 rounded border border-gray-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-700"
+                    @keydown.enter.prevent="submitNewTag"
+                  />
+                  <button @click="submitNewTag" class="rounded bg-indigo-600 px-2 py-1 text-xs text-white">Add</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button
+            v-if="props.canDelete"
+            @click="showDeleteConfirm = true"
+            class="mt-4 flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Delete photo
+          </button>
+        </div>
+      </div>
+    </Transition>
+
+    <div
+      v-if="showDeleteConfirm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      @click.self="showDeleteConfirm = false"
+    >
+      <div class="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-xl dark:bg-slate-800">
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Delete photo?</h3>
+        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">This action cannot be undone. The photo will be permanently deleted.</p>
+        <div class="mt-6 flex justify-end gap-3">
+          <button @click="showDeleteConfirm = false" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">
+            Cancel
+          </button>
+          <button @click="handleDelete" :disabled="isDeleting" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+            {{ isDeleting ? 'Deleting...' : 'Delete' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
