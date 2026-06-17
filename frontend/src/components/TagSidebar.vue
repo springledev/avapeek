@@ -37,9 +37,9 @@ function handleCreate() {
 <template>
   <nav class="tag-sidebar">
     <div class="flex items-center justify-between mb-3 px-1">
-      <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide">Tags</h2>
+      <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide dark:text-slate-300">Tags</h2>
       <button
-        class="text-xs text-blue-600 hover:text-blue-700 font-medium"
+        class="text-xs text-blue-600 hover:text-blue-700 font-medium dark:text-blue-400 dark:hover:text-blue-300"
         @click="showCreate = !showCreate"
       >
         + New

@@ -97,7 +97,7 @@ async function handleSubmit() {
 
       <!-- Security Badge -->
       <div class="security-badge">
-        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -165,7 +165,7 @@ async function handleSubmit() {
             placeholder="••••••••"
           />
           <div v-if="password" class="flex items-center gap-2 mt-1">
-            <div class="flex-1 bg-slate-200 rounded-full h-2">
+            <div class="flex-1 bg-slate-200 rounded-full h-2 dark:bg-slate-600">
               <div
                 class="h-2 rounded-full transition-all duration-300"
                 :class="{

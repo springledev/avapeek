@@ -259,7 +259,7 @@ onBeforeUnmount(() => {
 
     <!-- Metadata sidebar -->
     <div v-if="showInfo" class="photo-viewer-sidebar">
-      <h3 class="text-lg font-semibold text-slate-900 mb-4">Details</h3>
+      <h3 class="text-lg font-semibold text-slate-900 mb-4 dark:text-slate-100">Details</h3>
 
       <div class="photo-viewer-meta">
         <div>
@@ -353,7 +353,7 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Delete button -->
-        <div v-if="canDelete" class="pt-4 mt-2 border-t border-slate-100">
+        <div v-if="canDelete" class="pt-4 mt-2 border-t border-slate-100 dark:border-slate-700">
           <button class="btn-danger w-full justify-center" @click="showDeleteConfirm = true">
             Delete photo
           </button>

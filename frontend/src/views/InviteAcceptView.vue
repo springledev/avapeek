@@ -62,12 +62,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50">
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-950">
     <div class="auth-container">
       <div class="auth-card">
         <div class="text-center mb-6">
-          <div class="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
-            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center dark:bg-blue-900/50">
+            <svg class="w-8 h-8 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
@@ -87,17 +87,17 @@ onMounted(() => {
             </h2>
             <p class="auth-subtitle">
               {{ invite.inviter_name }} has invited you to see photos of
-              <strong class="text-slate-900">{{ invite.child_name }}</strong>
+              <strong class="text-slate-900 dark:text-slate-100">{{ invite.child_name }}</strong>
               on Avapeek
               <span v-if="invite.relationship"> as their {{ invite.relationship.toLowerCase() }}</span>.
             </p>
 
-            <div v-if="invite.role" class="mt-4 text-sm text-slate-500">
-              Role: <span class="font-medium text-slate-700">{{ invite.role.charAt(0).toUpperCase() + invite.role.slice(1) }}</span>
+            <div v-if="invite.role" class="mt-4 text-sm text-slate-500 dark:text-slate-400">
+              Role: <span class="font-medium text-slate-700 dark:text-slate-200">{{ invite.role.charAt(0).toUpperCase() + invite.role.slice(1) }}</span>
             </div>
 
             <div v-if="!authStore.isAuthenticated" class="mt-8 space-y-3">
-              <p class="text-sm text-slate-500 mb-2">You need an account to accept this invite.</p>
+              <p class="text-sm text-slate-500 mb-2 dark:text-slate-400">You need an account to accept this invite.</p>
               <button @click="goToRegister" class="btn-primary">
                 Create an account
               </button>
@@ -107,8 +107,8 @@ onMounted(() => {
             </div>
 
             <div v-else class="mt-8">
-              <p class="text-sm text-slate-500 mb-4">
-                You're logged in as <strong>{{ authStore.currentUser?.display_name }}</strong>.
+              <p class="text-sm text-slate-500 mb-4 dark:text-slate-400">
+                You're logged in as <strong class="dark:text-slate-200">{{ authStore.currentUser?.display_name }}</strong>.
               </p>
               <button
                 @click="acceptInvite"
@@ -119,7 +119,7 @@ onMounted(() => {
                 {{ isAccepting ? 'Accepting...' : 'Accept invite' }}
               </button>
 
-              <p class="text-xs text-slate-400 mt-3">
+              <p class="text-xs text-slate-400 mt-3 dark:text-slate-500">
                 By accepting, you'll be able to view encrypted photos of {{ invite.child_name }}.
                 The owner will need to grant you access to the encryption key after you accept.
               </p>
