@@ -3,6 +3,7 @@ import { onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDarkMode } from '@/composables/useDarkMode'
 import { useNetwork } from '@/composables/useNetwork'
+import AppShell from '@/components/AppShell.vue'
 
 const authStore = useAuthStore()
 const { initDarkMode } = useDarkMode()
@@ -21,7 +22,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <RouterView />
+  <AppShell />
   <Toaster
     richColors
     closeButton
@@ -31,5 +32,3 @@ onBeforeUnmount(() => {
     }"
   />
 </template>
-
-<style scoped></style>

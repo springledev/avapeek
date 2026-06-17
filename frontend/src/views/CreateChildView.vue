@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChildStore } from '@/stores/child'
 import { useAuthStore } from '@/stores/auth'
-import AppHeader from '@/components/AppHeader.vue'
+
 
 const router = useRouter()
 const childStore = useChildStore()
@@ -39,8 +39,8 @@ async function handleSubmit() {
   isSubmitting.value = true
 
   try {
-    const child = await childStore.createChild(name.value.trim(), birthDate.value || null)
-    router.push(`/child/${child.slug}`)
+    await childStore.createChild(name.value.trim(), birthDate.value || null)
+    router.push('/settings/children')
   } catch (err: any) {
     if (err.response?.data?.errors) {
       formErrors.value = Object.entries(err.response.data.errors).reduce(
@@ -61,11 +61,9 @@ async function handleSubmit() {
 
 <template>
   <div class="min-h-screen bg-slate-50 dark:bg-slate-950">
-    <AppHeader />
-
-    <main class="main-container-narrow">
+    <div class="mx-auto max-w-2xl px-4 py-8">
       <nav class="flex items-center gap-1.5 text-sm mb-4">
-        <router-link to="/" class="nav-back-link">Home</router-link>
+        <router-link to="/settings/children" class="nav-back-link">Children</router-link>
         <span class="text-slate-300 dark:text-slate-600">/</span>
         <span class="text-slate-700 dark:text-slate-300 font-medium">Add a Child</span>
       </nav>
@@ -123,6 +121,6 @@ async function handleSubmit() {
           </button>
         </form>
       </div>
-    </main>
+    </div>
   </div>
 </template>

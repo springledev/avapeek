@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { api } from '@/services/api'
 
 interface QuotaData {
@@ -8,10 +8,11 @@ interface QuotaData {
   percentage: number
 }
 
-const props = defineProps<{
-  childId: number
-  initial?: QuotaData | null
-}>()
+const props = withDefaults(defineProps<{
+  childId?: number | null
+}>(), {
+  childId: null,
+})
 
 const quota = ref<QuotaData | null>(null)
 const isLoading = ref(false)
@@ -30,21 +31,22 @@ function freeBytes(): number {
 }
 
 const barColorClass = computed(() => {
-  if (percentage.value >= 95) return 'quota-bar-fill-danger'
-  if (percentage.value >= 80) return 'quota-bar-fill-warning'
-  return 'quota-bar-fill-safe'
+  if (percentage.value >= 95) return 'bg-red-500'
+  if (percentage.value >= 80) return 'bg-amber-500'
+  return 'bg-blue-500'
 })
 
 const textColorClass = computed(() => {
-  if (percentage.value >= 95) return 'text-red-600'
-  if (percentage.value >= 80) return 'text-amber-600'
-  return 'text-slate-500'
+  if (percentage.value >= 95) return 'text-red-600 dark:text-red-400'
+  if (percentage.value >= 80) return 'text-amber-600 dark:text-amber-400'
+  return 'text-slate-500 dark:text-slate-400'
 })
 
 async function fetchQuota() {
   isLoading.value = true
   try {
-    const response = await api.get(`/children/${props.childId}/quota`)
+    const endpoint = props.childId ? `/children/${props.childId}/quota` : '/quota'
+    const response = await api.get(endpoint)
     quota.value = response.data.data as QuotaData
   } catch {
     quota.value = null
@@ -54,43 +56,31 @@ async function fetchQuota() {
 }
 
 onMounted(() => {
-  if (props.initial) {
-    quota.value = props.initial
-  } else {
-    fetchQuota()
-  }
-})
-
-watch(() => props.childId, () => {
-  if (props.initial) {
-    quota.value = props.initial
-  } else {
-    fetchQuota()
-  }
+  fetchQuota()
 })
 
 defineExpose({ refresh: fetchQuota })
 </script>
 
 <template>
-  <div v-if="quota" class="quota-bar-wrapper">
-    <div class="quota-bar-header">
-      <span class="quota-bar-text">
+  <div v-if="quota" class="rounded-lg border border-gray-200 bg-white p-3 dark:border-slate-600 dark:bg-slate-800">
+    <div class="mb-1.5 flex items-center justify-between text-xs">
+      <span class="text-slate-500 dark:text-slate-400">
         {{ formatBytes(quota.used_bytes) }} / {{ formatBytes(quota.limit_bytes) }}
       </span>
       <slot name="plan-info" :usage="quota">
-        <span :class="textColorClass" class="quota-bar-subtext">
+        <span :class="textColorClass">
           {{ formatBytes(freeBytes()) }} free
         </span>
       </slot>
     </div>
-    <div class="quota-bar-track">
+    <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
       <div
-        class="quota-bar-fill"
+        class="h-full rounded-full transition-all duration-300"
         :class="barColorClass"
         :style="{ width: `${percentage}%` }"
       />
     </div>
   </div>
-  <div v-else-if="isLoading" class="skeleton h-12 w-full rounded-lg" />
+  <div v-else-if="isLoading" class="h-14 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-700" />
 </template>

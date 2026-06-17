@@ -1,20 +1,16 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { fetchThumbnail, cleanupComponent } from '@/services/storage'
-import { useChildStore } from '@/stores/child'
+import { fetchThumbnail, cleanupComponent, getPEKForPhoto } from '@/services/storage'
 import TagChip from '@/components/TagChip.vue'
 import type { Photo } from '@/types/photo'
 
 const props = defineProps<{
   photo: Photo
-  childId: number
 }>()
 
 const emit = defineEmits<{
   click: []
 }>()
-
-const childStore = useChildStore()
 
 const thumbnailUrl = ref<string | null>(null)
 const isLoading = ref(false)
@@ -28,11 +24,14 @@ async function decryptThumbnail() {
   if (thumbnailUrl.value || isLoading.value || error.value) return
   isLoading.value = true
   try {
-    const dek = await childStore.ensureDEK(props.childId)
+    const pek = await getPEKForPhoto(props.photo.children)
+    if (!pek) {
+      error.value = true
+      return
+    }
     thumbnailUrl.value = await fetchThumbnail(
-      props.childId,
       props.photo.id,
-      dek,
+      pek,
       props.photo.iv_thumbnail,
       componentKey,
       props.photo.thumbnail_url,
