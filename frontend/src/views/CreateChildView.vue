@@ -60,7 +60,7 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50">
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-950">
     <AppHeader />
 
     <main class="main-container-narrow">
@@ -76,8 +76,8 @@ async function handleSubmit() {
           </svg>
         </router-link>
         <div>
-          <h2 class="text-2xl font-bold text-slate-900">Add a Child</h2>
-          <p class="text-slate-600 mt-1">
+          <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100">Add a Child</h2>
+          <p class="text-slate-600 mt-1 dark:text-slate-400">
             Create a new profile to start building their photo album.
           </p>
         </div>
@@ -106,7 +106,7 @@ async function handleSubmit() {
 
           <div class="form-group">
             <label for="birthDate" class="form-label"
-              >Birth Date <span class="text-slate-400 font-normal">(optional)</span></label
+              >Birth Date <span class="text-slate-400 font-normal dark:text-slate-500">(optional)</span></label
             >
             <input
               id="birthDate"

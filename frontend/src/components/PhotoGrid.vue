@@ -21,12 +21,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   selectPhoto: [photo: Photo]
+  clearFilter: []
 }>()
 
 const groups = ref<MonthGroup[]>([])
 const page = ref(1)
 const hasMore = ref(true)
 const loadingMore = ref(false)
+const initialLoading = ref(true)
 const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
 
 const flatPhotos = computed<Photo[]>(() =>
@@ -86,6 +88,7 @@ async function fetchPhotos(reset = false) {
     }
   } finally {
     loadingMore.value = false
+    initialLoading.value = false
   }
 }
 
@@ -158,6 +161,42 @@ defineExpose({ refresh, flatPhotos })
     </template>
   </DynamicScroller>
 
+  <!-- Initial skeleton grid -->
+  <div v-else-if="initialLoading" class="photo-grid">
+    <div
+      v-for="n in 12"
+      :key="n"
+      class="rounded-lg overflow-hidden"
+    >
+      <div class="skeleton aspect-square w-full" />
+      <div class="p-2 space-y-1">
+        <div class="skeleton h-3 w-16 rounded" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty state for tag/date filter -->
+  <div
+    v-else-if="!loadingMore && (props.tagFilter || props.dateFilter)"
+    class="feed-empty"
+  >
+    <div class="empty-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+    </div>
+    <p class="mt-4 text-slate-500 text-lg font-medium dark:text-slate-400">
+      <template v-if="props.tagFilter">No photos tagged "{{ props.tagFilter }}"</template>
+      <template v-else>No photos from this period</template>
+    </p>
+    <p class="text-slate-400 text-sm mt-1 dark:text-slate-500">
+      Try a different filter or
+      <button class="text-blue-600 hover:text-blue-700 font-medium dark:text-blue-400 dark:hover:text-blue-300" @click="$emit('clearFilter')">browse all photos</button>
+    </p>
+  </div>
+
+  <!-- Empty state for no photos at all -->
   <div
     v-else-if="!loadingMore"
     class="feed-empty"
@@ -169,8 +208,8 @@ defineExpose({ refresh, flatPhotos })
         <polyline points="21 15 16 10 5 21"/>
       </svg>
     </div>
-    <p class="mt-4 text-slate-500 text-lg font-medium">No photos yet</p>
-    <p class="text-slate-400 text-sm mt-1">
+    <p class="mt-4 text-slate-500 text-lg font-medium dark:text-slate-400">No photos yet</p>
+    <p class="text-slate-400 text-sm mt-1 dark:text-slate-500">
       Upload some photos to get started
     </p>
   </div>

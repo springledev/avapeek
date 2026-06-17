@@ -151,7 +151,7 @@ function formatJoinedAt(dateStr: string): string {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50">
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-950">
     <AppHeader />
 
     <main class="main-container">
@@ -162,22 +162,29 @@ function formatJoinedAt(dateStr: string): string {
           </svg>
         </button>
         <div>
-          <h1 class="text-lg font-bold text-slate-900">Members</h1>
-          <p class="text-sm text-slate-500">{{ child?.name }}</p>
+          <h1 class="text-lg font-bold text-slate-900 dark:text-slate-100">Members</h1>
+          <p class="text-sm text-slate-500 dark:text-slate-400">{{ child?.name }}</p>
         </div>
       </div>
 
-      <div v-if="!hasLoaded" class="flex justify-center py-20">
-        <span class="spinner-large"></span>
+      <div v-if="!hasLoaded" class="space-y-3">
+        <div v-for="n in 3" :key="n" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex items-center gap-4 dark:bg-slate-800 dark:border-slate-700">
+          <div class="skeleton w-10 h-10 rounded-full shrink-0" />
+          <div class="flex-1 space-y-2">
+            <div class="skeleton h-4 w-40 rounded" />
+            <div class="skeleton h-3 w-28 rounded" />
+          </div>
+          <div class="skeleton h-6 w-16 rounded-full" />
+        </div>
       </div>
 
       <div v-else-if="!child" class="text-center py-20">
-        <p class="text-slate-500">Failed to load members.</p>
+        <p class="text-slate-500 dark:text-slate-400">Failed to load members.</p>
       </div>
 
       <template v-else>
         <div class="flex items-center justify-between mb-8">
-          <h2 class="text-xl font-semibold text-slate-900">
+          <h2 class="text-xl font-semibold text-slate-900 dark:text-slate-100">
             {{ child.members.length }} {{ child.members.length === 1 ? 'Member' : 'Members' }}
           </h2>
           <button @click="openInviteModal" class="btn-action">
@@ -198,13 +205,13 @@ function formatJoinedAt(dateStr: string): string {
               {{ member.display_name.charAt(0).toUpperCase() }}
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-base font-medium text-slate-900">
+              <p class="text-base font-medium text-slate-900 dark:text-slate-100">
                 {{ member.display_name }}
-                <span v-if="member.relationship" class="text-sm font-normal text-slate-500">
+                <span v-if="member.relationship" class="text-sm font-normal text-slate-500 dark:text-slate-400">
                   &mdash; {{ member.relationship }}
                 </span>
               </p>
-              <p class="text-sm text-slate-500">
+              <p class="text-sm text-slate-500 dark:text-slate-400">
                 {{ formatRole(member.role) }} &middot; Joined {{ formatJoinedAt(member.joined_at) }}
               </p>
             </div>
@@ -221,15 +228,15 @@ function formatJoinedAt(dateStr: string): string {
 
             <template v-if="!inviteResponse">
               <div class="flex items-center justify-between mb-6">
-                <h3 class="text-lg font-semibold text-slate-900">Invite someone</h3>
-                <button @click="closeInviteModal" class="text-slate-400 hover:text-slate-600">
+                <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Invite someone</h3>
+                <button @click="closeInviteModal" class="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
 
-              <p class="text-sm text-slate-600 mb-6">
+              <p class="text-sm text-slate-600 mb-6 dark:text-slate-400">
                 Generate a shareable invite link. You can send it to your family member however you like &mdash; iMessage, WhatsApp, Signal, or in person.
               </p>
 
@@ -239,7 +246,7 @@ function formatJoinedAt(dateStr: string): string {
                   <option value="member">Member</option>
                   <option value="admin">Admin</option>
                 </select>
-                <p class="text-xs text-slate-500 mt-1">
+                <p class="text-xs text-slate-500 mt-1 dark:text-slate-400">
                   Members can view photos. Admins can also manage albums and invite others.
                 </p>
               </div>
@@ -266,8 +273,8 @@ function formatJoinedAt(dateStr: string): string {
 
             <template v-else-if="!inviteGrantPhase">
               <div class="flex items-center justify-between mb-6">
-                <h3 class="text-lg font-semibold text-slate-900">Share this link</h3>
-                <button @click="closeInviteModal" class="text-slate-400 hover:text-slate-600">
+                <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Share this link</h3>
+                <button @click="closeInviteModal" class="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                   </svg>
@@ -281,7 +288,7 @@ function formatJoinedAt(dateStr: string): string {
                 <span>Invite link created!</span>
               </div>
 
-              <p class="text-sm text-slate-600 mb-4">
+              <p class="text-sm text-slate-600 mb-4 dark:text-slate-400">
                 Share this link with your family member. Once they accept, you can grant them access to encrypted photos.
               </p>
 
@@ -298,7 +305,7 @@ function formatJoinedAt(dateStr: string): string {
                 </button>
               </div>
 
-              <p class="text-xs text-amber-600 mb-6">
+              <p class="text-xs text-amber-600 mb-6 dark:text-amber-400">
                 This link expires on {{ new Date(inviteResponse.expires_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }) }}.
               </p>
 
@@ -309,8 +316,8 @@ function formatJoinedAt(dateStr: string): string {
 
             <template v-else>
               <div class="flex items-center justify-between mb-6">
-                <h3 class="text-lg font-semibold text-slate-900">Grant encrypted access</h3>
-                <button @click="closeInviteModal" class="text-slate-400 hover:text-slate-600">
+                <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Grant encrypted access</h3>
+                <button @click="closeInviteModal" class="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                   </svg>
@@ -326,8 +333,8 @@ function formatJoinedAt(dateStr: string): string {
                 </span>
               </div>
 
-              <p class="text-sm text-slate-600 mb-6">
-                This will wrap the encryption key for the most recent member of <strong>{{ child?.name }}</strong>. Make sure they have accepted the invite before proceeding.
+              <p class="text-sm text-slate-600 mb-6 dark:text-slate-400">
+                This will wrap the encryption key for the most recent member of <strong class="dark:text-slate-200">{{ child?.name }}</strong>. Make sure they have accepted the invite before proceeding.
               </p>
 
               <p v-if="grantError" class="error-message mb-4">{{ grantError }}</p>

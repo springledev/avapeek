@@ -234,7 +234,7 @@ onMounted(init)
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50">
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-950">
     <AppHeader />
 
     <div v-if="isLoading" class="flex justify-center py-20">
@@ -267,8 +267,8 @@ onMounted(init)
                   {{ child.role }}
                 </span>
                 <template v-if="child.relationship">
-                  <span class="text-slate-400 mx-1">&middot;</span>
-                  {{ child.relationship }}
+          <span class="text-slate-400 dark:text-slate-500 mx-1">&middot;</span>
+          <span class="dark:text-slate-400">{{ child.relationship }}</span>
                 </template>
               </p>
             </div>
@@ -289,8 +289,8 @@ onMounted(init)
 
         <!-- Upload Section -->
         <div v-if="showUpload" class="card-xl mb-8">
-          <h2 class="text-lg font-semibold text-slate-900 mb-2">Upload Photos</h2>
-          <p class="text-sm text-slate-500 mb-6">
+          <h2 class="text-lg font-semibold text-slate-900 mb-2 dark:text-slate-100">Upload Photos</h2>
+          <p class="text-sm text-slate-500 mb-6 dark:text-slate-400">
             Photos are encrypted on your device before upload.
           </p>
           <UploadDropzone :child-id="childId" @uploaded="onPhotoUploaded" @done="onPhotoUploaded" />
@@ -298,12 +298,12 @@ onMounted(init)
 
         <!-- Active filter indicator -->
         <div v-if="activeTag || activeDateFilter" class="flex items-center gap-2 mb-4">
-          <span class="text-sm text-slate-500">Filtering:</span>
-          <span v-if="activeTag" class="tag-chip bg-blue-100 text-blue-700">
+          <span class="text-sm text-slate-500 dark:text-slate-400">Filtering:</span>
+          <span v-if="activeTag" class="tag-chip bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
             {{ activeTag }}
             <button class="tag-chip-remove" @click="activeTag = null">&times;</button>
           </span>
-          <span v-if="currentMonthLabel" class="tag-chip bg-purple-100 text-purple-700">
+          <span v-if="currentMonthLabel" class="tag-chip bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
             {{ currentMonthLabel }}
             <button class="tag-chip-remove" @click="activeDateFilter = null">&times;</button>
           </span>
@@ -346,9 +346,9 @@ onMounted(init)
             >
               <div class="tag-sidebar-mobile" @click.stop>
                 <div class="flex items-center justify-between mb-4">
-                  <h2 class="text-lg font-semibold text-slate-900">Tags</h2>
+                  <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Tags</h2>
                   <button
-                    class="text-slate-400 hover:text-slate-600"
+                    class="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
                     @click="showMobileTags = false"
                   >
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -393,12 +393,13 @@ onMounted(init)
               :tag-filter="activeTag"
               :date-filter="activeDateFilter"
               @select-photo="openViewer"
+              @clear-filter="activeTag = null; activeDateFilter = null"
             />
           </div>
 
           <!-- Date filter sidebar -->
           <div class="hidden lg:block w-40 shrink-0">
-            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 pl-1">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 pl-1 dark:text-slate-500">
               Jump to
             </div>
             <div class="space-y-0.5">
