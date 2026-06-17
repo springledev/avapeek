@@ -64,17 +64,13 @@ async function handleSubmit() {
     <AppHeader />
 
     <main class="main-container-narrow">
+      <nav class="flex items-center gap-1.5 text-sm mb-4">
+        <router-link to="/" class="nav-back-link">Home</router-link>
+        <span class="text-slate-300 dark:text-slate-600">/</span>
+        <span class="text-slate-700 dark:text-slate-300 font-medium">Add a Child</span>
+      </nav>
+
       <div class="flex items-center gap-3 mb-8">
-        <router-link to="/" class="nav-back-link">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-        </router-link>
         <div>
           <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100">Add a Child</h2>
           <p class="text-slate-600 mt-1 dark:text-slate-400">

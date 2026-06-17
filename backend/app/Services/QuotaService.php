@@ -95,8 +95,22 @@ class QuotaService
     {
         $volumePath = env('STORAGE_VOLUME_PATH', '/');
 
-        $total = disk_total_space($volumePath) ?: 0;
-        $free = disk_free_space($volumePath) ?: 0;
+        if (! is_dir($volumePath)) {
+            return [
+                'total_bytes' => 0,
+                'used_bytes' => 0,
+                'free_bytes' => 0,
+            ];
+        }
+
+        try {
+            $total = disk_total_space($volumePath) ?: 0;
+            $free = disk_free_space($volumePath) ?: 0;
+        } catch (\Throwable) {
+            $total = 0;
+            $free = 0;
+        }
+
         $used = $total - $free;
 
         return [

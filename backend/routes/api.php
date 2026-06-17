@@ -12,14 +12,14 @@ use App\Models\User;
 use Illuminate\Support\Facades\Route;
 
 // Authentication routes (no auth required)
-Route::post('/auth/register', [AuthController::class, 'register']);
-Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:auth');
+Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
 
 // Invite preview (no auth required — preview before login)
-Route::get('/invites/{token}', [InviteController::class, 'show']);
+Route::get('/invites/{token}', [InviteController::class, 'show'])->middleware('throttle:10,1');
 
 // Protected routes
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Auth
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/refresh', [AuthController::class, 'refresh']);
@@ -46,7 +46,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Photos
         Route::get('/children/{child}/photos', [PhotoController::class, 'index']);
-        Route::post('/children/{child}/photos/upload', [PhotoController::class, 'upload']);
+        Route::post('/children/{child}/photos/upload', [PhotoController::class, 'upload'])->middleware('throttle:upload');
         Route::get('/children/{child}/photos/{photo}', [PhotoController::class, 'show']);
         Route::get('/children/{child}/photos/{photo}/thumbnail', [PhotoController::class, 'thumbnail']);
         Route::delete('/children/{child}/photos/{photo}', [PhotoController::class, 'destroy']);
@@ -62,7 +62,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware(['child.member', 'child.admin'])->group(function () {
-        Route::post('/children/{child}/invite', [InviteController::class, 'store']);
+        Route::post('/children/{child}/invite', [InviteController::class, 'store'])->middleware('throttle:invite');
         Route::delete('/children/{child}/tags/{tag}', [TagController::class, 'destroy']);
     });
 

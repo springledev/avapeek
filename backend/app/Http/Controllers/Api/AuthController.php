@@ -24,9 +24,9 @@ class AuthController extends Controller
         $validated = $request->validate([
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'string', Password::defaults()],
-            'display_name' => ['required', 'string', 'max:100'],
-            'master_key_salt' => ['required', 'string', 'max:64'],
-            'public_key' => ['required', 'string'],
+            'display_name' => ['required', 'string', 'max:100', 'regex:/^[\pL\pN\s\-.,\']+$/u'],
+            'master_key_salt' => ['required', 'string', 'max:64', 'regex:/^[a-f0-9]+$/i'],
+            'public_key' => ['required', 'string', 'max:2000'],
         ]);
 
         $user = User::create([
