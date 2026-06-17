@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'child.member' => EnsureChildMember::class,
             'child.admin' => EnsureChildAdmin::class,
         ]);
+
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

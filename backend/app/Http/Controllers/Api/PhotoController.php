@@ -30,13 +30,13 @@ class PhotoController extends Controller
     public function upload(Request $request, Child $child): JsonResponse
     {
         $validated = $request->validate([
-            'file' => ['required', 'file'],
+            'file' => ['required', 'file', 'max:51200'],
             'iv' => ['required', 'string', 'size:32'],
-            'thumbnail' => ['required', 'file'],
+            'thumbnail' => ['required', 'file', 'max:5120'],
             'iv_thumbnail' => ['required', 'string', 'size:32'],
-            'mime_type' => ['required', 'string', 'max:50'],
-            'original_extension' => ['required', 'string', 'max:10'],
-            'size_bytes' => ['required', 'integer', 'min:1'],
+            'mime_type' => ['required', 'string', 'in:image/jpeg,image/png,image/webp,image/heic,image/heif'],
+            'original_extension' => ['required', 'string', 'in:jpg,jpeg,png,webp,heic,heif'],
+            'size_bytes' => ['required', 'integer', 'min:1', 'max:52428800'],
             'width' => ['nullable', 'integer', 'min:1'],
             'height' => ['nullable', 'integer', 'min:1'],
             'exif_encrypted' => ['nullable', 'string'],
@@ -45,6 +45,17 @@ class PhotoController extends Controller
             'tags' => ['nullable', 'array'],
             'tags.*' => ['string', 'max:100'],
         ]);
+
+        $fileObj = $request->file('file');
+        $thumbObj = $request->file('thumbnail');
+
+        if ($fileObj->getSize() > 52428800) {
+            return response()->json(['message' => 'Uploaded file exceeds the maximum allowed size of 50 MB.'], 413);
+        }
+
+        if ($thumbObj->getSize() > 5242880) {
+            return response()->json(['message' => 'Uploaded thumbnail exceeds the maximum allowed size of 5 MB.'], 413);
+        }
 
         $fileObj = $request->file('file');
         $thumbObj = $request->file('thumbnail');

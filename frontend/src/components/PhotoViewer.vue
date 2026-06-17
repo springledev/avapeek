@@ -31,6 +31,7 @@ const componentKey = 'photoviewer'
 
 const imageUrl = ref<string | null>(null)
 const isLoading = ref(true)
+const hasError = ref(false)
 const showInfo = ref(false)
 const zoom = ref(1)
 const exifData = ref<Record<string, unknown> | null>(null)
@@ -117,6 +118,7 @@ async function decryptExif() {
 
 async function loadImage() {
   isLoading.value = true
+  hasError.value = false
   try {
     const dek = await childStore.ensureDEK(props.photo.child_id)
     imageUrl.value = await fetchOriginal(
@@ -126,6 +128,8 @@ async function loadImage() {
       props.photo.iv_original,
       props.photo.mime_type,
     )
+  } catch {
+    hasError.value = true
   } finally {
     isLoading.value = false
   }
@@ -212,6 +216,15 @@ onBeforeUnmount(() => {
       <div v-if="isLoading" class="flex flex-col items-center gap-3">
         <span class="spinner-large border-white/30 border-t-white" />
         <span class="text-white/50 text-sm">Decrypting...</span>
+      </div>
+      <div v-else-if="hasError" class="flex flex-col items-center gap-3 text-center px-8">
+        <svg class="w-12 h-12 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <span class="text-white/50 text-sm">Failed to decrypt photo.</span>
+        <button class="text-blue-400 hover:text-blue-300 text-sm font-medium" @click="loadImage">
+          Try again
+        </button>
       </div>
       <img
         v-else-if="imageUrl"

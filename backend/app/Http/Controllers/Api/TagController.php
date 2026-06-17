@@ -40,6 +40,7 @@ class TagController extends Controller
                 'required',
                 'string',
                 'max:100',
+                'regex:/^[\pL\pN\s\-#&.,]+$/u',
                 'unique:tags,name,NULL,id,child_id,'.$child->id,
             ],
         ]);

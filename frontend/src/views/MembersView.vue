@@ -155,12 +155,15 @@ function formatJoinedAt(dateStr: string): string {
     <AppHeader />
 
     <main class="main-container">
+      <nav class="flex items-center gap-1.5 text-sm mb-4">
+        <router-link to="/" class="nav-back-link">Home</router-link>
+        <span class="text-slate-300 dark:text-slate-600">/</span>
+        <router-link v-if="child" :to="`/child/${childSlug}`" class="nav-back-link">{{ child.name }}</router-link>
+        <span v-if="child" class="text-slate-300 dark:text-slate-600">/</span>
+        <span class="text-slate-700 dark:text-slate-300 font-medium">Members</span>
+      </nav>
+
       <div class="flex items-center gap-4 mb-8">
-        <button @click="goBack" class="nav-back-link">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
         <div>
           <h1 class="text-lg font-bold text-slate-900 dark:text-slate-100">Members</h1>
           <p class="text-sm text-slate-500 dark:text-slate-400">{{ child?.name }}</p>

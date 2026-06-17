@@ -5,6 +5,7 @@ import { useChildStore } from '@/stores/child'
 import { useAuthStore } from '@/stores/auth'
 import { ageAt, getAvatarColor, getInitials } from '@/utils/childHelpers'
 import { api } from '@/services/api'
+import { toast } from 'vue-sonner'
 import AppHeader from '@/components/AppHeader.vue'
 import UploadDropzone from '@/components/UploadDropzone.vue'
 import PhotoGrid from '@/components/PhotoGrid.vue'
@@ -153,7 +154,7 @@ async function handleDeletePhoto(photoId: number) {
     photoGridRef.value?.refresh()
     await Promise.all([fetchTags(), quotaBarRef.value?.refresh()])
   } catch {
-    alert('Failed to delete photo. You may not have permission.')
+    toast.error('Failed to delete photo. You may not have permission.')
   }
 }
 
@@ -189,7 +190,7 @@ async function handleTagAdded(photoId: number, tagName: string) {
 
     await fetchTags()
   } catch {
-    alert('Failed to add tag.')
+    toast.error('Failed to add tag.')
   }
 }
 
@@ -207,7 +208,7 @@ async function handleTagRemoved(photoId: number, tagId: number) {
       viewerPhoto.value = { ...allPhotos.value[photoIdx]! }
     }
   } catch {
-    alert('Failed to remove tag.')
+    toast.error('Failed to remove tag.')
   }
 }
 
@@ -222,7 +223,7 @@ async function handleDeleteTag(tagId: number) {
     }
     await Promise.all([fetchTags(), photoGridRef.value?.refresh()])
   } catch {
-    alert('Failed to delete tag. You may not have permission.')
+    toast.error('Failed to delete tag. You may not have permission.')
   }
 }
 
@@ -243,19 +244,16 @@ onMounted(init)
 
     <template v-else-if="child">
       <div class="main-container">
+        <!-- Breadcrumbs -->
+        <nav class="flex items-center gap-1.5 text-sm mb-4">
+          <router-link to="/" class="nav-back-link">Home</router-link>
+          <span class="text-slate-300 dark:text-slate-600">/</span>
+          <span class="text-slate-700 dark:text-slate-300 font-medium">{{ child.name }}</span>
+        </nav>
+
         <!-- Child Header -->
         <div class="page-header">
           <div class="flex items-center gap-4">
-            <button @click="goBack" class="nav-back-link">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-            </button>
             <div class="avatar-circle" :style="{ backgroundColor: getAvatarColor(child.id) }">
               {{ getInitials(child.name) }}
             </div>

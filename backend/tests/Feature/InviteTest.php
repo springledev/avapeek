@@ -21,12 +21,12 @@ describe('POST /api/children/{child}/invite', function () {
         $response = $this->actingAs($owner, 'sanctum')
             ->postJson("/api/children/{$child->id}/invite", [
                 'role' => 'member',
-                'relationship' => 'grandparent',
+                'relationship' => 'Grandparent',
             ]);
 
         $response->assertStatus(201)
             ->assertJsonPath('data.role', 'member')
-            ->assertJsonPath('data.relationship', 'grandparent')
+            ->assertJsonPath('data.relationship', 'Grandparent')
             ->assertJsonStructure([
                 'data' => ['id', 'token', 'url', 'role', 'relationship', 'expires_at', 'created_at'],
             ]);
@@ -35,7 +35,7 @@ describe('POST /api/children/{child}/invite', function () {
             'child_id' => $child->id,
             'invited_by' => $owner->id,
             'role' => 'member',
-            'relationship' => 'grandparent',
+            'relationship' => 'Grandparent',
         ]);
 
         $url = $response->json('data.url');

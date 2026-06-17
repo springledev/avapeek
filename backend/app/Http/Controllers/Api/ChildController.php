@@ -62,8 +62,8 @@ class ChildController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:100'],
-            'birth_date' => ['nullable', 'date'],
+            'name' => ['required', 'string', 'max:100', 'regex:/^[\pL\pN\s\-.,\'&()]+$/u'],
+            'birth_date' => ['nullable', 'date', 'before_or_equal:today'],
         ]);
 
         $slug = $this->generateUniqueSlug($validated['name']);
