@@ -4,7 +4,6 @@ use App\Models\Child;
 use App\Models\ChildUser;
 use App\Models\EncryptionKey;
 use App\Models\Invite;
-use App\Models\StorageUsage;
 use App\Models\User;
 
 describe('POST /api/children/{child}/invite', function () {
@@ -348,7 +347,6 @@ describe('POST /api/encryption-keys/wrap-for-invitee', function () {
             'user_id' => $inviter->id,
             'role' => 'owner',
         ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
 
         $wrappedDek = base64_encode(random_bytes(64));
 
@@ -381,7 +379,6 @@ describe('POST /api/encryption-keys/wrap-for-invitee', function () {
             'user_id' => $inviter->id,
             'role' => 'owner',
         ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
 
         $oldDek = base64_encode(random_bytes(64));
         EncryptionKey::create([

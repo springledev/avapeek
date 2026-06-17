@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class StorageUsage extends Model
 {
@@ -12,15 +11,15 @@ class StorageUsage extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'child_id',
+        'key',
         'used_bytes',
     ];
 
-    /**
-     * Get the child that owns this storage usage record.
-     */
-    public function child(): BelongsTo
+    public static function global(): self
     {
-        return $this->belongsTo(Child::class);
+        return self::firstOrCreate(
+            ['key' => 'global'],
+            ['used_bytes' => 0],
+        );
     }
 }
