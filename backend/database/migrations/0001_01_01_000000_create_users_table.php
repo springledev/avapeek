@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('display_name', 100);
             $table->string('master_key_salt', 64);
             $table->text('public_key');
+            $table->timestamp('last_seen_at')->nullable();
             $table->timestamps();
         });
 

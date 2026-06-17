@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Child;
 use App\Models\Photo;
 use App\Models\Tag;
 use Illuminate\Http\JsonResponse;
@@ -11,13 +10,15 @@ use Illuminate\Http\Request;
 
 class TagController extends Controller
 {
-    /**
-     * List all tags for a child with photo counts.
-     */
-    public function index(Child $child): JsonResponse
+    public function globalIndex(Request $request): JsonResponse
     {
-        $tags = Tag::where('child_id', $child->id)
-            ->withCount('photos')
+        $accessibleChildIds = $request->user()->children()->pluck('children.id');
+
+        $tags = Tag::withCount(['photos' => function ($q) use ($accessibleChildIds) {
+            $q->whereHas('children', function ($q2) use ($accessibleChildIds) {
+                $q2->whereIn('child_photo.child_id', $accessibleChildIds);
+            });
+        }])
             ->orderBy('name')
             ->get()
             ->map(fn (Tag $tag) => [
@@ -30,10 +31,7 @@ class TagController extends Controller
         return response()->json(['data' => $tags]);
     }
 
-    /**
-     * Create a new tag for a child.
-     */
-    public function store(Request $request, Child $child): JsonResponse
+    public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'name' => [
@@ -41,12 +39,11 @@ class TagController extends Controller
                 'string',
                 'max:100',
                 'regex:/^[\pL\pN\s\-#&.,]+$/u',
-                'unique:tags,name,NULL,id,child_id,'.$child->id,
+                'unique:tags,name',
             ],
         ]);
 
         $tag = Tag::create([
-            'child_id' => $child->id,
             'name' => $validated['name'],
             'created_by' => $request->user()->id,
         ]);
@@ -61,26 +58,21 @@ class TagController extends Controller
         ], 201);
     }
 
-    /**
-     * Delete a tag and all its photo associations.
-     * Does NOT delete photos.
-     */
-    public function destroy(Child $child, Tag $tag): JsonResponse
+    public function destroy(Tag $tag): JsonResponse
     {
-        if ($tag->child_id !== $child->id) {
-            abort(404);
-        }
-
         $tag->delete();
 
         return response()->json(null, 204);
     }
 
-    /**
-     * Attach tags to a photo.
-     */
-    public function attach(Request $request, Child $child, Photo $photo): JsonResponse
+    public function attach(Request $request, Photo $photo): JsonResponse
     {
+        $userChildIds = $request->user()->children()->pluck('children.id');
+        $photoChildIds = $photo->children()->pluck('children.id');
+        if ($photoChildIds->intersect($userChildIds)->isEmpty()) {
+            abort(403);
+        }
+
         $validated = $request->validate([
             'tag_ids' => ['required', 'array'],
             'tag_ids.*' => ['required', 'integer', 'exists:tags,id'],
@@ -101,11 +93,14 @@ class TagController extends Controller
         ]);
     }
 
-    /**
-     * Detach a tag from a photo.
-     */
-    public function detach(Request $request, Child $child, Photo $photo, Tag $tag): JsonResponse
+    public function detach(Request $request, Photo $photo, Tag $tag): JsonResponse
     {
+        $userChildIds = $request->user()->children()->pluck('children.id');
+        $photoChildIds = $photo->children()->pluck('children.id');
+        if ($photoChildIds->intersect($userChildIds)->isEmpty()) {
+            abort(403);
+        }
+
         $photo->tags()->detach($tag->id);
 
         return response()->json(null, 204);

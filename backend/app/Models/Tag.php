@@ -19,7 +19,6 @@ class Tag extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'child_id',
         'name',
         'created_by',
     ];
@@ -27,11 +26,6 @@ class Tag extends Model
     protected $casts = [
         'created_at' => 'datetime',
     ];
-
-    public function child(): BelongsTo
-    {
-        return $this->belongsTo(Child::class);
-    }
 
     public function creator(): BelongsTo
     {

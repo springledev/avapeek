@@ -5,8 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Child;
 use App\Models\ChildUser;
-use App\Models\StorageUsage;
-use App\Models\Tag;
 use App\Services\QuotaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,16 +21,14 @@ class ChildController extends Controller
         '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
     ];
 
-    /**
-     * List all children the authenticated user has access to.
-     */
     public function index(Request $request): JsonResponse
     {
+        $quota = $this->quotaService->getUsage();
+
         $children = $request->user()->children()
             ->withCount(['users as member_count'])
-            ->with('storageUsage')
             ->get()
-            ->map(function (Child $child) use ($request) {
+            ->map(function (Child $child) use ($request, $quota) {
                 $pivot = $child->users->firstWhere('id', $request->user()->id)?->pivot;
 
                 return [
@@ -43,9 +39,12 @@ class ChildController extends Controller
                     'avatar_color' => $child->avatar_color,
                     'age' => $child->ageAt(),
                     'member_count' => $child->member_count,
+                    'photo_count' => $child->photos()->count(),
                     'role' => $pivot?->role,
                     'relationship' => $pivot?->relationship,
-                    'storage_used' => (int) ($child->storageUsage?->used_bytes ?? 0),
+                    'storage_used' => $quota['used_bytes'],
+                    'storage_limit_bytes' => $quota['limit_bytes'],
+                    'storage_percentage' => $quota['percentage'],
                     'created_at' => $child->created_at?->toISOString(),
                 ];
             });
@@ -53,12 +52,6 @@ class ChildController extends Controller
         return response()->json(['data' => $children]);
     }
 
-    /**
-     * Create a new child profile.
-     *
-     * Creates the child record, assigns the creator as owner,
-     * and creates a storage_usage record.
-     */
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -85,10 +78,7 @@ class ChildController extends Controller
             'relationship' => 'parent',
         ]);
 
-        StorageUsage::create([
-            'child_id' => $child->id,
-            'used_bytes' => 0,
-        ]);
+        $quota = $this->quotaService->getUsage();
 
         return response()->json([
             'data' => [
@@ -99,30 +89,23 @@ class ChildController extends Controller
                 'avatar_color' => $child->avatar_color,
                 'age' => $child->ageAt(),
                 'member_count' => 1,
+                'photo_count' => 0,
                 'role' => 'owner',
                 'relationship' => 'parent',
-                'storage_used' => 0,
+                'storage_used' => $quota['used_bytes'],
+                'storage_limit_bytes' => $quota['limit_bytes'],
+                'storage_percentage' => $quota['percentage'],
                 'created_at' => $child->created_at?->toISOString(),
             ],
         ], 201);
     }
 
-    /**
-     * Show a single child's details including members and storage usage.
-     *
-     * Only owners and admins can see the full members list.
-     * Regular members only see their own membership info.
-     */
     public function show(Request $request, Child $child): JsonResponse
     {
         $currentUser = $request->user();
         $userRole = $currentUser->children()
             ->where('child_id', $child->id)
             ->first()?->pivot->role;
-
-        $child->load([
-            'storageUsage',
-        ]);
 
         $members = collect();
 
@@ -144,18 +127,7 @@ class ChildController extends Controller
             });
         }
 
-        $tags = Tag::where('child_id', $child->id)
-            ->withCount('photos')
-            ->orderBy('name')
-            ->get()
-            ->map(fn (Tag $tag) => [
-                'id' => $tag->id,
-                'name' => $tag->name,
-                'photo_count' => $tag->photos_count,
-                'created_at' => $tag->created_at?->toISOString(),
-            ]);
-
-        $quota = $this->quotaService->getUsage($child);
+        $quota = $this->quotaService->getUsage();
 
         return response()->json([
             'data' => [
@@ -166,12 +138,12 @@ class ChildController extends Controller
                 'avatar_color' => $child->avatar_color,
                 'age' => $child->ageAt(),
                 'created_by' => $child->created_by,
+                'photo_count' => $child->photos()->count(),
                 'storage_used' => $quota['used_bytes'],
                 'storage_limit_bytes' => $quota['limit_bytes'],
                 'storage_percentage' => $quota['percentage'],
                 'members' => $members,
                 'role' => $userRole,
-                'tags' => $tags,
                 'created_at' => $child->created_at?->toISOString(),
             ],
         ]);

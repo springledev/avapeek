@@ -2,7 +2,6 @@
 
 use App\Models\Child;
 use App\Models\ChildUser;
-use App\Models\StorageUsage;
 use App\Models\User;
 
 describe('POST /api/children', function () {
@@ -37,10 +36,6 @@ describe('POST /api/children', function () {
             'relationship' => 'parent',
         ]);
 
-        $this->assertDatabaseHas('storage_usage', [
-            'child_id' => $childId,
-            'used_bytes' => 0,
-        ]);
     });
 
     it('assigns an avatar_color from the palette', function () {
@@ -119,7 +114,6 @@ describe('GET /api/children', function () {
             'role' => 'owner',
             'relationship' => 'parent',
         ]);
-        StorageUsage::create(['child_id' => $child1->id, 'used_bytes' => 0]);
 
         $child2 = Child::factory()->create(['created_by' => $otherUser->id]);
         ChildUser::create([
@@ -134,7 +128,6 @@ describe('GET /api/children', function () {
             'role' => 'owner',
             'relationship' => 'parent',
         ]);
-        StorageUsage::create(['child_id' => $child2->id, 'used_bytes' => 0]);
 
         $child3 = Child::factory()->create(['created_by' => $otherUser->id]);
         ChildUser::create([
@@ -166,7 +159,6 @@ describe('GET /api/children', function () {
             'role' => 'owner',
             'relationship' => 'parent',
         ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
 
         $response = $this->actingAs($user, 'sanctum')
             ->getJson('/api/children');
@@ -192,7 +184,6 @@ describe('GET /api/children', function () {
             'role' => 'member',
             'relationship' => 'grandparent',
         ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
 
         $response = $this->actingAs($user, 'sanctum')
             ->getJson('/api/children');
@@ -212,7 +203,6 @@ describe('GET /api/children', function () {
             'user_id' => $user->id,
             'role' => 'owner',
         ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
 
         $response = $this->actingAs($user, 'sanctum')
             ->getJson('/api/children');
@@ -251,7 +241,6 @@ describe('GET /api/children/{child}', function () {
             'role' => 'member',
             'relationship' => 'grandparent',
         ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 1024]);
 
         $response = $this->actingAs($user, 'sanctum')
             ->getJson("/api/children/{$child->id}");
@@ -259,7 +248,7 @@ describe('GET /api/children/{child}', function () {
         $response->assertStatus(200)
             ->assertJsonPath('data.name', 'Emma')
             ->assertJsonPath('data.birth_date', '2024-03-15')
-            ->assertJsonPath('data.storage_used', 1024);
+            ->assertJsonPath('data.storage_used', 0);
 
         $members = $response->json('data.members');
         expect($members)->toHaveCount(2);
@@ -302,7 +291,6 @@ describe('POST /api/encryption-keys', function () {
             'user_id' => $user->id,
             'role' => 'owner',
         ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
 
         $wrappedDek = base64_encode(random_bytes(64));
 

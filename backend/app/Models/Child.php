@@ -27,50 +27,33 @@ class Child extends Model
         'birth_date' => 'date',
     ];
 
-    /**
-     * Get the users that belong to this child.
-     */
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'child_users')
             ->withPivot('role', 'relationship', 'joined_at');
     }
 
-    /**
-     * Get the encryption keys for this child.
-     */
     public function encryptionKeys(): HasMany
     {
         return $this->hasMany(EncryptionKey::class);
     }
 
-    /**
-     * Get the photos for this child.
-     */
-    public function photos(): HasMany
+    public function photos(): BelongsToMany
     {
-        return $this->hasMany(Photo::class);
+        return $this->belongsToMany(Photo::class, 'child_photo')
+            ->withPivot('encrypted_pek', 'iv_pek');
     }
 
-    /**
-     * Get the storage usage for this child.
-     */
     public function storageUsage(): HasOne
     {
         return $this->hasOne(StorageUsage::class);
     }
 
-    /**
-     * Get the invites for this child.
-     */
     public function invites(): HasMany
     {
         return $this->hasMany(Invite::class);
     }
 
-    /**
-     * Calculate age at a given date (or current date).
-     */
     public function ageAt(?\DateTime $date = null): ?string
     {
         if (! $this->birth_date) {

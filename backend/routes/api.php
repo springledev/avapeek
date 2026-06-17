@@ -41,29 +41,40 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Storage info
     Route::get('/storage/disk-info', [StorageInfoController::class, 'diskInfo']);
 
+    // System-wide quota
+    Route::get('/quota', [QuotaController::class, 'show']);
+
+    // User
+    Route::put('/user/seen', [PhotoController::class, 'markSeen']);
+
+    // Unified photo feed (across all children)
+    Route::get('/photos', [PhotoController::class, 'feed']);
+    Route::post('/photos/upload', [PhotoController::class, 'upload'])->middleware('throttle:upload');
+    Route::get('/photos/{photo}', [PhotoController::class, 'show']);
+    Route::get('/photos/{photo}/thumbnail', [PhotoController::class, 'thumbnail']);
+    Route::delete('/photos/{photo}', [PhotoController::class, 'destroy']);
+
+    // Recents feed
+    Route::get('/recents', [PhotoController::class, 'recents']);
+    Route::get('/recents/unseen-count', [PhotoController::class, 'unseenCount']);
+
+    // Global tags
+    Route::get('/tags', [TagController::class, 'globalIndex']);
+    Route::post('/tags', [TagController::class, 'store']);
+    Route::delete('/tags/{tag}', [TagController::class, 'destroy']);
+
+    // Photo-Tag management
+    Route::post('/photos/{photo}/tags', [TagController::class, 'attach']);
+    Route::delete('/photos/{photo}/tags/{tag}', [TagController::class, 'detach']);
+
+    // Child-scoped routes
     Route::middleware('child.member')->group(function () {
         Route::get('/children/{child}', [ChildController::class, 'show']);
 
-        // Photos
-        Route::get('/children/{child}/photos', [PhotoController::class, 'index']);
-        Route::post('/children/{child}/photos/upload', [PhotoController::class, 'upload'])->middleware('throttle:upload');
-        Route::get('/children/{child}/photos/{photo}', [PhotoController::class, 'show']);
-        Route::get('/children/{child}/photos/{photo}/thumbnail', [PhotoController::class, 'thumbnail']);
-        Route::delete('/children/{child}/photos/{photo}', [PhotoController::class, 'destroy']);
-
-        // Quota
-        Route::get('/children/{child}/quota', [QuotaController::class, 'show']);
-
-        // Tags
-        Route::get('/children/{child}/tags', [TagController::class, 'index']);
-        Route::post('/children/{child}/tags', [TagController::class, 'store']);
-        Route::post('/children/{child}/photos/{photo}/tags', [TagController::class, 'attach']);
-        Route::delete('/children/{child}/photos/{photo}/tags/{tag}', [TagController::class, 'detach']);
-    });
-
-    Route::middleware(['child.member', 'child.admin'])->group(function () {
-        Route::post('/children/{child}/invite', [InviteController::class, 'store'])->middleware('throttle:invite');
-        Route::delete('/children/{child}/tags/{tag}', [TagController::class, 'destroy']);
+        // Invites (admin only)
+        Route::middleware('child.admin')->group(function () {
+            Route::post('/children/{child}/invite', [InviteController::class, 'store'])->middleware('throttle:invite');
+        });
     });
 
     // Invite acceptance

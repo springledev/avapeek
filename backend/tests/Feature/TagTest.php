@@ -3,37 +3,24 @@
 use App\Models\Child;
 use App\Models\ChildUser;
 use App\Models\Photo;
-use App\Models\StorageUsage;
 use App\Models\Tag;
 use App\Models\User;
 
-describe('GET /api/children/{child}/tags', function () {
-    it('returns tags for a child with photo counts', function () {
+describe('GET /api/tags', function () {
+    it('lists global tags visible to the user with photo counts', function () {
         $user = User::factory()->create();
         $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => 'owner']);
 
-        $spain = Tag::factory()->create([
-            'child_id' => $child->id,
-            'name' => 'Spain 2026',
-            'created_by' => $user->id,
-        ]);
-        $school = Tag::factory()->create([
-            'child_id' => $child->id,
-            'name' => 'First Day of School',
-            'created_by' => $user->id,
-        ]);
+        $spain = Tag::factory()->create(['name' => 'Spain 2026']);
+        $school = Tag::factory()->create(['name' => 'First Day of School']);
 
-        $photo = Photo::factory()->create(['child_id' => $child->id, 'uploaded_by' => $user->id]);
+        $photo = Photo::factory()->create(['uploaded_by' => $user->id]);
+        $photo->children()->attach($child->id, ['encrypted_pek' => 'test', 'iv_pek' => 'test_test_test_test!']);
         $photo->tags()->attach([$spain->id]);
 
         $response = $this->actingAs($user, 'sanctum')
-            ->getJson("/api/children/{$child->id}/tags");
+            ->getJson('/api/tags');
 
         $response->assertStatus(200)
             ->assertJsonCount(2, 'data')
@@ -45,499 +32,168 @@ describe('GET /api/children/{child}/tags', function () {
 
     it('returns empty list when no tags exist', function () {
         $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
 
         $response = $this->actingAs($user, 'sanctum')
-            ->getJson("/api/children/{$child->id}/tags");
+            ->getJson('/api/tags');
 
         $response->assertStatus(200)
             ->assertJsonCount(0, 'data');
     });
 
-    it('prevents non-members from listing tags', function () {
-        $user = User::factory()->create();
-        $owner = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $owner->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $owner->id,
-            'role' => 'owner',
-        ]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->getJson("/api/children/{$child->id}/tags");
-
-        $response->assertStatus(403);
+    it('requires authentication', function () {
+        $this->getJson('/api/tags')->assertStatus(401);
     });
 
-    it('requires authentication', function () {
-        $child = Child::factory()->create();
+    it('only shows tags from photos the user has access to', function () {
+        $user1 = User::factory()->create();
+        $user2 = User::factory()->create();
+        $child1 = Child::factory()->create(['created_by' => $user1->id]);
+        $child2 = Child::factory()->create(['created_by' => $user2->id]);
+        ChildUser::create(['child_id' => $child1->id, 'user_id' => $user1->id, 'role' => 'owner']);
+        ChildUser::create(['child_id' => $child2->id, 'user_id' => $user2->id, 'role' => 'owner']);
 
-        $response = $this->getJson("/api/children/{$child->id}/tags");
+        $tag = Tag::factory()->create(['name' => 'Private Tag']);
+        $photo1 = Photo::factory()->create(['uploaded_by' => $user1->id]);
+        $photo1->children()->attach($child1->id, ['encrypted_pek' => 't', 'iv_pek' => 'test_test_test_test!']);
+        $photo1->tags()->attach($tag->id);
 
-        $response->assertStatus(401);
+        $photo2 = Photo::factory()->create(['uploaded_by' => $user2->id]);
+        $photo2->children()->attach($child2->id, ['encrypted_pek' => 't', 'iv_pek' => 'test_test_test_test!']);
+        $photo2->tags()->attach($tag->id);
+
+        $response = $this->actingAs($user1, 'sanctum')
+            ->getJson('/api/tags');
+
+        $response->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Private Tag')
+            ->assertJsonPath('data.0.photo_count', 1);
     });
 });
 
-describe('POST /api/children/{child}/tags', function () {
-    it('creates a new tag for the child', function () {
+describe('POST /api/tags', function () {
+    it('creates a global tag', function () {
         $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
 
         $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/children/{$child->id}/tags", [
-                'name' => 'Spain 2026',
-            ]);
+            ->postJson('/api/tags', ['name' => 'Spain 2026']);
 
         $response->assertStatus(201)
             ->assertJsonPath('data.name', 'Spain 2026')
             ->assertJsonPath('data.photo_count', 0);
 
-        $this->assertDatabaseHas('tags', [
-            'child_id' => $child->id,
-            'name' => 'Spain 2026',
-            'created_by' => $user->id,
-        ]);
+        $this->assertDatabaseHas('tags', ['name' => 'Spain 2026']);
+    });
+
+    it('requires authentication', function () {
+        $this->postJson('/api/tags', ['name' => 'Spain 2026'])->assertStatus(401);
     });
 
     it('validates name is required', function () {
         $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/children/{$child->id}/tags", []);
-
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['name']);
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/tags', [])
+            ->assertStatus(422);
     });
 
-    it('validates name max length', function () {
+    it('prevents duplicate tag names globally', function () {
         $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
+        Tag::factory()->create(['name' => 'Spain 2026']);
 
-        $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/children/{$child->id}/tags", [
-                'name' => str_repeat('a', 101),
-            ]);
-
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['name']);
-    });
-
-    it('prevents duplicate tag names for the same child', function () {
-        $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
-
-        Tag::factory()->create([
-            'child_id' => $child->id,
-            'name' => 'Spain 2026',
-            'created_by' => $user->id,
-        ]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/children/{$child->id}/tags", [
-                'name' => 'Spain 2026',
-            ]);
-
-        $response->assertStatus(422);
-    });
-
-    it('allows same tag name on different children', function () {
-        $user = User::factory()->create();
-        $child1 = Child::factory()->create(['created_by' => $user->id]);
-        $child2 = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create(['child_id' => $child1->id, 'user_id' => $user->id, 'role' => 'owner']);
-        ChildUser::create(['child_id' => $child2->id, 'user_id' => $user->id, 'role' => 'owner']);
-        StorageUsage::create(['child_id' => $child1->id, 'used_bytes' => 0]);
-        StorageUsage::create(['child_id' => $child2->id, 'used_bytes' => 0]);
-
-        Tag::factory()->create([
-            'child_id' => $child1->id,
-            'name' => 'Spain 2026',
-            'created_by' => $user->id,
-        ]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/children/{$child2->id}/tags", [
-                'name' => 'Spain 2026',
-            ]);
-
-        $response->assertStatus(201);
-    });
-
-    it('prevents non-members from creating tags', function () {
-        $user = User::factory()->create();
-        $owner = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $owner->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $owner->id,
-            'role' => 'owner',
-        ]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/children/{$child->id}/tags", [
-                'name' => 'Spain 2026',
-            ]);
-
-        $response->assertStatus(403);
-    });
-
-    it('requires authentication', function () {
-        $child = Child::factory()->create();
-
-        $response = $this->postJson("/api/children/{$child->id}/tags", [
-            'name' => 'Spain 2026',
-        ]);
-
-        $response->assertStatus(401);
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/tags', ['name' => 'Spain 2026'])
+            ->assertStatus(422);
     });
 });
 
-describe('DELETE /api/children/{child}/tags/{tag}', function () {
-    it('allows admin to delete a tag', function () {
+describe('DELETE /api/tags/{tag}', function () {
+    it('deletes a tag and removes all photo associations', function () {
         $user = User::factory()->create();
         $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => 'owner']);
 
-        $tag = Tag::factory()->create([
-            'child_id' => $child->id,
-            'name' => 'Old Tag',
-            'created_by' => $user->id,
-        ]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->deleteJson("/api/children/{$child->id}/tags/{$tag->id}");
-
-        $response->assertStatus(204);
-
-        $this->assertDatabaseMissing('tags', ['id' => $tag->id]);
-    });
-
-    it('cascades deletion of photo_tags associations', function () {
-        $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
-
-        $tag = Tag::factory()->create([
-            'child_id' => $child->id,
-            'name' => 'Tag With Photos',
-            'created_by' => $user->id,
-        ]);
-        $photo = Photo::factory()->create(['child_id' => $child->id, 'uploaded_by' => $user->id]);
-        $photo->tags()->attach($tag->id);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->deleteJson("/api/children/{$child->id}/tags/{$tag->id}");
-
-        $response->assertStatus(204);
-
-        $this->assertDatabaseMissing('tags', ['id' => $tag->id]);
-        $this->assertDatabaseMissing('photo_tags', ['photo_id' => $photo->id, 'tag_id' => $tag->id]);
-    });
-
-    it('does not delete photos when tag is deleted', function () {
-        $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
-
-        $tag = Tag::factory()->create([
-            'child_id' => $child->id,
-            'name' => 'Safe Tag',
-            'created_by' => $user->id,
-        ]);
-        $photo = Photo::factory()->create(['child_id' => $child->id, 'uploaded_by' => $user->id]);
+        $tag = Tag::factory()->create();
+        $photo = Photo::factory()->create(['uploaded_by' => $user->id]);
+        $photo->children()->attach($child->id, ['encrypted_pek' => 't', 'iv_pek' => 'test_test_test_test!']);
         $photo->tags()->attach($tag->id);
 
         $this->actingAs($user, 'sanctum')
-            ->deleteJson("/api/children/{$child->id}/tags/{$tag->id}");
+            ->deleteJson("/api/tags/{$tag->id}")
+            ->assertStatus(204);
 
-        $this->assertDatabaseHas('photos', ['id' => $photo->id]);
-    });
-
-    it('prevents non-admin members from deleting tags', function () {
-        $owner = User::factory()->create();
-        $member = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $owner->id]);
-        ChildUser::create(['child_id' => $child->id, 'user_id' => $owner->id, 'role' => 'owner']);
-        ChildUser::create(['child_id' => $child->id, 'user_id' => $member->id, 'role' => 'member']);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
-
-        $tag = Tag::factory()->create(['child_id' => $child->id, 'name' => 'Tag']);
-
-        $response = $this->actingAs($member, 'sanctum')
-            ->deleteJson("/api/children/{$child->id}/tags/{$tag->id}");
-
-        $response->assertStatus(403);
-    });
-
-    it('returns 404 for tag from different child', function () {
-        $user = User::factory()->create();
-        $child1 = Child::factory()->create(['created_by' => $user->id]);
-        $child2 = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create(['child_id' => $child1->id, 'user_id' => $user->id, 'role' => 'owner']);
-        ChildUser::create(['child_id' => $child2->id, 'user_id' => $user->id, 'role' => 'owner']);
-        StorageUsage::create(['child_id' => $child1->id, 'used_bytes' => 0]);
-        StorageUsage::create(['child_id' => $child2->id, 'used_bytes' => 0]);
-
-        $tag = Tag::factory()->create(['child_id' => $child2->id, 'name' => 'Other Child Tag']);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->deleteJson("/api/children/{$child1->id}/tags/{$tag->id}");
-
-        $response->assertStatus(404);
+        $this->assertDatabaseMissing('tags', ['id' => $tag->id]);
+        $this->assertDatabaseMissing('photo_tags', ['tag_id' => $tag->id]);
     });
 
     it('requires authentication', function () {
-        $child = Child::factory()->create();
-        $tag = Tag::factory()->create(['child_id' => $child->id, 'name' => 'Tag']);
+        $tag = Tag::factory()->create();
+        $this->deleteJson("/api/tags/{$tag->id}")->assertStatus(401);
+    });
 
-        $response = $this->deleteJson("/api/children/{$child->id}/tags/{$tag->id}");
-
-        $response->assertStatus(401);
+    it('returns 404 for non-existent tags', function () {
+        $user = User::factory()->create();
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson('/api/tags/99999')
+            ->assertStatus(404);
     });
 });
 
-describe('POST /api/children/{child}/photos/{photo}/tags', function () {
+describe('POST /api/photos/{photo}/tags (attach)', function () {
     it('attaches tags to a photo', function () {
         $user = User::factory()->create();
         $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => 'owner']);
 
-        $photo = Photo::factory()->create(['child_id' => $child->id, 'uploaded_by' => $user->id]);
-        $tag1 = Tag::factory()->create(['child_id' => $child->id, 'name' => 'Spain 2026']);
-        $tag2 = Tag::factory()->create(['child_id' => $child->id, 'name' => 'Beach']);
+        $photo = Photo::factory()->create(['uploaded_by' => $user->id]);
+        $photo->children()->attach($child->id, ['encrypted_pek' => 't', 'iv_pek' => 'test_test_test_test!']);
+
+        $tag = Tag::factory()->create();
 
         $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/children/{$child->id}/photos/{$photo->id}/tags", [
-                'tag_ids' => [$tag1->id, $tag2->id],
-            ]);
+            ->postJson("/api/photos/{$photo->id}/tags", ['tag_ids' => [$tag->id]]);
 
         $response->assertStatus(200)
             ->assertJsonPath('data.photo_id', $photo->id)
-            ->assertJsonCount(2, 'data.tags');
+            ->assertJsonCount(1, 'data.tags')
+            ->assertJsonPath('data.tags.0.id', $tag->id);
 
-        $this->assertDatabaseHas('photo_tags', ['photo_id' => $photo->id, 'tag_id' => $tag1->id]);
-        $this->assertDatabaseHas('photo_tags', ['photo_id' => $photo->id, 'tag_id' => $tag2->id]);
-    });
-
-    it('does not remove existing tags when attaching new ones', function () {
-        $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
+        $this->assertDatabaseHas('photo_tags', [
+            'photo_id' => $photo->id,
+            'tag_id' => $tag->id,
         ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
-
-        $photo = Photo::factory()->create(['child_id' => $child->id, 'uploaded_by' => $user->id]);
-        $existing = Tag::factory()->create(['child_id' => $child->id, 'name' => 'Existing']);
-        $photo->tags()->attach($existing->id);
-
-        $newTag = Tag::factory()->create(['child_id' => $child->id, 'name' => 'New']);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/children/{$child->id}/photos/{$photo->id}/tags", [
-                'tag_ids' => [$newTag->id],
-            ]);
-
-        $response->assertStatus(200);
-
-        $this->assertDatabaseHas('photo_tags', ['photo_id' => $photo->id, 'tag_id' => $existing->id]);
-        $this->assertDatabaseHas('photo_tags', ['photo_id' => $photo->id, 'tag_id' => $newTag->id]);
-    });
-
-    it('validates tag_ids is required', function () {
-        $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-
-        $photo = Photo::factory()->create(['child_id' => $child->id, 'uploaded_by' => $user->id]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/children/{$child->id}/photos/{$photo->id}/tags", []);
-
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['tag_ids']);
-    });
-
-    it('validates tag_ids contains existing tags', function () {
-        $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-
-        $photo = Photo::factory()->create(['child_id' => $child->id, 'uploaded_by' => $user->id]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/children/{$child->id}/photos/{$photo->id}/tags", [
-                'tag_ids' => [99999],
-            ]);
-
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['tag_ids.0']);
-    });
-
-    it('prevents non-members from attaching tags', function () {
-        $user = User::factory()->create();
-        $owner = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $owner->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $owner->id,
-            'role' => 'owner',
-        ]);
-
-        $photo = Photo::factory()->create(['child_id' => $child->id, 'uploaded_by' => $owner->id]);
-        $tag = Tag::factory()->create(['child_id' => $child->id, 'name' => 'Tag']);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/children/{$child->id}/photos/{$photo->id}/tags", [
-                'tag_ids' => [$tag->id],
-            ]);
-
-        $response->assertStatus(403);
     });
 
     it('requires authentication', function () {
         $photo = Photo::factory()->create();
-        $tag = Tag::factory()->create(['child_id' => $photo->child_id, 'name' => 'Tag']);
-
-        $response = $this->postJson("/api/children/{$photo->child_id}/photos/{$photo->id}/tags", [
-            'tag_ids' => [$tag->id],
-        ]);
-
-        $response->assertStatus(401);
+        $this->postJson("/api/photos/{$photo->id}/tags", ['tag_ids' => [1]])->assertStatus(401);
     });
 });
 
-describe('DELETE /api/children/{child}/photos/{photo}/tags/{tag}', function () {
+describe('DELETE /api/photos/{photo}/tags/{tag} (detach)', function () {
     it('detaches a tag from a photo', function () {
         $user = User::factory()->create();
         $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => 'owner']);
 
-        $photo = Photo::factory()->create(['child_id' => $child->id, 'uploaded_by' => $user->id]);
-        $tag1 = Tag::factory()->create(['child_id' => $child->id, 'name' => 'Keep']);
-        $tag2 = Tag::factory()->create(['child_id' => $child->id, 'name' => 'Remove']);
-        $photo->tags()->attach([$tag1->id, $tag2->id]);
+        $photo = Photo::factory()->create(['uploaded_by' => $user->id]);
+        $photo->children()->attach($child->id, ['encrypted_pek' => 't', 'iv_pek' => 'test_test_test_test!']);
 
-        $response = $this->actingAs($user, 'sanctum')
-            ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}/tags/{$tag2->id}");
-
-        $response->assertStatus(204);
-
-        $this->assertDatabaseHas('photo_tags', ['photo_id' => $photo->id, 'tag_id' => $tag1->id]);
-        $this->assertDatabaseMissing('photo_tags', ['photo_id' => $photo->id, 'tag_id' => $tag2->id]);
-    });
-
-    it('does not error when detaching a tag not on the photo', function () {
-        $user = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $user->id,
-            'role' => 'owner',
-        ]);
-        StorageUsage::create(['child_id' => $child->id, 'used_bytes' => 0]);
-
-        $photo = Photo::factory()->create(['child_id' => $child->id, 'uploaded_by' => $user->id]);
-        $tag = Tag::factory()->create(['child_id' => $child->id, 'name' => 'Unattached']);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}/tags/{$tag->id}");
-
-        $response->assertStatus(204);
-    });
-
-    it('prevents non-members from detaching tags', function () {
-        $user = User::factory()->create();
-        $owner = User::factory()->create();
-        $child = Child::factory()->create(['created_by' => $owner->id]);
-        ChildUser::create([
-            'child_id' => $child->id,
-            'user_id' => $owner->id,
-            'role' => 'owner',
-        ]);
-
-        $photo = Photo::factory()->create(['child_id' => $child->id, 'uploaded_by' => $owner->id]);
-        $tag = Tag::factory()->create(['child_id' => $child->id, 'name' => 'Tag']);
+        $tag = Tag::factory()->create();
         $photo->tags()->attach($tag->id);
 
-        $response = $this->actingAs($user, 'sanctum')
-            ->deleteJson("/api/children/{$child->id}/photos/{$photo->id}/tags/{$tag->id}");
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/photos/{$photo->id}/tags/{$tag->id}")
+            ->assertStatus(204);
 
-        $response->assertStatus(403);
+        $this->assertDatabaseMissing('photo_tags', [
+            'photo_id' => $photo->id,
+            'tag_id' => $tag->id,
+        ]);
     });
 
     it('requires authentication', function () {
         $photo = Photo::factory()->create();
-        $tag = Tag::factory()->create(['child_id' => $photo->child_id, 'name' => 'Tag']);
-        $photo->tags()->attach($tag->id);
-
-        $response = $this->deleteJson("/api/children/{$photo->child_id}/photos/{$photo->id}/tags/{$tag->id}");
-
-        $response->assertStatus(401);
+        $tag = Tag::factory()->create();
+        $this->deleteJson("/api/photos/{$photo->id}/tags/{$tag->id}")->assertStatus(401);
     });
 });
