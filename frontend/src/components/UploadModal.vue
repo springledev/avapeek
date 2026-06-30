@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { X, Upload, Plus } from '@lucide/vue'
 import { ref } from 'vue'
 import { api } from '@/services/api'
 import { useChildStore } from '@/stores/child'
@@ -182,9 +183,7 @@ async function startUpload() {
       <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-slate-600">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-white">Upload Photos</h2>
         <button @click="emit('close')" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <X class="h-5 w-5" />
         </button>
       </div>
 
@@ -242,9 +241,7 @@ async function startUpload() {
               : 'border-gray-300 hover:border-gray-400 dark:border-slate-600',
           ]"
         >
-          <svg class="mx-auto mb-3 h-10 w-10 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-          </svg>
+          <Upload class="mx-auto mb-3 h-10 w-10 text-slate-400" />
           <p class="mb-1 text-sm text-slate-600 dark:text-slate-300">Drag photos here or tap to browse</p>
           <p class="text-xs text-slate-400">JPEG, PNG, WebP, HEIC</p>
           <input
@@ -270,9 +267,7 @@ async function startUpload() {
               <p class="text-xs text-slate-400">{{ formatBytes(file.size) }}</p>
             </div>
             <button @click="removeFile(idx)" class="ml-2 text-slate-400 hover:text-red-500">
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X class="h-4 w-4" />
             </button>
           </div>
         </div>

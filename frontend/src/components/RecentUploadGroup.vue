@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { fetchThumbnail, cleanupComponent, getPEKForPhoto } from '@/services/storage'
 import type { Photo } from '@/types/photo'
 
 const props = defineProps<{
@@ -10,19 +11,50 @@ const props = defineProps<{
   relativeTime: string
 }>()
 
+const emit = defineEmits<{
+  select: [photo: Photo]
+}>()
+
+const thumbnails = ref<Map<number, string>>(new Map())
+const loaded = ref<Set<number>>(new Set())
+
 const count = computed(() => props.photos.length)
-const firstPhoto = computed(() => props.photos[0])
 const tags = computed(() => {
   const allTags = props.photos.flatMap(p => p.tags || [])
   const unique = new Map(allTags.map(t => [t.id, t]))
   return [...unique.values()].slice(0, 3)
 })
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1048576).toFixed(1)} MB`
+const displayThumbnails = computed(() => props.photos.slice(0, 8))
+
+async function loadThumbnail(photo: Photo) {
+  if (loaded.value.has(photo.id)) return
+  loaded.value.add(photo.id)
+  try {
+    const pek = await getPEKForPhoto(photo.children)
+    if (!pek) return
+    const url = await fetchThumbnail(
+      photo.id,
+      pek,
+      photo.iv_thumbnail,
+      'recents',
+      photo.thumbnail_url,
+    )
+    thumbnails.value.set(photo.id, url)
+  } catch {
+    // Silent fail — just show placeholder
+  }
 }
+
+onMounted(() => {
+  for (const photo of displayThumbnails.value) {
+    loadThumbnail(photo)
+  }
+})
+
+onBeforeUnmount(() => {
+  cleanupComponent('recents')
+})
 </script>
 
 <template>
@@ -55,15 +87,23 @@ function formatBytes(bytes: number): string {
     </div>
 
     <div class="flex gap-2 overflow-x-auto pb-1">
-      <div
-        v-for="photo in photos.slice(0, 8)"
+      <button
+        v-for="photo in displayThumbnails"
         :key="photo.id"
-        class="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-700"
+        @click="emit('select', photo)"
+        class="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
       >
-        <div class="flex h-full w-full items-center justify-center text-xs text-slate-400">
-          {{ formatBytes(photo.size_bytes) }}
+        <img
+          v-if="thumbnails.get(photo.id)"
+          :src="thumbnails.get(photo.id)"
+          class="h-full w-full object-cover"
+          alt=""
+          loading="lazy"
+        />
+        <div v-else class="flex h-full w-full items-center justify-center">
+          <div class="h-5 w-5 animate-pulse rounded bg-slate-200 dark:bg-slate-600" />
         </div>
-      </div>
+      </button>
       <div
         v-if="photos.length > 8"
         class="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-400"

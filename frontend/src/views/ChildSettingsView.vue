@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ChevronLeft } from '@lucide/vue'
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useChildStore } from '@/stores/child'
@@ -75,9 +76,7 @@ function copyInviteLink() {
   <div v-if="child" class="mt-8">
     <div class="mb-6 flex items-center gap-3">
       <button @click="router.push('/settings/children')" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
+        <ChevronLeft class="h-5 w-5" />
       </button>
       <div
         class="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white"
