@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
+import { X, Info, ChevronLeft, ChevronRight, Minus, Plus, AlertTriangle, Trash2 } from '@lucide/vue'
 import { fetchOriginal, cleanupComponent, getPEKForPhoto } from '@/services/storage'
 import { decryptBlob, revokeObjectURL } from '@/crypto/encrypt'
 import { ageAt } from '@/utils/childHelpers'
@@ -201,13 +202,12 @@ onBeforeUnmount(() => {
 <template>
   <div class="photo-viewer-overlay" @click.self="emit('close')">
     <button class="photo-viewer-close" @click="emit('close')">
-      <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-      </svg>
+      <X class="h-6 w-6" />
     </button>
 
     <button class="photo-viewer-info-btn" @click="showInfo = !showInfo">
-      {{ showInfo ? 'Hide info' : 'Info' }}
+      <Info class="h-5 w-5" />
+      <span class="ml-1">{{ showInfo ? 'Hide' : 'Info' }}</span>
     </button>
 
     <div class="flex h-full w-full items-center justify-center" @wheel="onWheel">
@@ -217,9 +217,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else-if="hasError" class="flex flex-col items-center gap-3 px-8 text-center">
-        <svg class="h-12 w-12 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
+        <AlertTriangle class="h-12 w-12 text-white/40" />
         <span class="text-sm text-white/50">Failed to decrypt photo.</span>
         <button class="text-sm font-medium text-blue-400 hover:text-blue-300" @click="loadImage">Try again</button>
       </div>
@@ -235,24 +233,20 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="hasPrev" class="photo-viewer-nav left-4" @click="emit('prev')">
-      <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-      </svg>
+      <ChevronLeft class="h-8 w-8" />
     </div>
 
     <div v-if="hasNext" class="photo-viewer-nav right-4" @click="emit('next')">
-      <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-      </svg>
+      <ChevronRight class="h-8 w-8" />
     </div>
 
     <div class="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 text-white">
       <button @click="zoomOut" class="rounded p-1 hover:bg-white/20" title="Zoom out">
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" /></svg>
+        <Minus class="h-4 w-4" />
       </button>
       <span class="min-w-[3ch] text-center text-xs">{{ Math.round(zoom * 100) }}%</span>
       <button @click="zoomIn" class="rounded p-1 hover:bg-white/20" title="Zoom in">
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+        <Plus class="h-4 w-4" />
       </button>
     </div>
 
@@ -366,9 +360,7 @@ onBeforeUnmount(() => {
             @click="showDeleteConfirm = true"
             class="mt-4 flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600"
           >
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
+            <Trash2 class="h-4 w-4" />
             Delete photo
           </button>
         </div>

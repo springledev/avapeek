@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Plus, ChevronRight } from '@lucide/vue'
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChildStore } from '@/stores/child'
@@ -28,9 +29,7 @@ async function createChild() {
         @click="createChild"
         class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
       >
-        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-        </svg>
+        <Plus class="h-4 w-4" />
         Add Child
       </button>
     </div>
@@ -66,9 +65,7 @@ async function createChild() {
             <span v-if="child.photo_count !== undefined"> &middot; {{ child.photo_count }} {{ child.photo_count === 1 ? 'photo' : 'photos' }}</span>
           </p>
         </div>
-        <svg class="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
+        <ChevronRight class="h-5 w-5 text-slate-400" />
       </router-link>
     </div>
   </div>

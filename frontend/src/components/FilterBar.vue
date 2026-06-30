@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { Calendar, X } from '@lucide/vue'
 import { useFeedStore } from '@/stores/feed'
 import { useChildStore } from '@/stores/child'
 import ChildChip from '@/components/ChildChip.vue'
@@ -96,11 +97,9 @@ const hasActiveFilters = computed(() =>
 
       <button
         @click="showDateFilter = !showDateFilter"
-        class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-gray-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+        class="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-gray-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
       >
-        <svg class="mr-1 inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
+        <Calendar class="h-4 w-4" />
         Dates
       </button>
 
@@ -120,7 +119,9 @@ const hasActiveFilters = computed(() =>
         class="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
       >
         {{ tag }}
-        <button @click="removeTag(tag)" class="text-indigo-400 hover:text-indigo-600 dark:text-indigo-300 dark:hover:text-indigo-100">&times;</button>
+        <button @click="removeTag(tag)" class="text-indigo-400 hover:text-indigo-600 dark:text-indigo-300 dark:hover:text-indigo-100">
+          <X class="h-3 w-3" />
+        </button>
       </span>
     </div>
 

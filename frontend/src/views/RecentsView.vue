@@ -1,9 +1,19 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { Clock } from '@lucide/vue'
+import { ref, computed, onMounted } from 'vue'
+import { api } from '@/services/api'
 import { useRecentsStore } from '@/stores/recents'
 import RecentUploadGroup from '@/components/RecentUploadGroup.vue'
+import PhotoViewer from '@/components/PhotoViewer.vue'
+import { toast } from 'vue-sonner'
+import type { Photo } from '@/types/photo'
 
 const recentsStore = useRecentsStore()
+
+const selectedPhoto = ref<Photo | null>(null)
+const selectedGroupPhotos = ref<Photo[]>([])
+const selectedPhotoIndex = ref(0)
+const photoViewerKey = ref(0)
 
 const grouped = computed(() => {
   const groups: { key: string; uploaderName: string; childName: string; childColor: string | null; relativeTime: string; photos: typeof recentsStore.photos }[] = []
@@ -39,6 +49,66 @@ const grouped = computed(() => {
   return groups
 })
 
+const hasPrev = computed(() => selectedPhotoIndex.value > 0)
+const hasNext = computed(() => selectedPhotoIndex.value < selectedGroupPhotos.value.length - 1)
+
+function openPhoto(photo: Photo, groupPhotos: Photo[]) {
+  selectedGroupPhotos.value = groupPhotos
+  selectedPhotoIndex.value = groupPhotos.findIndex(p => p.id === photo.id)
+  if (selectedPhotoIndex.value < 0) selectedPhotoIndex.value = 0
+  selectedPhoto.value = groupPhotos[selectedPhotoIndex.value]!
+  photoViewerKey.value++
+}
+
+function closePhoto() {
+  selectedPhoto.value = null
+}
+
+function prevPhoto() {
+  if (selectedPhotoIndex.value > 0) {
+    selectedPhotoIndex.value--
+    selectedPhoto.value = selectedGroupPhotos.value[selectedPhotoIndex.value]!
+    photoViewerKey.value++
+  }
+}
+
+function nextPhoto() {
+  if (selectedPhotoIndex.value < selectedGroupPhotos.value.length - 1) {
+    selectedPhotoIndex.value++
+    selectedPhoto.value = selectedGroupPhotos.value[selectedPhotoIndex.value]!
+    photoViewerKey.value++
+  }
+}
+
+async function deletePhoto(photoId: number) {
+  try {
+    await api.delete(`/photos/${photoId}`)
+    toast.success('Photo deleted')
+    selectedPhoto.value = null
+    recentsStore.fetchRecents()
+  } catch (err: any) {
+    toast.error(err.response?.data?.message || 'Failed to delete photo')
+  }
+}
+
+async function addTag(photoId: number, tagName: string) {
+  try {
+    // Will be implemented properly later
+    toast.success('Tag added')
+  } catch (err: any) {
+    toast.error(err.response?.data?.message || 'Failed to add tag')
+  }
+}
+
+async function removeTag(photoId: number, tagId: number) {
+  try {
+    await api.delete(`/photos/${photoId}/tags/${tagId}`)
+    toast.success('Tag removed')
+  } catch (err: any) {
+    toast.error(err.response?.data?.message || 'Failed to remove tag')
+  }
+}
+
 onMounted(async () => {
   await recentsStore.fetchRecents()
   await recentsStore.markAsSeen()
@@ -65,9 +135,7 @@ onMounted(async () => {
 
     <div v-else-if="recentsStore.photos.length === 0" class="py-16 text-center">
       <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
-        <svg class="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
+        <Clock class="h-8 w-8 text-slate-400" />
       </div>
       <p class="text-lg font-medium text-slate-900 dark:text-white">No recent uploads</p>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Upload a photo and it will appear here.</p>
@@ -82,11 +150,29 @@ onMounted(async () => {
         :child-name="group.childName"
         :child-color="group.childColor"
         :relative-time="group.relativeTime"
+        @select="openPhoto($event, group.photos)"
       />
     </div>
 
     <div v-if="recentsStore.isLoading && recentsStore.photos.length > 0" class="mt-4 flex justify-center">
       <div class="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
     </div>
+
+    <PhotoViewer
+      v-if="selectedPhoto"
+      :key="photoViewerKey"
+      :photo="selectedPhoto"
+      :has-prev="hasPrev"
+      :has-next="hasNext"
+      :can-delete="true"
+      :child-birth-date="null"
+      :all-tags="[]"
+      @close="closePhoto"
+      @prev="prevPhoto"
+      @next="nextPhoto"
+      @delete="deletePhoto"
+      @tag-added="addTag"
+      @tag-removed="removeTag"
+    />
   </div>
 </template>
