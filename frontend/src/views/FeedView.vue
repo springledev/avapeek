@@ -2,6 +2,7 @@
 import { Image } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
 import { api } from '@/services/api'
+import { preloadOriginal } from '@/services/storage'
 import { useFeedStore } from '@/stores/feed'
 import { useChildStore } from '@/stores/child'
 import FilterBar from '@/components/FilterBar.vue'
@@ -28,11 +29,25 @@ onMounted(async () => {
   }
 })
 
+function schedulePreload() {
+  requestAnimationFrame(async () => {
+    if (hasNext.value) {
+      const next = feedStore.photos[selectedPhotoIndex.value + 1]
+      if (next) preloadOriginal(next).catch(() => {})
+    }
+    if (hasPrev.value) {
+      const prev = feedStore.photos[selectedPhotoIndex.value - 1]
+      if (prev) preloadOriginal(prev).catch(() => {})
+    }
+  })
+}
+
 function openPhoto(photo: Photo) {
   const idx = feedStore.photos.findIndex(p => p.id === photo.id)
   selectedPhotoIndex.value = idx >= 0 ? idx : 0
   selectedPhoto.value = photo
   photoViewerKey.value++
+  schedulePreload()
 }
 
 function closePhoto() {
@@ -44,6 +59,7 @@ function prevPhoto() {
     selectedPhotoIndex.value--
     selectedPhoto.value = feedStore.photos[selectedPhotoIndex.value]!
     photoViewerKey.value++
+    schedulePreload()
   }
 }
 
@@ -52,6 +68,7 @@ function nextPhoto() {
     selectedPhotoIndex.value++
     selectedPhoto.value = feedStore.photos[selectedPhotoIndex.value]!
     photoViewerKey.value++
+    schedulePreload()
   }
 }
 

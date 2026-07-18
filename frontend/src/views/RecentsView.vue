@@ -2,6 +2,7 @@
 import { Clock } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
 import { api } from '@/services/api'
+import { preloadOriginal } from '@/services/storage'
 import { useRecentsStore } from '@/stores/recents'
 import RecentUploadGroup from '@/components/RecentUploadGroup.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
@@ -52,12 +53,26 @@ const grouped = computed(() => {
 const hasPrev = computed(() => selectedPhotoIndex.value > 0)
 const hasNext = computed(() => selectedPhotoIndex.value < selectedGroupPhotos.value.length - 1)
 
+function schedulePreload() {
+  requestAnimationFrame(async () => {
+    if (hasNext.value) {
+      const next = selectedGroupPhotos.value[selectedPhotoIndex.value + 1]
+      if (next) preloadOriginal(next).catch(() => {})
+    }
+    if (hasPrev.value) {
+      const prev = selectedGroupPhotos.value[selectedPhotoIndex.value - 1]
+      if (prev) preloadOriginal(prev).catch(() => {})
+    }
+  })
+}
+
 function openPhoto(photo: Photo, groupPhotos: Photo[]) {
   selectedGroupPhotos.value = groupPhotos
   selectedPhotoIndex.value = groupPhotos.findIndex(p => p.id === photo.id)
   if (selectedPhotoIndex.value < 0) selectedPhotoIndex.value = 0
   selectedPhoto.value = groupPhotos[selectedPhotoIndex.value]!
   photoViewerKey.value++
+  schedulePreload()
 }
 
 function closePhoto() {
@@ -69,6 +84,7 @@ function prevPhoto() {
     selectedPhotoIndex.value--
     selectedPhoto.value = selectedGroupPhotos.value[selectedPhotoIndex.value]!
     photoViewerKey.value++
+    schedulePreload()
   }
 }
 
@@ -77,6 +93,7 @@ function nextPhoto() {
     selectedPhotoIndex.value++
     selectedPhoto.value = selectedGroupPhotos.value[selectedPhotoIndex.value]!
     photoViewerKey.value++
+    schedulePreload()
   }
 }
 

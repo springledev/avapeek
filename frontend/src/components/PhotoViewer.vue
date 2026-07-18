@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { X, Info, ChevronLeft, ChevronRight, Minus, Plus, AlertTriangle, Trash2 } from '@lucide/vue'
-import { fetchOriginal, cleanupComponent, getPEKForPhoto } from '@/services/storage'
-import { decryptBlob, revokeObjectURL } from '@/crypto/encrypt'
+import { fetchOriginal, getPEKForPhoto } from '@/services/storage'
+import { getCachedOriginal } from '@/services/imageCache'
+import { decryptBlob } from '@/crypto/encrypt'
 import { ageAt } from '@/utils/childHelpers'
 import TagChip from '@/components/TagChip.vue'
 import type { Photo } from '@/types/photo'
@@ -25,8 +26,6 @@ const emit = defineEmits<{
   tagAdded: [photoId: number, tagName: string]
   tagRemoved: [photoId: number, tagId: number]
 }>()
-
-const componentKey = 'photoviewer'
 
 const imageUrl = ref<string | null>(null)
 const isLoading = ref(true)
@@ -117,8 +116,14 @@ async function decryptExif() {
 }
 
 async function loadImage() {
-  isLoading.value = true
   hasError.value = false
+  const cached = getCachedOriginal(props.photo.id)
+  if (cached) {
+    imageUrl.value = cached
+    isLoading.value = false
+    return
+  }
+  isLoading.value = true
   try {
     const pek = await getPEKForPhoto(props.photo.children)
     if (!pek) {
@@ -175,7 +180,6 @@ function toggleAddTag() {
 }
 
 watch(() => props.photo.id, () => {
-  if (imageUrl.value) revokeObjectURL(imageUrl.value)
   imageUrl.value = null
   zoom.value = 1
   exifData.value = null
@@ -194,8 +198,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
-  if (imageUrl.value) revokeObjectURL(imageUrl.value)
-  cleanupComponent(componentKey)
 })
 </script>
 
