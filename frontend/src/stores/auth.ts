@@ -69,11 +69,10 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = userData
       apiService.setAuthToken(token)
 
-      // Export KEK to sessionStorage for persistence across refreshes
+      // ponytail: KEK in localStorage, re-auth on next app load if XSS risk is unacceptable
       const kekJwk = await exportKEK(derivedKEK)
-      sessionStorage.setItem('kek', kekJwk)
+      localStorage.setItem('kek', kekJwk)
 
-      // Store user data in localStorage for persistence
       localStorage.setItem('user', JSON.stringify(userData))
     } catch (err: any) {
       console.error('Registration error:', err)
@@ -92,30 +91,25 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
 
     try {
-      // Call login API
       const loginData: LoginRequest = { email, password }
       const response = await api.post<AuthResponse>('/auth/login', loginData)
       const { user: userData, token, encryption_keys } = response.data
 
-      // Store user and token
       user.value = userData
       apiService.setAuthToken(token)
 
-      // Derive KEK from password (keep in memory)
       const derivedKEK = await deriveKEK(password, userData.master_key_salt)
       kek.value = derivedKEK
 
-      // Store encryption keys
       if (encryption_keys) {
         encryptionKeys.value = encryption_keys
         localStorage.setItem('encryption_keys', JSON.stringify(encryption_keys))
       }
 
-      // Export KEK to sessionStorage for persistence across refreshes
+      // ponytail: KEK in localStorage, re-auth on next app load if XSS risk is unacceptable
       const kekJwk = await exportKEK(derivedKEK)
-      sessionStorage.setItem('kek', kekJwk)
+      localStorage.setItem('kek', kekJwk)
 
-      // Store user data in localStorage for persistence
       localStorage.setItem('user', JSON.stringify(userData))
     } catch (err: any) {
       console.error('Login error:', err)
@@ -147,7 +141,7 @@ export const useAuthStore = defineStore('auth', () => {
       apiService.clearAuthToken()
       localStorage.removeItem('user')
       localStorage.removeItem('encryption_keys')
-      sessionStorage.removeItem('kek')
+      localStorage.removeItem('kek')
       isLoading.value = false
     }
   }
@@ -190,13 +184,13 @@ export const useAuthStore = defineStore('auth', () => {
    * Called after app mount to avoid blocking initial render.
    */
   async function restoreKEK(): Promise<void> {
-    const storedKekJwk = sessionStorage.getItem('kek')
+    const storedKekJwk = localStorage.getItem('kek')
     if (storedKekJwk) {
       try {
         kek.value = await importKEK(storedKekJwk)
       } catch (err) {
-        console.error('Failed to import KEK from sessionStorage:', err)
-        sessionStorage.removeItem('kek')
+        console.error('Failed to import KEK from localStorage:', err)
+        localStorage.removeItem('kek')
       }
     }
   }

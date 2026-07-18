@@ -302,7 +302,7 @@ class PhotoController extends Controller
 
         $query = Photo::whereHas('children', function ($q) use ($accessibleChildIds) {
             $q->whereIn('child_photo.child_id', $accessibleChildIds);
-        });
+        })->where('uploaded_by', '!=', $user->id);
 
         if ($user->last_seen_at) {
             $query->where('created_at', '>', $user->last_seen_at);

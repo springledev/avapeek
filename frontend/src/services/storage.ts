@@ -3,7 +3,8 @@ import { decryptBlob, blobToObjectURL, revokeObjectURL } from '@/crypto/encrypt'
 import { unwrapPEK } from '@/crypto/keychain'
 import { useChildStore } from '@/stores/child'
 import { decodeHeicBuffer } from '@/crypto/heic'
-import type { PhotoChild } from '@/types/photo'
+import type { Photo, PhotoChild } from '@/types/photo'
+import { getCachedOriginal, setCachedOriginal } from '@/services/imageCache'
 
 export async function fetchEncryptedBlob(presignedUrl: string): Promise<ArrayBuffer> {
   const response = await fetch(presignedUrl)
@@ -89,10 +90,23 @@ export async function fetchOriginal(
   iv: string,
   mimeType: string,
 ): Promise<string> {
+  const cached = getCachedOriginal(photoId)
+  if (cached) return cached
   const response = await api.get(`/photos/${photoId}`)
   const presignedUrl = response.data.data.presigned_url as string
   const decrypted = await fetchAndDecrypt(presignedUrl, pek, iv)
   const objectUrl = await decryptedToDisplayableUrl(decrypted, mimeType)
-  trackObjectUrl('photoviewer', objectUrl)
+  setCachedOriginal(photoId, objectUrl)
   return objectUrl
+}
+
+export async function preloadOriginal(photo: Photo): Promise<void> {
+  if (getCachedOriginal(photo.id)) return
+  try {
+    const pek = await getPEKForPhoto(photo.children)
+    if (!pek) return
+    await fetchOriginal(photo.id, pek, photo.iv_original, photo.original_mime)
+  } catch {
+    // ponytail: best-effort preload
+  }
 }

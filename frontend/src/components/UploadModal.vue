@@ -16,7 +16,9 @@ const emit = defineEmits<{
 
 const childStore = useChildStore()
 
-const selectedChildIds = ref<number[]>([])
+const selectedChildIds = ref<number[]>(
+  childStore.children.length === 1 ? [childStore.children[0]!.id] : [],
+)
 const files = ref<File[]>([])
 const tagInput = ref('')
 const tags = ref<string[]>([])
