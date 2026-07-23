@@ -24,7 +24,7 @@ class InviteController extends Controller
     {
         $validated = $request->validate([
             'role' => ['required', 'string', 'in:member,admin'],
-            'relationship' => ['nullable', 'string', 'in:Parent,Grandparent,Aunt/Uncle,Godparent,Other'],
+            'relationship' => ['nullable', 'string', 'max:30'],
         ]);
 
         $invite = Invite::create([

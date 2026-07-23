@@ -45,6 +45,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/quota', [QuotaController::class, 'show']);
 
     // User
+    Route::put('/user/profile', [AuthController::class, 'updateProfile']);
     Route::put('/user/seen', [PhotoController::class, 'markSeen']);
 
     // Unified photo feed (across all children)
