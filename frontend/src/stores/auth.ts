@@ -196,6 +196,44 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
+   * Updates the authenticated user's profile.
+   *
+   * Supports changing display_name, email, and/or password.
+   * When password is changed, the KEK is re-derived with the new password
+   * so the user stays logged in without re-authentication.
+   */
+  async function updateProfile(data: {
+    display_name?: string
+    email?: string
+    current_password?: string
+    new_password?: string
+    new_password_confirmation?: string
+  }): Promise<void> {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const response = await api.put('/user/profile', data)
+      const userData = response.data.user
+
+      user.value = userData
+      localStorage.setItem('user', JSON.stringify(userData))
+
+      if (data.new_password && userData.master_key_salt) {
+        const newKEK = await deriveKEK(data.new_password, userData.master_key_salt)
+        kek.value = newKEK
+        const kekJwk = await exportKEK(newKEK)
+        localStorage.setItem('kek', kekJwk)
+      }
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to update profile.'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
    * Clears any error messages.
    */
   function clearError(): void {
@@ -219,6 +257,7 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     initializeAuth,
     restoreKEK,
+    updateProfile,
     clearError,
   }
 })

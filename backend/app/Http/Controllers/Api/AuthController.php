@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
@@ -131,6 +132,54 @@ class AuthController extends Controller
 
         return response()->json([
             'token' => $token,
+        ]);
+    }
+
+    /**
+     * Update the authenticated user's profile.
+     *
+     * Allows updating display_name, email, and/or password.
+     * Password change requires current_password for verification.
+     */
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'display_name' => ['sometimes', 'string', 'max:100', 'regex:/^[\pL\pN\s\-.,\']+$/u'],
+            'email' => ['sometimes', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'current_password' => ['required_with:new_password', 'string'],
+            'new_password' => ['nullable', 'string', Password::defaults(), 'confirmed'],
+        ]);
+
+        if ($request->filled('new_password')) {
+            if (! Hash::check($validated['current_password'], $user->password_hash)) {
+                throw ValidationException::withMessages([
+                    'current_password' => ['The current password is incorrect.'],
+                ]);
+            }
+
+            $user->password_hash = $validated['new_password'];
+        }
+
+        if ($request->has('display_name')) {
+            $user->display_name = $validated['display_name'];
+        }
+
+        if ($request->has('email')) {
+            $user->email = $validated['email'];
+        }
+
+        $user->save();
+
+        return response()->json([
+            'user' => [
+                'id' => $user->id,
+                'email' => $user->email,
+                'display_name' => $user->display_name,
+                'master_key_salt' => $user->master_key_salt,
+                'public_key' => $user->public_key,
+            ],
         ]);
     }
 }
