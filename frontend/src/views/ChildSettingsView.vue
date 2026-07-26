@@ -4,6 +4,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useChildStore } from '@/stores/child'
 import { generateDEK, wrapDEK, exportKEK, importKEK } from '@/crypto/keychain'
+import { api } from '@/services/api'
 import { toast } from 'vue-sonner'
 import type { Child, ChildMember, InviteResponse } from '@/types/child'
 
@@ -23,21 +24,29 @@ const isGranting = ref(false)
 const isDeleting = ref(false)
 
 const members = ref<ChildMember[]>([])
+const pendingChildInvites = ref<Array<{ id: number; role: string; relationship: string | null; expires_at: string }>>([])
 
 onMounted(async () => {
   if (!child.value) {
     await childStore.fetchChildren()
   }
-  await fetchMembers()
+  await Promise.all([fetchMembers(), fetchPendingInvites()])
 })
 
 async function fetchMembers() {
   try {
-    const response = await (await import('@/services/api')).api.get<{ data: { members: ChildMember[] } }>(`/children/${childId.value}`)
+    const response = await api.get<{ data: { members: ChildMember[] } }>(`/children/${childId.value}`)
     members.value = response.data.data.members || []
   } catch (err) {
     console.error('Failed to fetch members:', err)
   }
+}
+
+async function fetchPendingInvites() {
+  try {
+    const { data } = await api.get('/invites/pending')
+    pendingChildInvites.value = data.data.filter((i: any) => i.child_name === child.value?.name)
+  } catch { /**/ }
 }
 
 async function createInvite() {
@@ -45,8 +54,19 @@ async function createInvite() {
     const response = await childStore.createInvite(childId.value, inviteRole.value, inviteRelationship.value || null)
     inviteResult.value = response
     toast.success('Invite link created!')
+    await fetchPendingInvites()
   } catch (err: any) {
     toast.error(err.response?.data?.message || 'Failed to create invite.')
+  }
+}
+
+async function revokeInvite(inviteId: number) {
+  try {
+    await api.delete(`/invites/${inviteId}`)
+    pendingChildInvites.value = pendingChildInvites.value.filter(i => i.id !== inviteId)
+    toast.success('Invite revoked.')
+  } catch (err: any) {
+    toast.error(err.response?.data?.message || 'Failed to revoke invite.')
   }
 }
 
@@ -144,6 +164,21 @@ function copyInviteLink() {
               </button>
             </div>
             <p class="text-xs text-slate-400">This link expires in 7 days.</p>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="pendingChildInvites.length > 0" class="rounded-xl border border-gray-200 bg-white p-5 dark:border-slate-600 dark:bg-slate-800">
+        <h3 class="mb-3 text-sm font-semibold text-slate-900 dark:text-white">Pending Invites</h3>
+        <div class="space-y-2">
+          <div v-for="inv in pendingChildInvites" :key="inv.id" class="flex items-center justify-between text-sm">
+            <span class="text-slate-500 dark:text-slate-400">
+              {{ inv.role }}<span v-if="inv.relationship"> &middot; {{ inv.relationship }}</span>
+            </span>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-slate-400">Expires {{ new Date(inv.expires_at).toLocaleDateString() }}</span>
+              <button @click="revokeInvite(inv.id)" class="text-xs font-medium text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Revoke</button>
+            </div>
           </div>
         </div>
       </div>

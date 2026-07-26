@@ -53,7 +53,7 @@ function goToLogin() {
 }
 
 function goToRegister() {
-  router.push({ name: 'register', query: { redirect: `/invite/${token}` } })
+  router.push({ name: 'register', query: { invite_token: token, redirect: `/invite/${token}` } })
 }
 
 onMounted(() => {

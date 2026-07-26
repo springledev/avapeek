@@ -7,6 +7,7 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
+const inviteToken = (route.query.invite_token as string) || undefined
 const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
@@ -68,7 +69,7 @@ async function handleSubmit() {
   }
 
   try {
-    await authStore.register(email.value, password.value, displayName.value)
+    await authStore.register(email.value, password.value, displayName.value, inviteToken)
     const redirect = (route.query.redirect as string) || '/'
     router.push(redirect)
   } catch (error: any) {

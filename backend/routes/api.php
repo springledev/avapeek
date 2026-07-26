@@ -14,9 +14,12 @@ use Illuminate\Support\Facades\Route;
 // Authentication routes (no auth required)
 Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:auth');
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
+Route::get('/auth/registration-mode', [AuthController::class, 'registrationMode']);
 
 // Invite preview (no auth required — preview before login)
-Route::get('/invites/{token}', [InviteController::class, 'show'])->middleware('throttle:10,1');
+Route::get('/invites/{token}', [InviteController::class, 'show'])
+    ->middleware('throttle:10,1')
+    ->where('token', '[A-Za-z0-9]{32,}');
 
 // Protected routes
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
@@ -80,6 +83,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // Invite acceptance
     Route::post('/invites/{token}/accept', [InviteController::class, 'accept']);
+
+    // Pending invites (invites the current user has sent that haven't been accepted)
+    Route::get('/invites/pending', [InviteController::class, 'pending']);
+    Route::delete('/invites/{invite}', [InviteController::class, 'destroy']);
 
     // Encryption Keys
     Route::post('/encryption-keys', [EncryptionKeysController::class, 'store']);

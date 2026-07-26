@@ -36,14 +36,10 @@ const router = createRouter({
     },
     {
       path: '/settings',
+      name: 'settings',
       component: () => import('@/views/SettingsView.vue'),
       meta: { requiresAuth: true, layout: 'app-shell' },
       children: [
-        {
-          path: '',
-          name: 'settings',
-          component: () => import('@/views/ProfileSettingsView.vue'),
-        },
         {
           path: 'children',
           name: 'settings-children',
@@ -76,25 +72,20 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, from) => {
   const authStore = useAuthStore()
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next({ name: 'login', query: { redirect: to.fullPath } })
-    return
+    return { name: 'login', query: { redirect: to.fullPath } }
   }
 
   if (to.meta.requiresAuth && authStore.needsReauth) {
-    next({ name: 'login', query: { redirect: to.fullPath, reauth: '1' } })
-    return
+    return { name: 'login', query: { redirect: to.fullPath, reauth: '1' } }
   }
 
   if (to.meta.requiresGuest && authStore.isAuthenticated && !authStore.needsReauth) {
-    next('/feed')
-    return
+    return '/feed'
   }
-
-  next()
 })
 
 export default router

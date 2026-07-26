@@ -77,6 +77,12 @@ class InviteController extends Controller
             ], 410);
         }
 
+        if ($invite->revoked_at) {
+            return response()->json([
+                'message' => 'This invite has been revoked.',
+            ], 410);
+        }
+
         if ($invite->expires_at->isPast()) {
             return response()->json([
                 'message' => 'This invite has expired.',
@@ -114,6 +120,12 @@ class InviteController extends Controller
         if ($invite->accepted_at) {
             return response()->json([
                 'message' => 'This invite has already been accepted.',
+            ], 410);
+        }
+
+        if ($invite->revoked_at) {
+            return response()->json([
+                'message' => 'This invite has been revoked.',
             ], 410);
         }
 
@@ -158,5 +170,62 @@ class InviteController extends Controller
                 'child_name' => $invite->child->name,
             ],
         ], 200);
+    }
+
+    /**
+     * List pending invites sent by the current user.
+     *
+     * Returns invites that haven't been accepted, revoked, or expired.
+     */
+    public function pending(Request $request): JsonResponse
+    {
+        $invites = Invite::where('invited_by', $request->user()->id)
+            ->whereNull('accepted_at')
+            ->whereNull('revoked_at')
+            ->where('expires_at', '>', now())
+            ->with('child')
+            ->latest()
+            ->get()
+            ->map(fn (Invite $invite) => [
+                'id' => $invite->id,
+                'child_name' => $invite->child->name,
+                'role' => $invite->role,
+                'relationship' => $invite->relationship,
+                'token' => $invite->token,
+                'expires_at' => $invite->expires_at->toISOString(),
+                'created_at' => $invite->created_at->toISOString(),
+            ]);
+
+        return response()->json([
+            'data' => $invites,
+        ]);
+    }
+
+    /**
+     * Revoke an invite.
+     *
+     * Sets the revoked_at timestamp. Only the creator can revoke their own invites,
+     * and only if the invite hasn't already been accepted.
+     */
+    public function destroy(Request $request, Invite $invite): JsonResponse
+    {
+        if ($invite->invited_by !== $request->user()->id) {
+            return response()->json([
+                'message' => 'You can only revoke your own invites.',
+            ], 403);
+        }
+
+        if ($invite->accepted_at) {
+            return response()->json([
+                'message' => 'Cannot revoke an already accepted invite.',
+            ], 422);
+        }
+
+        $invite->revoked_at = now();
+        $invite->save();
+
+        return response()->json([
+            'message' => 'Invite revoked.',
+        ]);
     }
 }

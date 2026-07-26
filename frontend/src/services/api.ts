@@ -38,7 +38,7 @@ class ApiService {
           localStorage.removeItem('auth_token')
           localStorage.removeItem('user')
           localStorage.removeItem('encryption_keys')
-          sessionStorage.removeItem('kek')
+          localStorage.removeItem('kek')
           if (!window.location.pathname.startsWith('/login')) {
             window.location.href = '/login'
           }
