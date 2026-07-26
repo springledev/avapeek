@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { api } from '@/services/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -11,14 +10,6 @@ const authStore = useAuthStore()
 const email = ref('')
 const password = ref('')
 const formErrors = ref<Record<string, string>>({})
-const registrationMode = ref('open')
-
-onMounted(async () => {
-  try {
-    const { data } = await api.get('/auth/registration-mode')
-    registrationMode.value = data.data.mode
-  } catch { /* default to open */ }
-})
 
 async function handleSubmit() {
   // Clear previous errors
@@ -131,12 +122,12 @@ async function handleSubmit() {
       </form>
 
       <!-- Divider -->
-      <div v-if="registrationMode === 'open'" class="divider">
+      <div class="divider">
         <span class="divider-text">New to Avapeek?</span>
       </div>
 
       <!-- Register Link -->
-      <div v-if="registrationMode === 'open'" class="text-center">
+      <div class="text-center">
         <router-link to="/register" class="link-primary">Create an account</router-link>
       </div>
     </div>
