@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Plus, ChevronRight } from '@lucide/vue'
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChildStore } from '@/stores/child'
 import { useAuthStore } from '@/stores/auth'
@@ -9,6 +9,10 @@ import { generateDEK, wrapDEK, exportKEK, importKEK } from '@/crypto/keychain'
 const router = useRouter()
 const childStore = useChildStore()
 const authStore = useAuthStore()
+
+const canAddChild = computed(() =>
+  childStore.children.some(c => c.role === 'owner' || c.role === 'admin')
+)
 
 onMounted(async () => {
   if (childStore.children.length === 0) {
@@ -26,6 +30,7 @@ async function createChild() {
     <div class="mb-4 flex items-center justify-between">
       <h2 class="text-lg font-semibold text-slate-900 dark:text-white">Children</h2>
       <button
+        v-if="canAddChild"
         @click="createChild"
         class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
       >

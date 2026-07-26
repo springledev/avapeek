@@ -208,6 +208,10 @@ export const useChildStore = defineStore('child', () => {
     currentChildId.value = childId
   }
 
+  function clearDEKCache(): void {
+    deks.value.clear()
+  }
+
   function clearError(): void {
     error.value = null
   }
@@ -231,6 +235,7 @@ export const useChildStore = defineStore('child', () => {
     createInvite,
     grantAccess,
     setCurrentChild,
+    clearDEKCache,
     clearError,
   }
 })

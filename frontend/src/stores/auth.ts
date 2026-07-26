@@ -38,6 +38,7 @@ export const useAuthStore = defineStore('auth', () => {
     email: string,
     password: string,
     displayName: string,
+    inviteToken?: string,
   ): Promise<void> {
     isLoading.value = true
     error.value = null
@@ -53,17 +54,20 @@ export const useAuthStore = defineStore('auth', () => {
       kek.value = derivedKEK
 
       // Prepare registration data
-      const registerData: RegisterRequest = {
+      const registerData: Record<string, unknown> = {
         email,
         password,
         display_name: displayName,
         master_key_salt: salt,
         public_key: publicKeyJwk,
       }
+      if (inviteToken) {
+        registerData.invite_token = inviteToken
+      }
 
       // Call API
-      const response = await api.post<AuthResponse>('/auth/register', registerData)
-      const { user: userData, token } = response.data
+      const response = await api.post<AuthResponse & { accepted_child?: { child_id: number; child_name: string; child_slug: string } }>('/auth/register', registerData)
+      const { user: userData, token, accepted_child } = response.data
 
       // Store user and token
       user.value = userData
@@ -74,6 +78,11 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem('kek', kekJwk)
 
       localStorage.setItem('user', JSON.stringify(userData))
+
+      if (accepted_child) {
+        encryptionKeys.value = []
+        localStorage.setItem('encryption_keys', JSON.stringify([]))
+      }
     } catch (err: any) {
       console.error('Registration error:', err)
       error.value = err.response?.data?.message || 'Registration failed. Please try again.'

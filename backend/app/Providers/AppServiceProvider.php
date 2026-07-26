@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Contracts\InviteDeliveryServiceInterface;
+use App\Contracts\RegistrationServiceInterface;
+use App\Services\DefaultRegistrationService;
 use App\Services\InviteDeliveryService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -19,6 +21,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(
             InviteDeliveryServiceInterface::class,
             InviteDeliveryService::class,
+        );
+
+        $this->app->singleton(
+            RegistrationServiceInterface::class,
+            DefaultRegistrationService::class,
         );
     }
 

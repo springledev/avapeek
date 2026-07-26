@@ -31,13 +31,18 @@ const activeTab = computed(() => {
   return ''
 })
 
+const canAddChild = computed(() =>
+  childStore.children.some(c => c.role === 'owner' || c.role === 'admin')
+)
+
 function navigate(path: string) {
   router.push(path)
 }
 
-function handleLogout() {
+async function handleLogout() {
   showUserMenu.value = false
-  authStore.logout()
+  await authStore.logout()
+  childStore.clearDEKCache()
   router.push('/login')
 }
 
@@ -91,6 +96,7 @@ onMounted(async () => {
 
           <div class="flex items-center gap-2">
             <button
+              v-if="canAddChild"
               @click="showUploadModal = true"
               class="hidden md:inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
             >
@@ -118,12 +124,13 @@ onMounted(async () => {
                   <p class="text-xs text-slate-500 dark:text-slate-400">{{ authStore.user?.email }}</p>
                 </div>
                 <button
-                  @click="navigate('/settings/profile'); showUserMenu = false"
+                  @click="navigate('/settings'); showUserMenu = false"
                   class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   Settings
                 </button>
                 <button
+                  v-if="canAddChild"
                   @click="navigate('/child/create'); showUserMenu = false"
                   class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
@@ -174,6 +181,7 @@ onMounted(async () => {
           </router-link>
 
           <button
+            v-if="canAddChild"
             @click="showUploadModal = true"
             class="flex flex-col items-center gap-0.5 px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400"
           >

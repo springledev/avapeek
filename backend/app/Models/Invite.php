@@ -27,12 +27,14 @@ class Invite extends Model
         'expires_at',
         'accepted_at',
         'accepted_by',
+        'revoked_at',
         'created_at',
     ];
 
     protected $casts = [
         'expires_at' => 'datetime',
         'accepted_at' => 'datetime',
+        'revoked_at' => 'datetime',
         'created_at' => 'datetime',
     ];
 
