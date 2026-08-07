@@ -447,6 +447,10 @@ button, a, [role="button"], input, select, textarea {
     @apply absolute top-4 left-4 p-2 text-white/70 hover:text-white bg-black/30 hover:bg-black/50 rounded-lg transition-all duration-200 text-sm;
   }
 
+  .photo-viewer-actions-btn {
+    @apply top-auto left-auto bottom-4 right-4;
+  }
+
   .photo-viewer-meta {
     @apply text-sm text-slate-600 space-y-2 dark:text-slate-400;
   }

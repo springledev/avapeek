@@ -15,6 +15,20 @@ app.use(router)
 
 app.component('Toaster', Toaster)
 
+app.directive('click-outside', {
+  mounted(el, binding) {
+    el.__clickOutsideHandler = (event: Event) => {
+      if (!(el === event.target || el.contains(event.target as Node))) {
+        binding.value(event)
+      }
+    }
+    document.addEventListener('click', el.__clickOutsideHandler)
+  },
+  unmounted(el) {
+    document.removeEventListener('click', el.__clickOutsideHandler)
+  },
+})
+
 useAuthStore().initializeAuth()
 
 app.mount('#app')

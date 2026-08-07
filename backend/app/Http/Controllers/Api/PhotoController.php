@@ -267,6 +267,45 @@ class PhotoController extends Controller
         return response()->json(null, 204);
     }
 
+    public function update(Request $request, Photo $photo): JsonResponse
+    {
+        $user = $request->user();
+        $accessibleChildIds = $user->children()->pluck('children.id');
+
+        $photoChildIds = $photo->children()->pluck('children.id');
+        if ($photoChildIds->intersect($accessibleChildIds)->isEmpty()) {
+            abort(403, 'You do not have access to this photo.');
+        }
+
+        $role = null;
+        $childWithAccess = $user->children()
+            ->whereIn('children.id', $photoChildIds)
+            ->first();
+        if ($childWithAccess) {
+            $role = $childWithAccess->pivot->role;
+        }
+
+        if (! in_array($role, ['owner', 'admin'], true) && $photo->uploaded_by !== $user->id) {
+            return response()->json(['message' => 'You do not have permission to edit this photo.'], 403);
+        }
+
+        $validated = $request->validate([
+            'taken_at' => ['nullable', 'date'],
+        ]);
+
+        $photo->update($validated);
+
+        $photo->load(['tags', 'children' => function ($q) {
+            $q->select('children.id', 'children.name', 'children.avatar_color');
+        }, 'uploader' => function ($q) {
+            $q->select('id', 'display_name');
+        }]);
+
+        return response()->json([
+            'data' => $this->formatPhoto($photo),
+        ]);
+    }
+
     public function recents(Request $request): JsonResponse
     {
         $user = $request->user();

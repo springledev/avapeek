@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
-import { X, Info, ChevronLeft, ChevronRight, Minus, Plus, AlertTriangle, Trash2 } from '@lucide/vue'
+import { X, ChevronLeft, ChevronRight, Minus, Plus, AlertTriangle, Trash2, Download, Pencil, PanelRightClose } from '@lucide/vue'
 import { fetchOriginal, getPEKForPhoto } from '@/services/storage'
 import { getCachedOriginal } from '@/services/imageCache'
-import { decryptBlob } from '@/crypto/encrypt'
-import { ageAt } from '@/utils/childHelpers'
 import TagChip from '@/components/TagChip.vue'
 import type { Photo } from '@/types/photo'
 import type { TagItem } from '@/components/TagSidebar.vue'
@@ -14,6 +12,7 @@ const props = defineProps<{
   hasPrev: boolean
   hasNext: boolean
   canDelete: boolean
+  canEdit: boolean
   childBirthDate: string | null
   allTags: TagItem[]
 }>()
@@ -23,6 +22,7 @@ const emit = defineEmits<{
   prev: []
   next: []
   delete: [photoId: number]
+  updateDate: [photoId: number, takenAt: string]
   tagAdded: [photoId: number, tagName: string]
   tagRemoved: [photoId: number, tagId: number]
 }>()
@@ -30,19 +30,16 @@ const emit = defineEmits<{
 const imageUrl = ref<string | null>(null)
 const isLoading = ref(true)
 const hasError = ref(false)
-const showInfo = ref(false)
+const showActions = ref(false)
 const zoom = ref(1)
-const exifData = ref<Record<string, unknown> | null>(null)
 const showDeleteConfirm = ref(false)
 const isDeleting = ref(false)
 const showAddTagDropdown = ref(false)
 const showNewTagInput = ref(false)
 const newTagName = ref('')
-
-const photoAge = computed(() => {
-  if (!props.childBirthDate || !props.photo.taken_at) return null
-  return ageAt(props.childBirthDate, new Date(props.photo.taken_at))
-})
+const touchStartX = ref(0)
+const editDate = ref('')
+const isSavingDate = ref(false)
 
 const existingTagIds = computed(() => new Set(props.photo.tags?.map((t) => t.id) ?? []))
 
@@ -50,24 +47,24 @@ const availableTagsToAdd = computed(() =>
   props.allTags.filter((t) => !existingTagIds.value.has(t.id)),
 )
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+function downloadImage() {
+  if (!imageUrl.value) return
+  const a = document.createElement('a')
+  a.href = imageUrl.value
+  a.download = `photo-${props.photo.id}.${props.photo.original_mime.split('/')[1] || 'jpg'}`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return 'Unknown'
-  return new Date(dateStr).toLocaleDateString('default', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-}
-
-function formatShutterSpeed(et: unknown): string {
-  if (typeof et === 'number' && et < 1) return `1/${Math.round(1 / et)}s`
-  return `${et}s`
+async function saveDate() {
+  if (!editDate.value) return
+  isSavingDate.value = true
+  try {
+    emit('updateDate', props.photo.id, editDate.value)
+  } finally {
+    isSavingDate.value = false
+  }
 }
 
 function zoomIn() {
@@ -96,23 +93,7 @@ function onKeydown(event: KeyboardEvent) {
   }
   if (event.key === 'ArrowLeft' && props.hasPrev) emit('prev')
   if (event.key === 'ArrowRight' && props.hasNext) emit('next')
-  if (event.key === 'i') showInfo.value = !showInfo.value
-}
-
-async function decryptExif() {
-  if (!props.photo.exif_encrypted || !props.photo.iv_exif) return
-  try {
-    const pek = await getPEKForPhoto(props.photo.children)
-    if (!pek) return
-    const binary = atob(props.photo.exif_encrypted)
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-    const decrypted = await decryptBlob(bytes.buffer, pek, props.photo.iv_exif)
-    const text = new TextDecoder().decode(decrypted)
-    exifData.value = JSON.parse(text)
-  } catch {
-    // EXIF decryption is best-effort
-  }
+  if (event.key === 'i') showActions.value = !showActions.value
 }
 
 async function loadImage() {
@@ -179,20 +160,33 @@ function toggleAddTag() {
   newTagName.value = ''
 }
 
+function onTouchStart(event: TouchEvent) {
+  if (event.touches.length === 1) {
+    touchStartX.value = event.touches[0].clientX
+  }
+}
+
+function onTouchEnd(event: TouchEvent) {
+  if (zoom.value !== 1 || touchStartX.value === 0) return
+  const delta = event.changedTouches[0].clientX - touchStartX.value
+  touchStartX.value = 0
+  if (delta < -50 && props.hasNext) emit('next')
+  else if (delta > 50 && props.hasPrev) emit('prev')
+}
+
 watch(() => props.photo.id, () => {
   imageUrl.value = null
   zoom.value = 1
-  exifData.value = null
-  showInfo.value = false
+  showActions.value = false
   showDeleteConfirm.value = false
   showAddTagDropdown.value = false
+  editDate.value = props.photo.taken_at?.split('T')[0] || ''
   loadImage()
-  decryptExif()
 })
 
 onMounted(() => {
+  editDate.value = props.photo.taken_at?.split('T')[0] || ''
   loadImage()
-  decryptExif()
   window.addEventListener('keydown', onKeydown)
 })
 
@@ -202,14 +196,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="photo-viewer-overlay" @click.self="emit('close')">
+  <div class="photo-viewer-overlay" @click.self="emit('close')" @touchstart="onTouchStart" @touchend="onTouchEnd">
     <button class="photo-viewer-close" @click="emit('close')">
       <X class="h-6 w-6" />
     </button>
 
-    <button class="photo-viewer-info-btn" @click="showInfo = !showInfo">
-      <Info class="h-5 w-5" />
-      <span class="ml-1">{{ showInfo ? 'Hide' : 'Info' }}</span>
+    <button class="photo-viewer-info-btn photo-viewer-actions-btn" @click="showActions = !showActions">
+      <PanelRightClose class="h-5 w-5" />
+      <span class="ml-1">Actions</span>
     </button>
 
     <div class="flex h-full w-full items-center justify-center" @wheel="onWheel">
@@ -253,62 +247,43 @@ onBeforeUnmount(() => {
     </div>
 
     <Transition name="slide">
-      <div v-if="showInfo" class="photo-viewer-sidebar">
-        <div class="photo-viewer-meta">
-          <div>
-            <span class="photo-viewer-meta-label">Taken</span>
-            <span class="photo-viewer-meta-value">{{ formatDate(props.photo.taken_at) }}</span>
-          </div>
-          <div v-if="photoAge">
-            <span class="photo-viewer-meta-label">Age in photo</span>
-            <span class="photo-viewer-meta-value">{{ photoAge }}</span>
-          </div>
-          <div>
-            <span class="photo-viewer-meta-label">Uploaded by</span>
-            <span class="photo-viewer-meta-value">{{ props.photo.uploader_name || 'Unknown' }}</span>
-          </div>
-          <div>
-            <span class="photo-viewer-meta-label">File size</span>
-            <span class="photo-viewer-meta-value">{{ formatBytes(props.photo.size_bytes) }}</span>
-          </div>
-          <div v-if="props.photo.width && props.photo.height">
-            <span class="photo-viewer-meta-label">Dimensions</span>
-            <span class="photo-viewer-meta-value">{{ props.photo.width }} × {{ props.photo.height }}</span>
+      <div v-if="showActions" class="photo-viewer-sidebar">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Actions</h3>
+          <button @click="showActions = false" class="rounded p-1 hover:bg-slate-200 dark:hover:bg-slate-700">
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+
+        <button
+          v-if="imageUrl"
+          @click="downloadImage"
+          class="w-full mb-3 flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          <Download class="h-4 w-4" />
+          Download
+        </button>
+
+        <div v-if="props.canEdit" class="mb-3 border-t border-gray-200 pt-3 dark:border-slate-600">
+          <label class="block text-xs font-medium text-slate-500 mb-1 dark:text-slate-400">Date taken</label>
+          <div class="flex gap-1">
+            <input
+              v-model="editDate"
+              type="date"
+              class="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            />
+            <button
+              @click="saveDate"
+              :disabled="isSavingDate"
+              class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              Save
+            </button>
           </div>
         </div>
 
-        <div v-if="exifData" class="border-t border-gray-200 px-4 py-3 dark:border-slate-600">
-          <h4 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Camera Info</h4>
-          <div class="photo-viewer-meta">
-            <div v-if="exifData.Make || exifData.Model">
-              <span class="photo-viewer-meta-label mr-2">Camera</span>
-              <span class="photo-viewer-meta-value">{{ [exifData.Make, exifData.Model].filter(Boolean).join(' ') }}</span>
-            </div>
-            <div v-if="exifData.LensModel">
-              <span class="photo-viewer-meta-label">Lens</span>
-              <span class="photo-viewer-meta-value">{{ exifData.LensModel }}</span>
-            </div>
-            <div v-if="exifData.ISO">
-              <span class="photo-viewer-meta-label">ISO</span>
-              <span class="photo-viewer-meta-value">{{ exifData.ISO }}</span>
-            </div>
-            <div v-if="exifData.FNumber">
-              <span class="photo-viewer-meta-label">Aperture</span>
-              <span class="photo-viewer-meta-value">f/{{ exifData.FNumber }}</span>
-            </div>
-            <div v-if="exifData.ExposureTime">
-              <span class="photo-viewer-meta-label">Shutter</span>
-              <span class="photo-viewer-meta-value">{{ formatShutterSpeed(exifData.ExposureTime) }}</span>
-            </div>
-            <div v-if="exifData.FocalLength">
-              <span class="photo-viewer-meta-label">Focal Length</span>
-              <span class="photo-viewer-meta-value">{{ exifData.FocalLength }}mm</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="photo-viewer-actions">
-          <div class="flex flex-wrap gap-1.5">
+        <div class="border-t border-gray-200 pt-3 dark:border-slate-600">
+          <div class="flex flex-wrap gap-1.5 mb-3">
             <TagChip
               v-for="tag in props.photo.tags || []"
               :key="tag.id"
@@ -356,16 +331,16 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-
-          <button
-            v-if="props.canDelete"
-            @click="showDeleteConfirm = true"
-            class="mt-4 flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600"
-          >
-            <Trash2 class="h-4 w-4" />
-            Delete photo
-          </button>
         </div>
+
+        <button
+          v-if="props.canDelete"
+          @click="showDeleteConfirm = true"
+          class="mt-3 w-full flex items-center justify-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
+        >
+          <Trash2 class="h-4 w-4" />
+          Delete photo
+        </button>
       </div>
     </Transition>
 
