@@ -44,8 +44,8 @@ const availableMonths = computed(() => {
 function selectMonth(month: string | null) {
   if (month) {
     const d = new Date(month)
-    const from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]
-    const to = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0]
+    const from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]!
+    const to = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0]!
     feedStore.setDateRange(from, to)
   } else {
     feedStore.setDateRange(null, null)
