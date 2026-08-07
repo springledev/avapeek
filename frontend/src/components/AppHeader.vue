@@ -46,7 +46,7 @@ async function handleLogout() {
         <div class="flex items-center gap-2">
           <div v-if="isOnChildPage" class="relative">
             <button
-              @click="showChildrenDropdown = !showChildrenDropdown"
+              @click.stop="showChildrenDropdown = !showChildrenDropdown"
               class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <div
@@ -62,6 +62,7 @@ async function handleLogout() {
             <div
               v-if="showChildrenDropdown"
               class="absolute left-0 top-full mt-1 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden z-50"
+              v-click-outside="() => showChildrenDropdown = false"
             >
               <div class="p-2">
                 <button
@@ -122,7 +123,7 @@ async function handleLogout() {
 
           <div class="relative">
             <button
-              @click="showUserMenu = !showUserMenu"
+              @click.stop="showUserMenu = !showUserMenu"
               class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <div class="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
@@ -134,7 +135,7 @@ async function handleLogout() {
             <div
               v-if="showUserMenu"
               class="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden z-50"
-              @click.self
+              v-click-outside="() => showUserMenu = false"
             >
               <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-700">
                 <p class="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{{ authStore.currentUser?.display_name }}</p>

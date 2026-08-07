@@ -56,6 +56,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::post('/photos/upload', [PhotoController::class, 'upload'])->middleware('throttle:upload');
     Route::get('/photos/{photo}', [PhotoController::class, 'show']);
     Route::get('/photos/{photo}/thumbnail', [PhotoController::class, 'thumbnail']);
+    Route::patch('/photos/{photo}', [PhotoController::class, 'update']);
     Route::delete('/photos/{photo}', [PhotoController::class, 'destroy']);
 
     // Recents feed

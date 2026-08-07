@@ -126,6 +126,16 @@ async function removeTag(photoId: number, tagId: number) {
   }
 }
 
+async function updateDate(photoId: number, takenAt: string) {
+  try {
+    await api.patch(`/photos/${photoId}`, { taken_at: takenAt })
+    toast.success('Date updated')
+    recentsStore.fetchRecents()
+  } catch (err: any) {
+    toast.error(err.response?.data?.message || 'Failed to update date')
+  }
+}
+
 onMounted(async () => {
   await recentsStore.fetchRecents()
   await recentsStore.markAsSeen()
@@ -182,12 +192,14 @@ onMounted(async () => {
       :has-prev="hasPrev"
       :has-next="hasNext"
       :can-delete="true"
+      :can-edit="true"
       :child-birth-date="null"
       :all-tags="[]"
       @close="closePhoto"
       @prev="prevPhoto"
       @next="nextPhoto"
       @delete="deletePhoto"
+      @update-date="updateDate"
       @tag-added="addTag"
       @tag-removed="removeTag"
     />

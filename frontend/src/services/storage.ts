@@ -4,7 +4,7 @@ import { unwrapPEK } from '@/crypto/keychain'
 import { useChildStore } from '@/stores/child'
 import { decodeHeicBuffer } from '@/crypto/heic'
 import type { Photo, PhotoChild } from '@/types/photo'
-import { getCachedOriginal, setCachedOriginal } from '@/services/imageCache'
+import { getCachedOriginal, setCachedOriginal, getCachedThumbnail, setCachedThumbnail } from '@/services/imageCache'
 
 export async function fetchEncryptedBlob(presignedUrl: string): Promise<ArrayBuffer> {
   const response = await fetch(presignedUrl)
@@ -73,6 +73,9 @@ export async function fetchThumbnail(
   componentKey: string,
   presignedUrl?: string,
 ): Promise<string> {
+  const cached = getCachedThumbnail(photoId)
+  if (cached) return cached
+
   let url = presignedUrl
   if (!url) {
     const response = await api.get(`/photos/${photoId}/thumbnail`)
@@ -81,6 +84,7 @@ export async function fetchThumbnail(
   const decrypted = await fetchAndDecrypt(url, pek, iv)
   const objectUrl = blobToObjectURL(decrypted, 'image/webp')
   trackObjectUrl(componentKey, objectUrl)
+  setCachedThumbnail(photoId, objectUrl)
   return objectUrl
 }
 

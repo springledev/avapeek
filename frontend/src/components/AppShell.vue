@@ -108,7 +108,7 @@ onMounted(async () => {
 
             <div class="relative">
               <button
-                @click="showUserMenu = !showUserMenu"
+                @click.stop="showUserMenu = !showUserMenu"
                 class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-300 dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-500"
               >
                 {{ authStore.user?.display_name?.charAt(0)?.toUpperCase() || '?' }}
@@ -117,7 +117,7 @@ onMounted(async () => {
               <div
                 v-if="showUserMenu"
                 class="absolute right-0 top-10 z-50 w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
-                @click.outside="showUserMenu = false"
+                v-click-outside="() => showUserMenu = false"
               >
                 <div class="border-b border-gray-100 px-4 py-2 dark:border-slate-600">
                   <p class="text-sm font-medium text-slate-900 dark:text-white">{{ authStore.user?.display_name }}</p>

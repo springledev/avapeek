@@ -6,6 +6,7 @@ import { preloadOriginal } from '@/services/storage'
 import { useFeedStore } from '@/stores/feed'
 import { useChildStore } from '@/stores/child'
 import FilterBar from '@/components/FilterBar.vue'
+import MonthStrip from '@/components/MonthStrip.vue'
 import PhotoCard from '@/components/PhotoCard.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
 import QuotaBar from '@/components/QuotaBar.vue'
@@ -22,6 +23,35 @@ const photoViewerKey = ref(0)
 const hasPrev = computed(() => selectedPhotoIndex.value > 0)
 const hasNext = computed(() => selectedPhotoIndex.value < feedStore.photos.length - 1)
 const canDelete = computed(() => true) // Simplified for now
+const canEdit = computed(() => true) // Simplified; same as delete: uploader or child admin
+
+const selectedMonth = computed(() => {
+  if (!feedStore.filters.dateFrom) return null
+  const d = new Date(feedStore.filters.dateFrom)
+  return d.toLocaleString('default', { month: 'long', year: 'numeric' })
+})
+
+const availableMonths = computed(() => {
+  const months = new Set<string>()
+  for (const photo of feedStore.photos) {
+    if (photo.taken_at) {
+      months.add(new Date(photo.taken_at).toLocaleString('default', { month: 'long', year: 'numeric' }))
+    }
+  }
+  return [...months].sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+})
+
+function selectMonth(month: string | null) {
+  if (month) {
+    const d = new Date(month)
+    const from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]
+    const to = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0]
+    feedStore.setDateRange(from, to)
+  } else {
+    feedStore.setDateRange(null, null)
+  }
+  feedStore.fetchPhotos()
+}
 
 onMounted(async () => {
   if (feedStore.photos.length === 0) {
@@ -101,6 +131,16 @@ async function removeTag(photoId: number, tagId: number) {
   }
 }
 
+async function updateDate(photoId: number, takenAt: string) {
+  try {
+    await api.patch(`/photos/${photoId}`, { taken_at: takenAt })
+    toast.success('Date updated')
+    feedStore.fetchPhotos()
+  } catch (err: any) {
+    toast.error(err.response?.data?.message || 'Failed to update date')
+  }
+}
+
 function onScroll(event: Event) {
   const el = event.target as HTMLElement
   if (!el) return
@@ -124,11 +164,17 @@ function onScroll(event: Event) {
       <FilterBar />
     </div>
 
+    <MonthStrip
+      :months="availableMonths"
+      :selected="selectedMonth"
+      @select-month="selectMonth"
+    />
+
     <div class="mb-6">
       <QuotaBar />
     </div>
 
-    <div v-if="feedStore.isLoading && feedStore.photos.length === 0" class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+    <div v-if="feedStore.isLoading && feedStore.photos.length === 0" class="grid grid-cols-3 gap-3 md:grid-cols-4">
       <div v-for="i in 12" :key="i" class="aspect-square animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
     </div>
 
@@ -141,7 +187,7 @@ function onScroll(event: Event) {
     </div>
 
     <div v-else @scroll.passive="onScroll">
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+      <div class="grid grid-cols-3 gap-3 md:grid-cols-4">
         <PhotoCard
           v-for="photo in feedStore.photos"
           :key="photo.id"
@@ -166,12 +212,14 @@ function onScroll(event: Event) {
       :has-prev="hasPrev"
       :has-next="hasNext"
       :can-delete="canDelete"
+      :can-edit="canEdit"
       :child-birth-date="null"
       :all-tags="[]"
       @close="closePhoto"
       @prev="prevPhoto"
       @next="nextPhoto"
       @delete="deletePhoto"
+      @update-date="updateDate"
       @tag-added="addTag"
       @tag-removed="removeTag"
     />
