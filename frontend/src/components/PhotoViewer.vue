@@ -162,13 +162,16 @@ function toggleAddTag() {
 
 function onTouchStart(event: TouchEvent) {
   if (event.touches.length === 1) {
-    touchStartX.value = event.touches[0].clientX
+    const touch = event.touches[0]
+    if (touch) touchStartX.value = touch.clientX
   }
 }
 
 function onTouchEnd(event: TouchEvent) {
   if (zoom.value !== 1 || touchStartX.value === 0) return
-  const delta = event.changedTouches[0].clientX - touchStartX.value
+  const changedTouch = event.changedTouches[0]
+  if (!changedTouch) return
+  const delta = changedTouch.clientX - touchStartX.value
   touchStartX.value = 0
   if (delta < -50 && props.hasNext) emit('next')
   else if (delta > 50 && props.hasPrev) emit('prev')
