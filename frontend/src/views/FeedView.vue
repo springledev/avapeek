@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { Image } from '@lucide/vue'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { api } from '@/services/api'
 import { preloadOriginal } from '@/services/storage'
 import { useFeedStore } from '@/stores/feed'
 import { useChildStore } from '@/stores/child'
+import { usePrefetch } from '@/composables/usePrefetch'
 import FilterBar from '@/components/FilterBar.vue'
 import MonthStrip from '@/components/MonthStrip.vue'
 import PhotoCard from '@/components/PhotoCard.vue'
@@ -15,6 +16,7 @@ import type { Photo } from '@/types/photo'
 
 const feedStore = useFeedStore()
 const childStore = useChildStore()
+const { prefetchNextPage } = usePrefetch()
 
 const selectedPhoto = ref<Photo | null>(null)
 const selectedPhotoIndex = ref(0)
@@ -56,6 +58,14 @@ function selectMonth(month: string | null) {
 onMounted(async () => {
   if (feedStore.photos.length === 0) {
     await feedStore.fetchPhotos()
+  }
+})
+
+watch(() => feedStore.photos.length, () => {
+  if ('requestIdleCallback' in window) {
+    (window as any).requestIdleCallback(() => prefetchNextPage(), { timeout: 3000 })
+  } else {
+    setTimeout(() => prefetchNextPage(), 1000)
   }
 })
 

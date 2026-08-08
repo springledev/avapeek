@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/services/api'
 import apiService from '@/services/api'
+import { clearDecryptedCache } from '@/lib/cache/decrypted-cache'
 import type {
   User,
   EncryptionKey,
@@ -129,6 +130,31 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function postLoginWarmup(): Promise<void> {
+    try {
+      const { warmCache } = await import('@/lib/cache/decrypted-cache')
+      const { getPEKForPhoto, fetchAndDecrypt } = await import('@/services/storage')
+      const response = await api.get('/photos?page=1')
+      const data = response.data.data
+      if (!Array.isArray(data)) return
+      await warmCache(
+        data.map((photo: any) => ({
+          id: photo.id,
+          fetchAndDecrypt: async () => {
+            const pek = await getPEKForPhoto(photo.children)
+            if (!pek) throw new Error('No PEK')
+            const decrypted = await fetchAndDecrypt(
+              photo.thumbnail_url,
+              pek,
+              photo.iv_thumbnail,
+            )
+            return new Blob([decrypted], { type: 'image/webp' })
+          },
+        })),
+      )
+    } catch { /* best effort */ }
+  }
+
   /**
    * Logs out the current user and clears all sensitive data.
    */
@@ -151,6 +177,7 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.removeItem('user')
       localStorage.removeItem('encryption_keys')
       localStorage.removeItem('kek')
+      clearDecryptedCache()
       isLoading.value = false
     }
   }
@@ -268,5 +295,6 @@ export const useAuthStore = defineStore('auth', () => {
     restoreKEK,
     updateProfile,
     clearError,
+    postLoginWarmup,
   }
 })

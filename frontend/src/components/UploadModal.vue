@@ -4,8 +4,9 @@ import { ref } from 'vue'
 import { api } from '@/services/api'
 import { useChildStore } from '@/stores/child'
 import { generatePEK, wrapPEKWithDEK } from '@/crypto/keychain'
-import { generateThumbnail } from '@/crypto/thumbnails'
+import { generateThumbnail, generateLQIP } from '@/crypto/thumbnails'
 import { encryptBuffer } from '@/crypto/encrypt'
+import { arrayBufferToBase64 } from '@/lib/util'
 import { decodeHeic, isHeic } from '@/crypto/heic'
 import { toast } from 'vue-sonner'
 
@@ -111,6 +112,7 @@ async function startUpload() {
       }
 
       const { thumb: thumbnailBlob } = await generateThumbnail(bitmap)
+      const lqipBlob = await generateLQIP(bitmap)
 
       processingText.value = `Encrypting ${i + 1} of ${files.value.length}...`
       await new Promise(r => setTimeout(r, 0))
@@ -122,6 +124,10 @@ async function startUpload() {
 
       const thumbBytes = await thumbnailBlob.arrayBuffer()
       const { encrypted: encThumbnail, iv: ivThumbnail } = await encryptBuffer(thumbBytes, pek)
+
+      const lqipBytes = await lqipBlob.arrayBuffer()
+      const { encrypted: encLQIP, iv: ivLQIP } = await encryptBuffer(lqipBytes, pek)
+      const lqipEncrypted = arrayBufferToBase64(encLQIP)
 
       const ext = f.name.split('.').pop() || 'jpg'
       const mimeMap: Record<string, string> = {
@@ -148,6 +154,8 @@ async function startUpload() {
       formData.append('iv', ivOriginal)
       formData.append('thumbnail', new Blob([encThumbnail]), 'thumb.webp')
       formData.append('iv_thumbnail', ivThumbnail)
+      formData.append('lqip_encrypted', lqipEncrypted)
+      formData.append('iv_lqip', ivLQIP)
       formData.append('original_mime', originalMime)
       formData.append('size_bytes', String(f.size))
       formData.append('width', String(bitmap.width))

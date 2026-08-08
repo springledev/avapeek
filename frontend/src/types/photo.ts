@@ -20,6 +20,8 @@ export interface Photo {
   thumbnail_path: string
   thumbnail_url?: string
   presigned_url?: string
+  lqip?: string | null
+  iv_lqip?: string | null
   iv_original: string
   iv_thumbnail: string
   original_mime: string
