@@ -7,11 +7,14 @@ use Illuminate\Support\Facades\Storage;
 class StorageService
 {
     /**
-     * Upload an encrypted blob to object storage.
+     * Upload an encrypted blob to object storage with immutable cache headers.
+     * Encrypted blobs are meaningless without the key and never change.
      */
     public function upload(string $path, string $content): void
     {
-        Storage::disk('s3')->put($path, $content);
+        Storage::disk('s3')->put($path, $content, [
+            'CacheControl' => 'public, max-age=31536000, immutable',
+        ]);
     }
 
     /**

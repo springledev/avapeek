@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { X, ChevronLeft, ChevronRight, Minus, Plus, AlertTriangle, Trash2, Download, Pencil, PanelRightClose } from '@lucide/vue'
-import { fetchOriginal, getPEKForPhoto } from '@/services/storage'
-import { getCachedOriginal } from '@/services/imageCache'
+import { fetchOriginal, fetchThumbnail, getPEKForPhoto, cleanupComponent } from '@/services/storage'
 import TagChip from '@/components/TagChip.vue'
 import type { Photo } from '@/types/photo'
 import type { TagItem } from '@/components/TagSidebar.vue'
@@ -27,7 +26,9 @@ const emit = defineEmits<{
   tagRemoved: [photoId: number, tagId: number]
 }>()
 
-const imageUrl = ref<string | null>(null)
+const thumbnailUrl = ref<string | null>(null)
+const originalUrl = ref<string | null>(null)
+const originalLoaded = ref(false)
 const isLoading = ref(true)
 const hasError = ref(false)
 const showActions = ref(false)
@@ -40,6 +41,7 @@ const newTagName = ref('')
 const touchStartX = ref(0)
 const editDate = ref('')
 const isSavingDate = ref(false)
+const componentKey = 'photoviewer'
 
 const existingTagIds = computed(() => new Set(props.photo.tags?.map((t) => t.id) ?? []))
 
@@ -48,9 +50,10 @@ const availableTagsToAdd = computed(() =>
 )
 
 function downloadImage() {
-  if (!imageUrl.value) return
+  const url = originalUrl.value || thumbnailUrl.value
+  if (!url) return
   const a = document.createElement('a')
-  a.href = imageUrl.value
+  a.href = url
   a.download = `photo-${props.photo.id}.${props.photo.original_mime.split('/')[1] || 'jpg'}`
   document.body.appendChild(a)
   a.click()
@@ -67,17 +70,9 @@ async function saveDate() {
   }
 }
 
-function zoomIn() {
-  zoom.value = Math.min(zoom.value + 0.5, 4)
-}
-
-function zoomOut() {
-  zoom.value = Math.max(zoom.value - 0.5, 0.5)
-}
-
-function resetZoom() {
-  zoom.value = 1
-}
+function zoomIn() { zoom.value = Math.min(zoom.value + 0.5, 4) }
+function zoomOut() { zoom.value = Math.max(zoom.value - 0.5, 0.5) }
+function resetZoom() { zoom.value = 1 }
 
 function onWheel(event: WheelEvent) {
   event.preventDefault()
@@ -98,40 +93,36 @@ function onKeydown(event: KeyboardEvent) {
 
 async function loadImage() {
   hasError.value = false
-  const cached = getCachedOriginal(props.photo.id)
-  if (cached) {
-    imageUrl.value = cached
-    isLoading.value = false
-    return
-  }
-  isLoading.value = true
+  originalLoaded.value = false
+
   try {
     const pek = await getPEKForPhoto(props.photo.children)
     if (!pek) {
       hasError.value = true
+      isLoading.value = false
       return
     }
-    imageUrl.value = await fetchOriginal(
-      props.photo.id,
-      pek,
-      props.photo.iv_original,
-      props.photo.original_mime,
+
+    thumbnailUrl.value = await fetchThumbnail(
+      props.photo.id, pek, props.photo.iv_thumbnail,
+      componentKey, props.photo.thumbnail_url,
+    )
+    isLoading.value = false
+
+    originalUrl.value = await fetchOriginal(
+      props.photo.id, pek, props.photo.iv_original,
+      props.photo.original_mime, props.photo.size_bytes,
     )
   } catch {
     hasError.value = true
-  } finally {
     isLoading.value = false
   }
 }
 
 async function handleDelete() {
   isDeleting.value = true
-  try {
-    emit('delete', props.photo.id)
-  } finally {
-    isDeleting.value = false
-    showDeleteConfirm.value = false
-  }
+  try { emit('delete', props.photo.id) }
+  finally { isDeleting.value = false; showDeleteConfirm.value = false }
 }
 
 function handleAddTag(tagName: string) {
@@ -141,19 +132,12 @@ function handleAddTag(tagName: string) {
   newTagName.value = ''
 }
 
-function handleShowNewTagInput() {
-  showNewTagInput.value = true
-}
-
+function handleShowNewTagInput() { showNewTagInput.value = true }
 function submitNewTag() {
   const name = newTagName.value.trim()
   if (name) handleAddTag(name)
 }
-
-function handleRemoveTag(tagId: number) {
-  emit('tagRemoved', props.photo.id, tagId)
-}
-
+function handleRemoveTag(tagId: number) { emit('tagRemoved', props.photo.id, tagId) }
 function toggleAddTag() {
   showAddTagDropdown.value = !showAddTagDropdown.value
   showNewTagInput.value = false
@@ -161,28 +145,22 @@ function toggleAddTag() {
 }
 
 function onTouchStart(event: TouchEvent) {
-  if (event.touches.length === 1) {
-    const touch = event.touches[0]
-    if (touch) touchStartX.value = touch.clientX
-  }
+  if (event.touches.length === 1) touchStartX.value = event.touches[0].clientX
 }
-
 function onTouchEnd(event: TouchEvent) {
   if (zoom.value !== 1 || touchStartX.value === 0) return
-  const changedTouch = event.changedTouches[0]
-  if (!changedTouch) return
-  const delta = changedTouch.clientX - touchStartX.value
+  const delta = event.changedTouches[0].clientX - touchStartX.value
   touchStartX.value = 0
   if (delta < -50 && props.hasNext) emit('next')
   else if (delta > 50 && props.hasPrev) emit('prev')
 }
 
 watch(() => props.photo.id, () => {
-  imageUrl.value = null
+  thumbnailUrl.value = null
+  originalUrl.value = null
   zoom.value = 1
   showActions.value = false
   showDeleteConfirm.value = false
-  showAddTagDropdown.value = false
   editDate.value = props.photo.taken_at?.split('T')[0] || ''
   loadImage()
 })
@@ -195,6 +173,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  cleanupComponent(componentKey)
 })
 </script>
 
@@ -221,14 +200,24 @@ onBeforeUnmount(() => {
         <button class="text-sm font-medium text-blue-400 hover:text-blue-300" @click="loadImage">Try again</button>
       </div>
 
-      <img
-        v-else-if="imageUrl"
-        :src="imageUrl"
-        class="photo-viewer-image"
-        :style="{ transform: `scale(${zoom})` }"
-        alt=""
-        @dblclick="resetZoom"
-      />
+      <template v-else>
+        <img
+          v-if="thumbnailUrl"
+          :src="thumbnailUrl"
+          class="photo-viewer-blur-up"
+          :class="{ faded: originalLoaded }"
+          alt=""
+        />
+        <img
+          v-if="originalUrl"
+          :src="originalUrl"
+          class="photo-viewer-image"
+          :style="{ transform: `scale(${zoom})` }"
+          alt=""
+          @load="originalLoaded = true"
+          @dblclick="resetZoom"
+        />
+      </template>
     </div>
 
     <div v-if="hasPrev" class="photo-viewer-nav left-4" @click="emit('prev')">
@@ -259,7 +248,7 @@ onBeforeUnmount(() => {
         </div>
 
         <button
-          v-if="imageUrl"
+          v-if="thumbnailUrl || originalUrl"
           @click="downloadImage"
           class="w-full mb-3 flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
         >
@@ -367,3 +356,28 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.photo-viewer-blur-up {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: opacity 0.3s ease;
+}
+.photo-viewer-blur-up.faded {
+  opacity: 0;
+}
+.photo-viewer-image {
+  position: absolute;
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.2s ease;
+}
+.photo-viewer-image[src] {
+  opacity: 1;
+}
+</style>

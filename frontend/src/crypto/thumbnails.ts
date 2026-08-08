@@ -1,5 +1,7 @@
-const THUMBNAIL_MAX_DIM = 1200
-const THUMBNAIL_QUALITY = 0.85
+const THUMBNAIL_MAX_DIM = 600
+const THUMBNAIL_QUALITY = 0.78
+const LQIP_MAX_DIM = 20
+const LQIP_QUALITY = 0.20
 
 export function fitInside(
   srcWidth: number,
@@ -83,4 +85,9 @@ async function stepDownResize(
 export async function generateThumbnail(bitmap: ImageBitmap): Promise<{ thumb: Blob }> {
   const thumb = await stepDownResize(bitmap, THUMBNAIL_MAX_DIM, THUMBNAIL_QUALITY)
   return { thumb }
+}
+
+export async function generateLQIP(bitmap: ImageBitmap): Promise<Blob> {
+  const dims = fitInside(bitmap.width, bitmap.height, LQIP_MAX_DIM)
+  return await bitmapToWebPBlob(bitmap, dims.width, dims.height, LQIP_QUALITY)
 }

@@ -21,6 +21,8 @@ class Photo extends Model
         'uploaded_by',
         'original_path',
         'thumbnail_path',
+        'lqip_encrypted',
+        'iv_lqip',
         'iv_original',
         'iv_thumbnail',
         'original_mime',
