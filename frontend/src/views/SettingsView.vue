@@ -7,6 +7,10 @@ import { toast } from 'vue-sonner'
 
 const route = useRoute()
 const hasSubRoute = computed(() => route.matched.length > 1)
+const backTarget = computed(() => {
+  if (route.name === 'settings-child') return { to: '/settings/children', label: 'Children' }
+  return { to: '/settings', label: 'Settings' }
+})
 
 const pendingInvites = ref<Array<{ id: number; child_name: string; role: string; relationship: string | null; token: string; expires_at: string; created_at: string }>>([])
 
@@ -33,9 +37,9 @@ onMounted(fetchPendingInvites)
 <template>
   <div class="mx-auto max-w-2xl">
     <div v-if="hasSubRoute" class="mb-6">
-      <router-link to="/settings" class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+      <router-link :to="backTarget.to" class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
         <ChevronLeft class="h-4 w-4" />
-        Settings
+        {{ backTarget.label }}
       </router-link>
     </div>
 

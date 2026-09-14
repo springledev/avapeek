@@ -74,6 +74,9 @@ class InviteController extends Controller
         if ($invite->accepted_at) {
             return response()->json([
                 'message' => 'This invite has already been accepted.',
+                'already_accepted' => [
+                    'child_slug' => $invite->child->slug,
+                ],
             ], 410);
         }
 

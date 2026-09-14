@@ -170,18 +170,19 @@ describe('GET /api/invites/{token}', function () {
     it('returns invite preview details without auth', function () {
         $inviter = User::factory()->create(['display_name' => 'Jane Doe']);
         $child = Child::factory()->create(['name' => 'Emma']);
+        $token = str_repeat('a', 64);
         $invite = Invite::factory()->create([
             'child_id' => $child->id,
             'invited_by' => $inviter->id,
             'role' => 'admin',
             'relationship' => 'grandparent',
-            'token' => 'abc123token',
+            'token' => $token,
         ]);
 
-        $response = $this->getJson('/api/invites/abc123token');
+        $response = $this->getJson("/api/invites/{$token}");
 
         $response->assertStatus(200)
-            ->assertJsonPath('data.token', 'abc123token')
+            ->assertJsonPath('data.token', $token)
             ->assertJsonPath('data.child_name', 'Emma')
             ->assertJsonPath('data.inviter_name', 'Jane Doe')
             ->assertJsonPath('data.role', 'admin')
@@ -189,7 +190,7 @@ describe('GET /api/invites/{token}', function () {
     });
 
     it('returns 404 for an invalid token', function () {
-        $response = $this->getJson('/api/invites/nonexistent');
+        $response = $this->getJson('/api/invites/'.str_repeat('z', 64));
 
         $response->assertStatus(404);
     });
@@ -199,7 +200,8 @@ describe('GET /api/invites/{token}', function () {
 
         $response = $this->getJson("/api/invites/{$invite->token}");
 
-        $response->assertStatus(410);
+        $response->assertStatus(410)
+            ->assertJsonPath('already_accepted.child_slug', $invite->child->slug);
     });
 
     it('returns 410 for an expired invite', function () {
