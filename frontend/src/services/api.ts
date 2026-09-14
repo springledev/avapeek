@@ -39,8 +39,11 @@ class ApiService {
           localStorage.removeItem('user')
           localStorage.removeItem('encryption_keys')
           localStorage.removeItem('kek')
-          if (!window.location.pathname.startsWith('/login')) {
-            window.location.href = '/login'
+          const publicPaths = ['/login', '/register', '/invite/']
+          const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p))
+          if (!isPublicPage) {
+            const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+            window.location.href = `/login?redirect=${redirect}`
           }
           return Promise.reject(error)
         }

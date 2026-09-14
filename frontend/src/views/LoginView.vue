@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
@@ -10,6 +10,19 @@ const authStore = useAuthStore()
 const email = ref('')
 const password = ref('')
 const formErrors = ref<Record<string, string>>({})
+
+const registerLink = computed(() => {
+  const query: Record<string, string> = {}
+  const inviteToken = localStorage.getItem('pending_invite_token')
+  if (inviteToken) {
+    query.invite_token = inviteToken
+  }
+  const redirect = route.query.redirect as string
+  if (redirect) {
+    query.redirect = redirect
+  }
+  return { path: '/register', query }
+})
 
 async function handleSubmit() {
   // Clear previous errors
@@ -128,7 +141,7 @@ async function handleSubmit() {
 
       <!-- Register Link -->
       <div class="text-center">
-        <router-link to="/register" class="link-primary">Create an account</router-link>
+        <router-link :to="registerLink" class="link-primary">Create an account</router-link>
       </div>
     </div>
   </div>

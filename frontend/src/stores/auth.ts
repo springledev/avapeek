@@ -84,6 +84,8 @@ export const useAuthStore = defineStore('auth', () => {
         encryptionKeys.value = []
         localStorage.setItem('encryption_keys', JSON.stringify([]))
       }
+
+      localStorage.removeItem('pending_invite_token')
     } catch (err: any) {
       console.error('Registration error:', err)
       error.value = err.response?.data?.message || 'Registration failed. Please try again.'

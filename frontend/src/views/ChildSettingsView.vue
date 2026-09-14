@@ -1,14 +1,12 @@
 <script setup lang="ts">
-import { ChevronLeft } from '@lucide/vue'
 import { ref, onMounted, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useChildStore } from '@/stores/child'
 import { generateDEK, wrapDEK, exportKEK, importKEK } from '@/crypto/keychain'
 import { api } from '@/services/api'
 import { toast } from 'vue-sonner'
 import type { Child, ChildMember, InviteResponse } from '@/types/child'
 
-const router = useRouter()
 const route = useRoute()
 const childStore = useChildStore()
 
@@ -95,9 +93,6 @@ function copyInviteLink() {
 <template>
   <div v-if="child" class="mt-8">
     <div class="mb-6 flex items-center gap-3">
-      <button @click="router.push('/settings/children')" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-        <ChevronLeft class="h-5 w-5" />
-      </button>
       <div
         class="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white"
         :style="{ backgroundColor: child.avatar_color || '#6366f1' }"

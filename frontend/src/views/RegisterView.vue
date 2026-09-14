@@ -7,7 +7,9 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
-const inviteToken = (route.query.invite_token as string) || undefined
+const inviteToken = computed(() =>
+  (route.query.invite_token as string) || localStorage.getItem('pending_invite_token') || undefined,
+)
 const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
@@ -69,7 +71,7 @@ async function handleSubmit() {
   }
 
   try {
-    await authStore.register(email.value, password.value, displayName.value, inviteToken)
+    await authStore.register(email.value, password.value, displayName.value, inviteToken.value)
     const redirect = (route.query.redirect as string) || '/'
     router.push(redirect)
   } catch (error: any) {

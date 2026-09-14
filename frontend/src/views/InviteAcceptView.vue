@@ -22,7 +22,14 @@ async function loadPreview() {
   try {
     const response = await api.get<{ data: InvitePreview }>(`/invites/${token}`)
     invite.value = response.data.data
+    localStorage.setItem('pending_invite_token', token)
   } catch (err: any) {
+    const alreadyAccepted = err.response?.data?.already_accepted
+    if (alreadyAccepted?.child_slug) {
+      router.push(`/child/${alreadyAccepted.child_slug}`)
+      return
+    }
+    localStorage.removeItem('pending_invite_token')
     error.value = err.response?.data?.message || 'This invite is invalid or has expired.'
   } finally {
     isLoading.value = false
@@ -41,6 +48,7 @@ async function acceptInvite() {
   try {
     const response = await api.post<{ data: { child_id: number; child_slug: string; child_name: string } }>(`/invites/${token}/accept`)
 
+    localStorage.removeItem('pending_invite_token')
     router.push(`/child/${response.data.data.child_slug}`)
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Failed to accept invite.'
