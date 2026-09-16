@@ -49,7 +49,7 @@ async function acceptInvite() {
     const response = await api.post<{ data: { child_id: number; child_slug: string; child_name: string } }>(`/invites/${token}/accept`)
 
     localStorage.removeItem('pending_invite_token')
-    router.push(`/child/${response.data.data.child_slug}`)
+    router.push('/welcome')
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Failed to accept invite.'
     isAccepting.value = false

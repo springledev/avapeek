@@ -1,11 +1,26 @@
-@import "tailwindcss";
+@import './tokens.css';
+@import 'tailwindcss';
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* Baseline typography & surface (Warm Memory Box foundation) */
+body {
+  font-family: var(--font-family);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
 
 html {
   -webkit-tap-highlight-color: transparent;
 }
 
-button, a, [role="button"], input, select, textarea {
+button,
+a,
+[role='button'],
+input,
+select,
+textarea {
   touch-action: manipulation;
 }
 

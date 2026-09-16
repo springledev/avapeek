@@ -1,4 +1,4 @@
-import { getThumbnail, getOriginal } from '@/lib/cache/decrypted-cache'
+import { getThumbnail, getOriginal, removeUrlFromCache } from '@/lib/cache/decrypted-cache'
 import { api } from '@/services/api'
 import { decryptBlob, blobToObjectURL, revokeObjectURL } from '@/crypto/encrypt'
 import { unwrapPEK } from '@/crypto/keychain'
@@ -57,6 +57,7 @@ export function cleanupComponent(key: string) {
   const urls = trackedUrls.get(key)
   if (urls) {
     for (const url of urls) {
+      removeUrlFromCache(url)
       revokeObjectURL(url)
     }
     trackedUrls.delete(key)

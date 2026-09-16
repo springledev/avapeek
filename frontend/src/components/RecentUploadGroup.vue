@@ -58,58 +58,186 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-600 dark:bg-slate-800">
-    <div class="mb-3 flex items-center gap-2">
+  <div class="group">
+    <div class="group__header">
       <div
-        class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white"
-        :style="{ backgroundColor: childColor || '#6366f1' }"
+        class="group__avatar"
+        :style="{ backgroundColor: childColor || 'var(--color-accent)' }"
       >
         {{ childName.charAt(0).toUpperCase() }}
       </div>
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-slate-900 dark:text-white">
+      <div class="group__info">
+        <p class="group__title">
           {{ uploaderName }} uploaded {{ count }} {{ count === 1 ? 'photo' : 'photos' }}
         </p>
-        <p class="text-xs text-slate-500 dark:text-slate-400">
+        <p class="group__meta">
           of {{ childName }} &middot; {{ relativeTime }}
         </p>
       </div>
     </div>
 
-    <div v-if="tags.length > 0" class="mb-2 flex flex-wrap gap-1">
+    <div v-if="tags.length > 0" class="group__tags">
       <span
         v-for="tag in tags"
         :key="tag.id"
-        class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+        class="group__tag"
       >
         {{ tag.name }}
       </span>
     </div>
 
-    <div class="flex gap-2 overflow-x-auto pb-1">
+    <div class="group__thumbs">
       <button
         v-for="photo in displayThumbnails"
         :key="photo.id"
         @click="emit('select', photo)"
-        class="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        class="group__thumb u-focus-ring"
       >
         <img
           v-if="thumbnails.get(photo.id)"
           :src="thumbnails.get(photo.id)"
-          class="h-full w-full object-cover"
+          class="group__img"
           alt=""
           loading="lazy"
         />
-        <div v-else class="flex h-full w-full items-center justify-center">
-          <div class="h-5 w-5 animate-pulse rounded bg-slate-200 dark:bg-slate-600" />
+        <div v-else class="group__placeholder">
+          <div class="group__skeleton" />
         </div>
       </button>
       <div
         v-if="photos.length > 8"
-        class="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-400"
+        class="group__more"
       >
         +{{ photos.length - 8 }}
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.group {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+}
+
+.group__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.group__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-meta);
+  font-weight: 700;
+  color: var(--color-on-accent);
+  flex-shrink: 0;
+}
+
+.group__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.group__title {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.group__meta {
+  font-size: var(--text-meta);
+  color: var(--color-ink-soft);
+  margin: 0;
+}
+
+.group__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.group__tag {
+  background: var(--color-surface-2);
+  color: var(--color-ink-soft);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-meta);
+}
+
+.group__thumbs {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+}
+
+.group__thumb {
+  width: 80px;
+  height: 80px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--radius-photo);
+  background: var(--color-surface-2);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.group__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.group__placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.group__skeleton {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-photo);
+  background: var(--color-border);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.group__more {
+  width: 80px;
+  height: 80px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-photo);
+  background: var(--color-surface-2);
+  color: var(--color-ink-soft);
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group__skeleton {
+    animation: none;
+  }
+}
+</style>

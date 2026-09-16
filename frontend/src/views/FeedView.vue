@@ -1,21 +1,17 @@
 <script setup lang="ts">
-import { Image } from '@lucide/vue'
 import { ref, computed, onMounted, watch } from 'vue'
-import { api } from '@/services/api'
 import { preloadOriginal } from '@/services/storage'
 import { useFeedStore } from '@/stores/feed'
-import { useChildStore } from '@/stores/child'
 import { usePrefetch } from '@/composables/usePrefetch'
-import FilterBar from '@/components/FilterBar.vue'
-import MonthStrip from '@/components/MonthStrip.vue'
-import PhotoCard from '@/components/PhotoCard.vue'
+import { Image } from '@lucide/vue'
+import FeedToolbar from '@/components/feed/FeedToolbar.vue'
+import PhotoTile from '@/components/feed/PhotoTile.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
-import QuotaBar from '@/components/QuotaBar.vue'
-import { toast } from 'vue-sonner'
+import UiEmptyState from '@/components/ui/UiEmptyState.vue'
+import { MSG } from '@/lib/messages'
 import type { Photo } from '@/types/photo'
 
 const feedStore = useFeedStore()
-const childStore = useChildStore()
 const { prefetchNextPage } = usePrefetch()
 
 const selectedPhoto = ref<Photo | null>(null)
@@ -24,36 +20,38 @@ const photoViewerKey = ref(0)
 
 const hasPrev = computed(() => selectedPhotoIndex.value > 0)
 const hasNext = computed(() => selectedPhotoIndex.value < feedStore.photos.length - 1)
-const canDelete = computed(() => true) // Simplified for now
-const canEdit = computed(() => true) // Simplified; same as delete: uploader or child admin
+const canDelete = computed(() => true)
+const canEdit = computed(() => true)
 
-const selectedMonth = computed(() => {
-  if (!feedStore.filters.dateFrom) return null
-  const d = new Date(feedStore.filters.dateFrom)
-  return d.toLocaleString('default', { month: 'long', year: 'numeric' })
-})
-
-const availableMonths = computed(() => {
-  const months = new Set<string>()
-  for (const photo of feedStore.photos) {
-    if (photo.taken_at) {
-      months.add(new Date(photo.taken_at).toLocaleString('default', { month: 'long', year: 'numeric' }))
-    }
-  }
-  return [...months].sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
-})
-
-function selectMonth(month: string | null) {
-  if (month) {
-    const d = new Date(month)
-    const from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]!
-    const to = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0]!
-    feedStore.setDateRange(from, to)
-  } else {
-    feedStore.setDateRange(null, null)
-  }
-  feedStore.fetchPhotos()
+interface MonthGroup {
+  key: string
+  label: string
+  photos: Photo[]
 }
+
+const groupedPhotos = computed<MonthGroup[]>(() => {
+  const groups = new Map<string, Photo[]>()
+  for (const photo of feedStore.photos) {
+    const date = photo.taken_at || photo.created_at
+    const d = new Date(date)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(photo)
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([key, photos]) => {
+      const d = new Date(photos[0]!.taken_at || photos[0]!.created_at)
+      return { key, label: d.toLocaleString('default', { month: 'long', year: 'numeric' }), photos }
+    })
+})
+
+const hasActiveFilters = computed(
+  () =>
+    feedStore.filters.childIds.length > 0 ||
+    feedStore.filters.tags.length > 0 ||
+    feedStore.filters.dateFrom !== null,
+)
 
 onMounted(async () => {
   if (feedStore.photos.length === 0) {
@@ -61,13 +59,20 @@ onMounted(async () => {
   }
 })
 
-watch(() => feedStore.photos.length, () => {
-  if ('requestIdleCallback' in window) {
-    (window as any).requestIdleCallback(() => prefetchNextPage(), { timeout: 3000 })
-  } else {
-    setTimeout(() => prefetchNextPage(), 1000)
-  }
-})
+watch(
+  () => feedStore.photos.length,
+  () => {
+    if ('requestIdleCallback' in window) {
+      ;(
+        window as Window & {
+          requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number
+        }
+      ).requestIdleCallback(() => prefetchNextPage(), { timeout: 3000 })
+    } else {
+      setTimeout(() => prefetchNextPage(), 1000)
+    }
+  },
+)
 
 function schedulePreload() {
   requestAnimationFrame(async () => {
@@ -83,7 +88,7 @@ function schedulePreload() {
 }
 
 function openPhoto(photo: Photo) {
-  const idx = feedStore.photos.findIndex(p => p.id === photo.id)
+  const idx = feedStore.photos.findIndex((p) => p.id === photo.id)
   selectedPhotoIndex.value = idx >= 0 ? idx : 0
   selectedPhoto.value = photo
   photoViewerKey.value++
@@ -113,105 +118,110 @@ function nextPhoto() {
 }
 
 async function deletePhoto(photoId: number) {
+  const { api } = await import('@/services/api')
+  const { toast } = await import('vue-sonner')
   try {
     await api.delete(`/photos/${photoId}`)
     toast.success('Photo deleted')
     selectedPhoto.value = null
     feedStore.fetchPhotos()
-  } catch (err: any) {
-    toast.error(err.response?.data?.message || 'Failed to delete photo')
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error && 'response' in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined
+    toast.error(message || 'Failed to delete photo')
   }
 }
 
 async function addTag(photoId: number, tagName: string) {
+  void tagName
+  const { api } = await import('@/services/api')
+  const { toast } = await import('vue-sonner')
   try {
-    const res = await api.post(`/photos/${photoId}/tags`, { tag_ids: [] })
+    await api.post(`/photos/${photoId}/tags`, { tag_ids: [] })
     toast.success('Tag added')
-  } catch (err: any) {
-    toast.error(err.response?.data?.message || 'Failed to add tag')
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error && 'response' in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined
+    toast.error(message || 'Failed to add tag')
   }
 }
 
 async function removeTag(photoId: number, tagId: number) {
+  const { api } = await import('@/services/api')
+  const { toast } = await import('vue-sonner')
   try {
     await api.delete(`/photos/${photoId}/tags/${tagId}`)
     toast.success('Tag removed')
-  } catch (err: any) {
-    toast.error(err.response?.data?.message || 'Failed to remove tag')
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error && 'response' in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined
+    toast.error(message || 'Failed to remove tag')
   }
 }
 
 async function updateDate(photoId: number, takenAt: string) {
+  const { api } = await import('@/services/api')
+  const { toast } = await import('vue-sonner')
   try {
     await api.patch(`/photos/${photoId}`, { taken_at: takenAt })
     toast.success('Date updated')
     feedStore.fetchPhotos()
-  } catch (err: any) {
-    toast.error(err.response?.data?.message || 'Failed to update date')
-  }
-}
-
-function onScroll(event: Event) {
-  const el = event.target as HTMLElement
-  if (!el) return
-  const { scrollTop, scrollHeight, clientHeight } = el.closest('.feed-scroll') || document.documentElement
-  if (scrollHeight - scrollTop - clientHeight < 400) {
-    feedStore.fetchMore()
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error && 'response' in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined
+    toast.error(message || 'Failed to update date')
   }
 }
 </script>
 
 <template>
-  <div class="feed-scroll">
-    <div class="mb-6">
-      <h1 class="text-2xl font-bold text-slate-900 dark:text-white">Photos</h1>
-      <p v-if="childStore.children.length === 0" class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Create a child profile to start uploading photos.
-      </p>
+  <div>
+    <h1 class="feed-title">Photos</h1>
+
+    <FeedToolbar />
+
+    <div v-if="feedStore.isLoading && feedStore.photos.length === 0" class="u-grid">
+      <div v-for="i in 8" :key="i" class="tile-skeleton" />
     </div>
 
-    <div v-if="childStore.children.length > 0" class="mb-6">
-      <FilterBar />
-    </div>
+    <UiEmptyState
+      v-else-if="feedStore.photos.length === 0 && !hasActiveFilters"
+      :title="MSG.feedEmpty"
+    >
+      <template #icon>
+        <Image :size="48" />
+      </template>
+    </UiEmptyState>
 
-    <MonthStrip
-      :months="availableMonths"
-      :selected="selectedMonth"
-      @select-month="selectMonth"
+    <UiEmptyState
+      v-else-if="feedStore.photos.length === 0 && hasActiveFilters"
+      title="No matches"
+      message="Try adjusting your filters."
     />
 
-    <div class="mb-6">
-      <QuotaBar />
-    </div>
-
-    <div v-if="feedStore.isLoading && feedStore.photos.length === 0" class="grid grid-cols-3 gap-3 md:grid-cols-4">
-      <div v-for="i in 12" :key="i" class="aspect-square animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
-    </div>
-
-    <div v-else-if="feedStore.photos.length === 0" class="py-16 text-center">
-      <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
-        <Image class="h-8 w-8 text-slate-400" />
-      </div>
-      <p class="text-lg font-medium text-slate-900 dark:text-white">No photos yet</p>
-      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Upload photos to start building your timeline.</p>
-    </div>
-
-    <div v-else @scroll.passive="onScroll">
-      <div class="grid grid-cols-3 gap-3 md:grid-cols-4">
-        <PhotoCard
-          v-for="photo in feedStore.photos"
-          :key="photo.id"
-          :photo="photo"
-          @click="openPhoto(photo)"
-        />
+    <div v-else>
+      <div v-for="group in groupedPhotos" :key="group.key" class="feed-group">
+        <h2 class="feed-group__heading">{{ group.label }}</h2>
+        <div class="u-grid">
+          <PhotoTile
+            v-for="photo in group.photos"
+            :key="photo.id"
+            :photo="photo"
+            @click="openPhoto(photo)"
+          />
+        </div>
       </div>
 
-      <div v-if="feedStore.isLoading" class="mt-4 flex justify-center">
-        <div class="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-      </div>
-
-      <div v-if="!feedStore.hasMore && feedStore.photos.length > 0" class="mt-8 mb-8 text-center text-sm text-slate-400 dark:text-slate-500">
-        All photos loaded
+      <div v-if="feedStore.isLoading" class="feed-loading">
+        <div class="feed-spinner" />
       </div>
     </div>
 
@@ -235,3 +245,78 @@ function onScroll(event: Event) {
     />
   </div>
 </template>
+
+<style scoped>
+.feed-title {
+  font-size: var(--text-title);
+  font-weight: 800;
+  line-height: var(--lh-title);
+  color: var(--color-ink);
+  margin: 0 0 var(--space-4);
+}
+
+.u-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--feed-cols), 1fr);
+  gap: var(--feed-gap);
+}
+
+.feed-group {
+  margin-bottom: var(--space-6);
+}
+
+.feed-group__heading {
+  font-size: var(--text-body);
+  font-weight: 700;
+  color: var(--color-ink-soft);
+  margin: 0 0 var(--space-3);
+}
+
+.tile-skeleton {
+  aspect-ratio: 1;
+  border-radius: var(--radius-photo);
+  background: var(--color-surface-2);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.feed-loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-6) 0;
+}
+
+.feed-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile-skeleton {
+    animation: none;
+  }
+  .feed-spinner {
+    animation: none;
+    border-top-color: var(--color-accent);
+  }
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>
