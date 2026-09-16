@@ -29,6 +29,18 @@ const router = createRouter({
       meta: { requiresAuth: true, layout: 'app-shell' },
     },
     {
+      path: '/welcome',
+      name: 'welcome',
+      component: () => import('@/views/OnboardingView.vue'),
+      meta: { requiresAuth: true, layout: 'app-shell' },
+    },
+    {
+      path: '/upload',
+      name: 'upload',
+      component: () => import('@/views/UploadView.vue'),
+      meta: { requiresAuth: true, layout: 'app-shell' },
+    },
+    {
       path: '/recents',
       name: 'recents',
       component: () => import('@/views/RecentsView.vue'),

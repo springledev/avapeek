@@ -58,7 +58,10 @@ async function scanOriginalsStore(db: IDBDatabase): Promise<void> {
     }
   }
   await new Promise<void>((resolve) => {
-    tx.oncomplete = () => { currentOriginalBytes = tally; resolve() }
+    tx.oncomplete = () => {
+      currentOriginalBytes = tally
+      resolve()
+    }
     tx.onerror = () => resolve()
   })
 }
@@ -127,7 +130,10 @@ export async function getOriginal(
   fetchAndDecrypt: () => Promise<Blob>,
 ): Promise<string> {
   const memHit = memoryCache.get(photoId)
-  if (memHit) { touchOriginal(photoId); return memHit }
+  if (memHit) {
+    touchOriginal(photoId)
+    return memHit
+  }
 
   const db = await openDB()
   const idbBlob: Blob | undefined = await new Promise((resolve) => {
@@ -166,7 +172,11 @@ export async function warmCache(
   const workers = Array.from({ length: CONCURRENCY }, async () => {
     while (queue.length > 0) {
       const photo = queue.shift()!
-      try { await getThumbnail(photo.id, photo.fetchAndDecrypt) } catch { /* best effort */ }
+      try {
+        await getThumbnail(photo.id, photo.fetchAndDecrypt)
+      } catch {
+        /* best effort */
+      }
     }
   })
   await Promise.all(workers)
@@ -180,4 +190,13 @@ export function clearDecryptedCache(): void {
   dbPromise = null
   const req = indexedDB.deleteDatabase(DB_NAME)
   req.onerror = () => console.warn('Failed to delete decrypted cache database')
+}
+
+export function removeUrlFromCache(url: string): void {
+  for (const [key, cachedUrl] of memoryCache.entries()) {
+    if (cachedUrl === url) {
+      memoryCache.delete(key)
+      break
+    }
+  }
 }

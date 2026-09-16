@@ -52,6 +52,7 @@ export interface ChildMember {
   role: string
   relationship: string | null
   joined_at: string
+  last_active?: string | null
 }
 
 export interface ChildDetail extends Child {

@@ -1,0 +1,276 @@
+/**
+ * Avapeek design tokens — "The Warm Memory Box"
+ *
+ * Rules of consumption:
+ * - Components must reference tokens, never hex values.
+ * - --color-accent is for surfaces, fills, borders and icons only.
+ *   For accent-colored *text* always use --color-accent-ink (AA verified).
+ * - --color-on-accent is the approved ink color on --color-accent fills.
+ * - Dark mode flips tokens via the `html.dark` class (useDarkMode).
+ *
+ * WCAG (computed against their mode companion colors):
+ *   light — ink/bg 14.63 · ink-soft/bg 5.84 · accent-ink/bg 5.19 ·
+ *           on-accent/accent 5.44 · danger/bg 5.00 · on-danger/danger 5.38 ·
+ *           kid pairs (ink on pastel) 5.23–8.01
+ *   dark  — ink/bg 16.59 · ink-soft/bg 9.46 · accent-ink/bg 11.59 ·
+ *           on-accent/accent 9.19 · danger/bg 6.37 · on-danger/danger 6.37
+ * All text pairs ≥ 4.5:1; fills/icons hit ≥ 3:1 or better by pairing with
+ * the adjacent token shown above.
+ */
+
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('/fonts/nunito-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF;
+}
+
+:root {
+  /* ------- palette (light) ------- */
+  --color-bg: #faf6f1;
+  --color-surface: #ffffff;
+  --color-surface-2: #f3ede3;
+  --color-ink: #2e2016;
+  --color-ink-soft: #6e5d4f;
+  --color-border: #e7dccf;
+
+  --color-accent: #e87a2e;
+  --color-accent-ink: #a84e12;
+  --color-on-accent: #2e1a0a;
+  --color-accent-soft: #fce7d2;
+
+  --color-danger: #c23832;
+  --color-on-danger: #ffffff;
+  --color-success: #2e7d46;
+  --color-info: #2465b3;
+
+  --color-focus: var(--color-accent-ink);
+  --color-overlay: rgb(46 32 22 / 0.55);
+  --color-viewer: #121010;
+
+  /* ------- child chip/avatar pairs (same in both modes; kid inks sit on pastels) ------- */
+  --kid-peach-bg: #fbe3d3;
+  --kid-peach-ink: #8a4110;
+  --kid-butter-bg: #f8edcb;
+  --kid-butter-ink: #75600b;
+  --kid-mint-bg: #dff0e2;
+  --kid-mint-ink: #2e5a34;
+  --kid-sky-bg: #dce9f5;
+  --kid-sky-ink: #1e4e79;
+  --kid-lilac-bg: #e8e1f4;
+  --kid-lilac-ink: #4a3672;
+  --kid-rose-bg: #f7dce0;
+  --kid-rose-ink: #7e2f3e;
+
+  /* ------- typography ------- */
+  --font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --text-display: 1.75rem; /* 28 — empty states / onboarding */
+  --text-title: 1.25rem; /* 20 — screen headers */
+  --text-body: 1rem; /* 16 — body copy, buttons, chips */
+  --text-meta: 0.8125rem; /* 13 — photo timestamps only */
+  --lh-tight: 1.2;
+  --lh-title: 1.3;
+  --lh-body: 1.5;
+
+  /* ------- spacing (4px grid) ------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --layout-max: 72rem;
+
+  /* ------- touch & structure ------- */
+  --target-min: 48px;
+  --tabbar-h: 56px;
+  --safe-area-b: env(safe-area-inset-bottom, 0px);
+  --safe-area-t: env(safe-area-inset-top, 0px);
+
+  /* ------- feed density (amendment 1) : default 2-col, html[data-feed-density="3"] flips to 3 ------- */
+  --feed-cols: 2;
+  --feed-gap: var(--space-2);
+
+  /* ------- radius ------- */
+  --radius-photo: 8px;
+  --radius-card: 12px;
+  --radius-sheet: 20px;
+  --radius-pill: 999px;
+
+  /* ------- elevation (warm-tinted, never cold gray) ------- */
+  --shadow-1: 0 1px 3px rgb(46 32 22 / 0.1);
+  --shadow-2: 0 8px 24px rgb(46 32 22 / 0.14);
+  --shadow-sheet: 0 -8px 32px rgb(46 32 22 / 0.18);
+
+  /* ------- motion (amendment 2): animation may fill latency, never add it ------- */
+  --ease-soft: cubic-bezier(0.25, 1, 0.4, 1);
+  --dur-micro: 140ms;
+  --dur-standard: 280ms;
+  --dur-develop: 600ms; /* the Polaroid-develop animation; play ONLY when LATENCY WAS REAL */
+  --dur-fade: 160ms; /* instant/cached path uses this short fade */
+
+  /* ------- z-index scale ------- */
+  --z-content: 10;
+  --z-tabbar: 40;
+  --z-sheet: 60;
+  --z-upload-overlay: 70;
+  --z-viewer: 80;
+  --z-toast: 90;
+}
+
+html.dark {
+  /* ------- palette (dark: warm near-blacks, not cold) ------- */
+  --color-bg: #191411;
+  --color-surface: #251c16;
+  --color-surface-2: #2e241b;
+  --color-ink: #faf3ea;
+  --color-ink-soft: #c9b8a4;
+  --color-border: #3c2d21;
+
+  --color-accent: #ffb067;
+  --color-accent-ink: #ffc287;
+  --color-on-accent: #2e1a0a;
+  --color-accent-soft: #3d2c1b;
+
+  --color-danger: #e87868;
+  --color-on-danger: #191411;
+  --color-success: #7bc98a;
+  --color-info: #8fbdf0;
+
+  --color-focus: var(--color-accent-ink);
+  --color-overlay: rgb(0 0 0 / 0.66);
+  --color-viewer: #000000;
+
+  --shadow-1: 0 1px 3px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 8px 24px rgb(0 0 0 / 0.42);
+  --shadow-sheet: 0 -8px 32px rgb(0 0 0 / 0.5);
+}
+
+html[data-feed-density='3'] {
+  --feed-cols: 3;
+  --feed-gap: var(--space-1);
+}
+
+@media (min-width: 640px) {
+  :root {
+    --feed-cols: 3;
+  }
+  html[data-feed-density='3'] {
+    --feed-cols: 4;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --feed-cols: 4;
+  }
+  html[data-feed-density='3'] {
+    --feed-cols: 5;
+  }
+}
+
+@media (min-width: 1440px) {
+  :root {
+    --feed-cols: 5;
+  }
+  html[data-feed-density='3'] {
+    --feed-cols: 6;
+  }
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --feed-cols: 6;
+  }
+  html[data-feed-density='3'] {
+    --feed-cols: 7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-micro: 1ms;
+    --dur-standard: 1ms;
+    --dur-develop: 1ms;
+    --dur-fade: 1ms;
+  }
+}
+
+/* ============================================================
+   The "Polaroid develop" recipe (amendment 2)
+   - JS (useMotionPolicy) decides WHICH class an image gets:
+     • .photo-develop — LAST asset arrived after real latency (>=150ms)
+     • .photo-fade    — cached/instant arrival (<=200ms fade or none)
+   - Reduced motion collapses both to an instant opacity swap above.
+   ========================================================== */
+@keyframes photo-develop {
+  from {
+    opacity: 0.55;
+    filter: blur(14px) saturate(0.55) sepia(0.3);
+    transform: scale(1.02);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0) saturate(1) sepia(0);
+    transform: scale(1);
+  }
+}
+
+@keyframes photo-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.photo-develop {
+  animation: photo-develop var(--dur-develop) var(--ease-soft) both;
+}
+
+.photo-fade {
+  animation: photo-fade-in var(--dur-fade) ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo-develop {
+    animation-name: photo-fade-in;
+  }
+}
+
+/* ------- shared utilities ------- */
+.u-focus-ring:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-card);
+}
+
+.u-skip-link {
+  position: fixed;
+  left: var(--space-4);
+  top: var(--space-4);
+  z-index: var(--z-toast);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border-radius: var(--radius-card);
+  transform: translateY(-200%);
+  transition: transform var(--dur-standard) var(--ease-soft);
+}
+
+.u-skip-link:focus {
+  transform: translateY(0);
+}
+
+.u-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

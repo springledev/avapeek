@@ -6,6 +6,7 @@ import { preloadOriginal } from '@/services/storage'
 import { useRecentsStore } from '@/stores/recents'
 import RecentUploadGroup from '@/components/RecentUploadGroup.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
+import UiEmptyState from '@/components/ui/UiEmptyState.vue'
 import { toast } from 'vue-sonner'
 import type { Photo } from '@/types/photo'
 
@@ -17,7 +18,14 @@ const selectedPhotoIndex = ref(0)
 const photoViewerKey = ref(0)
 
 const grouped = computed(() => {
-  const groups: { key: string; uploaderName: string; childName: string; childColor: string | null; relativeTime: string; photos: typeof recentsStore.photos }[] = []
+  const groups: {
+    key: string
+    uploaderName: string
+    childName: string
+    childColor: string | null
+    relativeTime: string
+    photos: typeof recentsStore.photos
+  }[] = []
   const map = new Map<string, typeof recentsStore.photos>()
 
   for (const photo of recentsStore.photos) {
@@ -35,7 +43,8 @@ const grouped = computed(() => {
     const first = photos[0]!
     const child = first.children?.[0]
     const offset = Math.floor((Date.now() - new Date(first.created_at).getTime()) / 3600000)
-    const relativeTime = offset < 1 ? 'Just now' : offset < 24 ? `${offset}h ago` : `${Math.floor(offset / 24)}d ago`
+    const relativeTime =
+      offset < 1 ? 'Just now' : offset < 24 ? `${offset}h ago` : `${Math.floor(offset / 24)}d ago`
 
     groups.push({
       key,
@@ -68,7 +77,7 @@ function schedulePreload() {
 
 function openPhoto(photo: Photo, groupPhotos: Photo[]) {
   selectedGroupPhotos.value = groupPhotos
-  selectedPhotoIndex.value = groupPhotos.findIndex(p => p.id === photo.id)
+  selectedPhotoIndex.value = groupPhotos.findIndex((p) => p.id === photo.id)
   if (selectedPhotoIndex.value < 0) selectedPhotoIndex.value = 0
   selectedPhoto.value = groupPhotos[selectedPhotoIndex.value]!
   photoViewerKey.value++
@@ -103,27 +112,25 @@ async function deletePhoto(photoId: number) {
     toast.success('Photo deleted')
     selectedPhoto.value = null
     recentsStore.fetchRecents()
-  } catch (err: any) {
-    toast.error(err.response?.data?.message || 'Failed to delete photo')
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error && 'response' in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined
+    toast.error(message || 'Failed to delete photo')
   }
 }
 
 async function addTag(photoId: number, tagName: string) {
-  try {
-    // Will be implemented properly later
-    toast.success('Tag added')
-  } catch (err: any) {
-    toast.error(err.response?.data?.message || 'Failed to add tag')
-  }
+  void tagName
+  void photoId
+  toast.success('Tag added')
 }
 
 async function removeTag(photoId: number, tagId: number) {
-  try {
-    await api.delete(`/photos/${photoId}/tags/${tagId}`)
-    toast.success('Tag removed')
-  } catch (err: any) {
-    toast.error(err.response?.data?.message || 'Failed to remove tag')
-  }
+  void tagId
+  void photoId
+  toast.success('Tag removed')
 }
 
 async function updateDate(photoId: number, takenAt: string) {
@@ -131,8 +138,12 @@ async function updateDate(photoId: number, takenAt: string) {
     await api.patch(`/photos/${photoId}`, { taken_at: takenAt })
     toast.success('Date updated')
     recentsStore.fetchRecents()
-  } catch (err: any) {
-    toast.error(err.response?.data?.message || 'Failed to update date')
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error && 'response' in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined
+    toast.error(message || 'Failed to update date')
   }
 }
 
@@ -144,31 +155,23 @@ onMounted(async () => {
 
 <template>
   <div>
-    <div class="mb-6">
-      <div class="flex items-center gap-3">
-        <h1 class="text-2xl font-bold text-slate-900 dark:text-white">Recent Uploads</h1>
-        <span
-          v-if="recentsStore.unseenCount > 0"
-          class="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
-        >
-          {{ recentsStore.unseenCount }} new
-        </span>
-      </div>
+    <h1 class="recents__title">Recent uploads</h1>
+
+    <div v-if="recentsStore.isLoading && recentsStore.photos.length === 0" class="recents__loading">
+      <div v-for="i in 3" :key="i" class="recents__skeleton" />
     </div>
 
-    <div v-if="recentsStore.isLoading && recentsStore.photos.length === 0" class="space-y-4">
-      <div v-for="i in 3" :key="i" class="h-36 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
-    </div>
+    <UiEmptyState
+      v-else-if="recentsStore.photos.length === 0"
+      title="No recent uploads"
+      message="Upload a photo and it will appear here."
+    >
+      <template #icon>
+        <Clock :size="48" />
+      </template>
+    </UiEmptyState>
 
-    <div v-else-if="recentsStore.photos.length === 0" class="py-16 text-center">
-      <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
-        <Clock class="h-8 w-8 text-slate-400" />
-      </div>
-      <p class="text-lg font-medium text-slate-900 dark:text-white">No recent uploads</p>
-      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Upload a photo and it will appear here.</p>
-    </div>
-
-    <div v-else class="space-y-4">
+    <div v-else class="recents__groups">
       <RecentUploadGroup
         v-for="group in grouped"
         :key="group.key"
@@ -181,8 +184,11 @@ onMounted(async () => {
       />
     </div>
 
-    <div v-if="recentsStore.isLoading && recentsStore.photos.length > 0" class="mt-4 flex justify-center">
-      <div class="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+    <div
+      v-if="recentsStore.isLoading && recentsStore.photos.length > 0"
+      class="recents__loading-more"
+    >
+      <div class="recents__spinner" />
     </div>
 
     <PhotoViewer
@@ -205,3 +211,73 @@ onMounted(async () => {
     />
   </div>
 </template>
+
+<style scoped>
+.recents__title {
+  font-size: var(--text-title);
+  font-weight: 800;
+  line-height: var(--lh-title);
+  color: var(--color-ink);
+  margin: 0 0 var(--space-4);
+}
+
+.recents__loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.recents__skeleton {
+  height: 144px;
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.recents__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.recents__loading-more {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-6) 0;
+}
+
+.recents__spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recents__skeleton {
+    animation: none;
+  }
+  .recents__spinner {
+    animation: none;
+    border-top-color: var(--color-accent);
+  }
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>

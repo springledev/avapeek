@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Child;
 use App\Models\ChildUser;
+use App\Models\EncryptionKey;
 use App\Services\QuotaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -123,6 +124,7 @@ class ChildController extends Controller
                     'role' => $user->pivot->role,
                     'relationship' => $user->pivot->relationship,
                     'joined_at' => $user->pivot->joined_at,
+                    'last_active' => $user->last_active_at?->toISOString(),
                 ];
             });
         }
@@ -147,6 +149,35 @@ class ChildController extends Controller
                 'created_at' => $child->created_at?->toISOString(),
             ],
         ]);
+    }
+
+    public function removeMember(Request $request, Child $child, int $userId): JsonResponse
+    {
+        $currentUser = $request->user();
+        $userRole = $currentUser->children()
+            ->where('child_id', $child->id)
+            ->first()?->pivot->role;
+
+        if (! in_array($userRole, ['owner', 'admin'], true)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $targetUser = $child->users()->where('user_id', $userId)->first();
+        if (! $targetUser) {
+            return response()->json(['message' => 'User not found in this child'], 404);
+        }
+
+        if ($targetUser->pivot->role === 'owner') {
+            return response()->json(['message' => 'Cannot remove the owner'], 403);
+        }
+
+        $child->users()->detach($userId);
+
+        EncryptionKey::where('child_id', $child->id)
+            ->where('user_id', $userId)
+            ->delete();
+
+        return response()->json(['message' => 'Member removed successfully']);
     }
 
     private function generateUniqueSlug(string $name): string

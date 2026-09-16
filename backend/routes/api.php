@@ -79,6 +79,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         // Invites (admin only)
         Route::middleware('child.admin')->group(function () {
             Route::post('/children/{child}/invite', [InviteController::class, 'store'])->middleware('throttle:invite');
+            Route::delete('/children/{child}/members/{user}', [ChildController::class, 'removeMember']);
         });
     });
 
