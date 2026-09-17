@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { MessageCircle } from '@lucide/vue'
 import { useLazyDecrypt } from '@/composables/useLazyDecrypt'
 import { useMotionPolicy } from '@/composables/useMotionPolicy'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
@@ -22,6 +23,7 @@ const motionClass = ref('')
 const startTs = ref(0)
 
 const visibleChildren = computed(() => props.photo.children.slice(0, 3))
+const commentCount = computed(() => props.photo.comment_count ?? 0)
 
 function onImgLoad() {
   motionClass.value = resolve(startTs.value)
@@ -62,6 +64,15 @@ onBeforeUnmount(() => {
         :size="24"
       />
     </div>
+
+    <div
+      v-if="commentCount > 0"
+      class="tile__badge"
+      :aria-label="`${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}`"
+    >
+      <MessageCircle :size="14" aria-hidden="true" />
+      <span>{{ commentCount }}</span>
+    </div>
   </button>
 </template>
 
@@ -100,6 +111,22 @@ onBeforeUnmount(() => {
   left: var(--space-2);
   display: flex;
   gap: 2px;
+}
+
+.tile__badge {
+  position: absolute;
+  bottom: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-overlay);
+  color: #fff;
+  font-size: var(--text-meta);
+  font-weight: 700;
+  line-height: var(--lh-tight);
 }
 
 @media (prefers-reduced-motion: reduce) {

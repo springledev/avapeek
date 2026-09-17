@@ -197,7 +197,7 @@ export async function unwrapPEK(
     pekBytes,
     { name: 'AES-GCM', length: 256 },
     false,
-    ['decrypt'],
+    ['encrypt', 'decrypt'],
   )
 }
 

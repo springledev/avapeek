@@ -15,3 +15,12 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   }
   return btoa(binary)
 }
+
+/**
+ * Extracts a server-provided error message from an unknown throwable,
+ * falling back to a friendly default.
+ */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  const response = (err as { response?: { data?: { message?: string } } } | null)?.response
+  return response?.data?.message || fallback
+}
