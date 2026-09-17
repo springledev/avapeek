@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue'
 import {
   X,
   ChevronLeft,
@@ -10,16 +10,20 @@ import {
   Heart,
   Pencil,
   AlertTriangle,
+  Send,
+  Trash2,
 } from '@lucide/vue'
 import { fetchOriginal, fetchThumbnail, getPEKForPhoto, cleanupComponent } from '@/services/storage'
 import { useMotionPolicy } from '@/composables/useMotionPolicy'
 import { useChildStore } from '@/stores/child'
+import { useCommentsStore, MAX_COMMENT_LENGTH } from '@/stores/comments'
+import { useAuthStore } from '@/stores/auth'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiSheet from '@/components/ui/UiSheet.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
 import { MSG } from '@/lib/messages'
-import type { Photo } from '@/types/photo'
+import type { Photo, DecryptedComment } from '@/types/photo'
 import type { TagItem } from '@/components/TagSidebar.vue'
 
 const props = defineProps<{
@@ -43,7 +47,9 @@ const emit = defineEmits<{
 }>()
 
 const childStore = useChildStore()
-const { resolve } = useMotionPolicy()
+const commentsStore = useCommentsStore()
+const authStore = useAuthStore()
+const { reducedMotion, resolve } = useMotionPolicy()
 
 const thumbnailUrl = ref<string | null>(null)
 const originalUrl = ref<string | null>(null)
@@ -66,6 +72,13 @@ const chromeTimer = ref<number | null>(null)
 const componentKey = 'photoviewer-new'
 const thumbStartTs = ref(0)
 const origStartTs = ref(0)
+
+const currentPek = ref<CryptoKey | null>(null)
+const newComment = ref('')
+const commentListEl = ref<HTMLElement | null>(null)
+let commentErrorTimer: number | null = null
+
+const photoComments = computed(() => commentsStore.commentsFor(props.photo.id))
 
 const isAdmin = computed(() =>
   childStore.children.some((c) => c.role === 'owner' || c.role === 'admin'),
@@ -183,6 +196,45 @@ function onWheel(event: WheelEvent) {
   else zoomOut()
 }
 
+function canDeleteComment(comment: DecryptedComment): boolean {
+  return isAdmin.value || comment.user_id === authStore.user?.id
+}
+
+function formatRelative(dateStr: string): string {
+  const date = new Date(dateStr)
+  const diffMs = Date.now() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  return date.toLocaleDateString()
+}
+
+function scrollToLatestComment() {
+  const el = commentListEl.value
+  if (!el) return
+  el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion.value ? 'auto' : 'smooth' })
+}
+
+async function sendComment() {
+  const text = newComment.value.trim()
+  if (!text || !currentPek.value || text.length > MAX_COMMENT_LENGTH) return
+  newComment.value = ''
+  const posted = await commentsStore.postComment(props.photo.id, text, currentPek.value)
+  if (!posted) newComment.value = text
+  await nextTick()
+  scrollToLatestComment()
+}
+
+async function removeComment(comment: DecryptedComment) {
+  if (!confirm('Delete this comment?')) return
+  await commentsStore.deleteComment(props.photo.id, comment.id)
+}
+
 function onKeydown(event: KeyboardEvent) {
   onInteraction()
   if (event.key === 'Escape') {
@@ -192,6 +244,8 @@ function onKeydown(event: KeyboardEvent) {
     }
     emit('close')
   }
+  const target = event.target as HTMLElement | null
+  if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')) return
   if (event.key === 'ArrowLeft' && props.hasPrev) emit('prev')
   if (event.key === 'ArrowRight' && props.hasNext) emit('next')
   if (event.key === 'i') showInfo.value = !showInfo.value
@@ -205,6 +259,9 @@ async function loadImage() {
   originalUrl.value = null
   thumbnailMotion.value = ''
   originalMotion.value = ''
+  newComment.value = ''
+  currentPek.value = null
+  commentsStore.clearError()
   resetZoom()
 
   try {
@@ -214,6 +271,8 @@ async function loadImage() {
       isLoading.value = false
       return
     }
+    currentPek.value = pek
+    void commentsStore.fetchComments(props.photo.id, pek)
 
     thumbStartTs.value = performance.now()
     thumbnailUrl.value = await fetchThumbnail(
@@ -252,6 +311,16 @@ watch(
   },
 )
 
+watch(
+  () => commentsStore.error,
+  (message) => {
+    if (commentErrorTimer) clearTimeout(commentErrorTimer)
+    if (message) {
+      commentErrorTimer = window.setTimeout(() => commentsStore.clearError(), 5000)
+    }
+  },
+)
+
 onMounted(() => {
   loadImage()
   window.addEventListener('keydown', onKeydown)
@@ -261,6 +330,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   if (chromeTimer.value) clearTimeout(chromeTimer.value)
+  if (commentErrorTimer) clearTimeout(commentErrorTimer)
   cleanupComponent(componentKey)
 })
 </script>
@@ -331,6 +401,65 @@ onBeforeUnmount(() => {
             @dblclick="onDblTap"
           />
         </template>
+      </div>
+
+      <div
+        class="viewer__comments"
+        role="region"
+        aria-label="Comments"
+        @touchstart.stop
+        @touchmove.stop
+        @touchend.stop
+      >
+        <div ref="commentListEl" class="viewer__comment-list">
+          <p v-if="photoComments.length === 0" class="viewer__comments-status">
+            {{ commentsStore.isLoading ? 'Loading comments…' : 'No comments yet — say something nice.' }}
+          </p>
+          <ul v-else class="viewer__comment-items">
+            <li v-for="comment in photoComments" :key="comment.id" class="viewer__comment">
+              <p class="viewer__comment-head">
+                <span class="viewer__comment-author">{{ comment.author_name }}</span>
+                <time class="viewer__comment-time" :datetime="comment.created_at">
+                  {{ formatRelative(comment.created_at) }}
+                </time>
+              </p>
+              <p class="viewer__comment-text">{{ comment.text }}</p>
+              <button
+                v-if="canDeleteComment(comment)"
+                type="button"
+                class="viewer__comment-delete u-focus-ring"
+                aria-label="Delete comment"
+                @click="removeComment(comment)"
+              >
+                <Trash2 :size="16" />
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <p v-if="commentsStore.error" class="viewer__comments-error" role="status">
+          {{ commentsStore.error }}
+        </p>
+
+        <form class="viewer__comment-form" @submit.prevent="sendComment">
+          <textarea
+            v-model="newComment"
+            class="viewer__comment-input u-focus-ring"
+            rows="1"
+            :maxlength="MAX_COMMENT_LENGTH"
+            placeholder="Add a comment…"
+            aria-label="Add a comment"
+            @keydown.enter.exact.prevent="sendComment"
+          />
+          <button
+            type="submit"
+            class="viewer__comment-send u-focus-ring"
+            :disabled="newComment.trim().length === 0 || commentsStore.isPending(photo.id)"
+            aria-label="Send comment"
+          >
+            <Send :size="20" />
+          </button>
+        </form>
       </div>
 
       <div v-if="zoom > 1" class="viewer__zoom-controls">
@@ -586,6 +715,158 @@ onBeforeUnmount(() => {
   gap: var(--space-2);
 }
 
+.viewer__comments {
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: calc(var(--target-min) + var(--space-4) + var(--space-2) * 2 + var(--space-4));
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: min(40vh, 320px);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  background: var(--color-surface);
+  border-radius: var(--radius-sheet);
+  box-shadow: var(--shadow-2);
+  animation: comments-in var(--dur-standard) var(--ease-soft) both;
+}
+
+.viewer__comment-list {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.viewer__comments-status {
+  margin: 0;
+  font-size: var(--text-meta);
+  color: var(--color-ink-soft);
+}
+
+.viewer__comment-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.viewer__comment {
+  position: relative;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.viewer__comment:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.viewer__comment-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.viewer__comment-author {
+  font-size: var(--text-meta);
+  font-weight: 700;
+  color: var(--color-ink-soft);
+}
+
+.viewer__comment-time {
+  font-size: var(--text-meta);
+  color: var(--color-ink-soft);
+}
+
+.viewer__comment-text {
+  margin: var(--space-1) 0 0;
+  padding-right: var(--target-min);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+
+.viewer__comment-delete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--target-min);
+  height: var(--target-min);
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-soft);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--dur-micro) var(--ease-soft);
+}
+
+.viewer__comment-delete:hover {
+  color: var(--color-danger);
+}
+
+.viewer__comments-error {
+  margin: 0;
+  font-size: var(--text-meta);
+  color: var(--color-danger);
+}
+
+.viewer__comment-form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.viewer__comment-input {
+  flex: 1;
+  min-height: var(--target-min);
+  max-height: 96px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
+  color: var(--color-ink);
+  font-family: inherit;
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  resize: none;
+}
+
+.viewer__comment-send {
+  width: var(--target-min);
+  height: var(--target-min);
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity var(--dur-micro) var(--ease-soft);
+}
+
+.viewer__comment-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes comments-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .viewer--chrome-hidden .viewer__close,
 .viewer--chrome-hidden .viewer__nav,
 .viewer--chrome-hidden .viewer__actions,
@@ -615,6 +896,9 @@ onBeforeUnmount(() => {
   }
   .viewer__img {
     transition: none;
+  }
+  .viewer__comments {
+    animation: none;
   }
   .viewer--chrome-hidden .viewer__close,
   .viewer--chrome-hidden .viewer__nav,

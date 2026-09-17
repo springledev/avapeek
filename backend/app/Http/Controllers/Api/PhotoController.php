@@ -146,7 +146,7 @@ class PhotoController extends Controller
             $q->select('children.id', 'children.name', 'children.avatar_color');
         }, 'uploader' => function ($q) {
             $q->select('id', 'display_name');
-        }]);
+        }])->withCount('comments');
 
         if ($childrenFilter = $request->query('children')) {
             $filterIds = array_map('intval', explode(',', $childrenFilter));
@@ -322,6 +322,7 @@ class PhotoController extends Controller
         }, 'uploader' => function ($q) {
             $q->select('id', 'display_name');
         }])
+            ->withCount('comments')
             ->orderBy('created_at', 'desc')
             ->paginate(30);
 
@@ -390,6 +391,7 @@ class PhotoController extends Controller
             'iv_exif' => $photo->iv_exif,
             'taken_at' => $photo->taken_at?->toISOString(),
             'created_at' => $photo->created_at?->toISOString(),
+            'comment_count' => $photo->comments_count ?? $photo->comments()->count(),
             'tags' => $photo->tags?->map(fn (Tag $tag) => [
                 'id' => $tag->id,
                 'name' => $tag->name,

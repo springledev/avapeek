@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { X, Upload, Plus } from '@lucide/vue'
+import { X, Upload } from '@lucide/vue'
 import { ref } from 'vue'
 import { api } from '@/services/api'
 import { useChildStore } from '@/stores/child'
 import { generatePEK, wrapPEKWithDEK } from '@/crypto/keychain'
 import { generateThumbnail, generateLQIP } from '@/crypto/thumbnails'
 import { encryptBuffer } from '@/crypto/encrypt'
-import { arrayBufferToBase64 } from '@/lib/util'
+import { arrayBufferToBase64, apiErrorMessage } from '@/lib/util'
 import { decodeHeic, isHeic } from '@/crypto/heic'
 import { toast } from 'vue-sonner'
 
@@ -85,7 +85,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1048576).toFixed(1)} MB`
 }
 
-const totalSize = ref(0)
 
 async function startUpload() {
   if (selectedChildIds.value.length === 0) {
@@ -177,9 +176,9 @@ async function startUpload() {
     toast.success(`Uploaded ${files.value.length} ${files.value.length === 1 ? 'photo' : 'photos'} successfully!`)
     emit('upload-complete')
     emit('close')
-  } catch (err: any) {
+  } catch (err) {
     console.error('Upload error:', err)
-    toast.error(err.response?.data?.message || 'Upload failed. Please try again.')
+    toast.error(apiErrorMessage(err, 'Upload failed. Please try again.'))
   } finally {
     isProcessing.value = false
     processingText.value = ''

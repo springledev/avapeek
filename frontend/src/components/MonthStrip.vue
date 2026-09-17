@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 
-const props = defineProps<{
+defineProps<{
   months: string[]
   selected?: string | null
 }>()
@@ -11,11 +11,6 @@ const emit = defineEmits<{
 }>()
 
 const scrollRef = ref<HTMLElement | null>(null)
-
-function scroll(dir: 'left' | 'right') {
-  if (!scrollRef.value) return
-  scrollRef.value.scrollBy({ left: dir === 'left' ? -200 : 200, behavior: 'smooth' })
-}
 </script>
 
 <template>

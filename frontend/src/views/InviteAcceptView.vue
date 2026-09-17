@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
 import type { InvitePreview } from '@/types/child'
+import { apiErrorMessage } from '@/lib/util'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,14 +24,18 @@ async function loadPreview() {
     const response = await api.get<{ data: InvitePreview }>(`/invites/${token}`)
     invite.value = response.data.data
     localStorage.setItem('pending_invite_token', token)
-  } catch (err: any) {
-    const alreadyAccepted = err.response?.data?.already_accepted
-    if (alreadyAccepted?.child_slug) {
-      router.push(`/child/${alreadyAccepted.child_slug}`)
+  } catch (err) {
+    const data = (
+      err as {
+        response?: { data?: { message?: string; already_accepted?: { child_slug?: string } } }
+      }
+    ).response?.data
+    if (data?.already_accepted?.child_slug) {
+      router.push(`/child/${data.already_accepted.child_slug}`)
       return
     }
     localStorage.removeItem('pending_invite_token')
-    error.value = err.response?.data?.message || 'This invite is invalid or has expired.'
+    error.value = data?.message || 'This invite is invalid or has expired.'
   } finally {
     isLoading.value = false
   }
@@ -46,12 +51,12 @@ async function acceptInvite() {
   error.value = null
 
   try {
-    const response = await api.post<{ data: { child_id: number; child_slug: string; child_name: string } }>(`/invites/${token}/accept`)
+    await api.post<{ data: { child_id: number; child_slug: string; child_name: string } }>(`/invites/${token}/accept`)
 
     localStorage.removeItem('pending_invite_token')
     router.push('/welcome')
-  } catch (err: any) {
-    error.value = err.response?.data?.message || 'Failed to accept invite.'
+  } catch (err) {
+    error.value = apiErrorMessage(err, 'Failed to accept invite.')
     isAccepting.value = false
   }
 }
