@@ -63,7 +63,6 @@ const thumbnailMotion = ref('')
 const originalMotion = ref('')
 const isLoading = ref(true)
 const hasError = ref(false)
-const showChrome = ref(true)
 const showInfo = ref(false)
 const showEditSheet = ref(false)
 const showMenu = ref(false)
@@ -75,7 +74,6 @@ const touchStartY = ref(0)
 const pinchStartDist = ref(0)
 const pinchStartZoom = ref(1)
 const lastTapTime = ref(0)
-const chromeTimer = ref<number | null>(null)
 const componentKey = 'photoviewer-new'
 const thumbStartTs = ref(0)
 const origStartTs = ref(0)
@@ -168,20 +166,6 @@ const backdropOpacity = computed(() => {
   return 1
 })
 
-function resetChromeTimer() {
-  if (chromeTimer.value) clearTimeout(chromeTimer.value)
-  chromeTimer.value = window.setTimeout(() => {
-    if (zoom.value === 1 && !commentsExpanded.value && !showMenu.value) {
-      showChrome.value = false
-    }
-  }, 2000)
-}
-
-function onInteraction() {
-  showChrome.value = true
-  resetChromeTimer()
-}
-
 function onThumbLoad() {
   thumbnailMotion.value = resolve(thumbStartTs.value)
 }
@@ -249,7 +233,6 @@ function resetGesture() {
 
 function onTouchStart(event: TouchEvent) {
   if (gesturePhase.value === 'slide') return
-  onInteraction()
   if (event.touches.length === 1) {
     suppressClick.value = false
     dragActive.value = true
@@ -456,7 +439,6 @@ function scrollToLatestComment() {
 
 function toggleComments() {
   commentsExpanded.value = !commentsExpanded.value
-  onInteraction()
 }
 
 function retryLoadComments() {
@@ -502,7 +484,6 @@ async function removeComment(comment: DecryptedComment) {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  onInteraction()
   if (event.key === 'Escape') {
     if (showMenu.value) {
       showMenu.value = false
@@ -621,19 +602,9 @@ watch(
   },
 )
 
-watch(commentsExpanded, () => {
-  if (commentsExpanded.value) {
-    showChrome.value = true
-    if (chromeTimer.value) clearTimeout(chromeTimer.value)
-  } else {
-    resetChromeTimer()
-  }
-})
-
 onMounted(() => {
   loadImage()
   window.addEventListener('keydown', onKeydown)
-  resetChromeTimer()
   prevHtmlOverflow = document.documentElement.style.overflow
   prevBodyOverflow = document.body.style.overflow
   document.documentElement.style.overflow = 'hidden'
@@ -642,7 +613,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
-  if (chromeTimer.value) clearTimeout(chromeTimer.value)
   if (commentErrorTimer) clearTimeout(commentErrorTimer)
   if (gestureTimer) clearTimeout(gestureTimer)
   document.documentElement.style.overflow = prevHtmlOverflow
@@ -655,12 +625,10 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div
       class="viewer"
-      :class="{ 'viewer--chrome-hidden': !showChrome }"
       @click.self="onStageClick"
       @touchstart="onTouchStart"
       @touchmove.prevent="onTouchMove"
       @touchend="onTouchEnd"
-      @mousemove="onInteraction"
     >
       <div
         class="viewer__backdrop"
@@ -1563,16 +1531,6 @@ onBeforeUnmount(() => {
   }
 }
 
-.viewer--chrome-hidden .viewer__close,
-.viewer--chrome-hidden .viewer__nav,
-.viewer--chrome-hidden .viewer__actions,
-.viewer--chrome-hidden .viewer__info,
-.viewer--chrome-hidden .viewer__zoom-controls {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-standard) var(--ease-soft);
-}
-
 .edit-sheet__label {
   font-size: var(--text-body);
   font-weight: 700;
@@ -1603,13 +1561,6 @@ onBeforeUnmount(() => {
   }
   .viewer__menu {
     animation: none;
-  }
-  .viewer--chrome-hidden .viewer__close,
-  .viewer--chrome-hidden .viewer__nav,
-  .viewer--chrome-hidden .viewer__actions,
-  .viewer--chrome-hidden .viewer__info,
-  .viewer--chrome-hidden .viewer__zoom-controls {
-    transition: none;
   }
 }
 
