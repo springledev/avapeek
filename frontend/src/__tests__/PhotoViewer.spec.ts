@@ -25,7 +25,7 @@ vi.mock('@/services/storage', () => ({
   getPEKForPhoto: vi.fn<(children: PhotoChild[]) => Promise<CryptoKey | null>>(
     async () => ({}) as unknown as CryptoKey,
   ),
-  fetchThumbnail: vi.fn<() => Promise<string>>(async () => 'blob:thumb'),
+  fetchThumbnail: vi.fn<(id: number) => Promise<string>>(async () => 'blob:thumb'),
   fetchOriginal: vi.fn<() => Promise<string>>(async () => 'blob:original'),
   cleanupComponent: vi.fn<() => void>(),
   fetchAndDecrypt: vi.fn<() => Promise<ArrayBuffer>>(),
@@ -35,6 +35,7 @@ vi.mock('@/services/storage', () => ({
 import PhotoViewer from '@/components/PhotoViewer.vue'
 import { api } from '@/services/api'
 import { decryptBlob } from '@/crypto/encrypt'
+import { fetchThumbnail } from '@/services/storage'
 import { useChildStore } from '@/stores/child'
 import { useCommentsStore } from '@/stores/comments'
 import type { Child } from '@/types/child'
@@ -270,6 +271,32 @@ describe('PhotoViewer', () => {
     await vi.waitFor(() => {
       expect(wrapper.find('.viewer__skeleton').exists()).toBe(false)
     })
+    wrapper.unmount()
+  })
+
+  it('keeps the previous thumbnail visible while the next photo loads (no black flash)', async () => {
+    vi.mocked(api.get).mockResolvedValue(ok(makeListResponse([])))
+    vi.mocked(fetchThumbnail).mockImplementation(async (id: number) => `blob:thumb-${id}`)
+
+    const { wrapper } = mountViewer(makePhoto({ id: 5 }))
+    await vi.waitFor(() => {
+      expect(wrapper.find('.viewer__img--thumb').attributes('src')).toBe('blob:thumb-5')
+    })
+
+    await wrapper.setProps({ photo: makePhoto({ id: 6 }) })
+
+    const heldThumb = wrapper.find('.viewer__img--thumb')
+    expect(heldThumb.exists()).toBe(true)
+    expect(heldThumb.attributes('src')).toBe('blob:thumb-5')
+    expect(wrapper.find('.viewer__loading').exists()).toBe(true)
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('.viewer__img--thumb').attributes('src')).toBe('blob:thumb-6')
+    })
+    expect(wrapper.find('.viewer__loading').exists()).toBe(false)
+
+    vi.mocked(fetchThumbnail).mockReset()
+    vi.mocked(fetchThumbnail).mockImplementation(async () => 'blob:thumb')
     wrapper.unmount()
   })
 })

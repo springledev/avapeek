@@ -104,6 +104,12 @@ let gestureTimer: number | null = null
 // late-resolving fetch can never paint the wrong neighbor.
 const peekUrls = ref<Record<number, string>>({})
 
+// The peek URL of the photo a slide is advancing to; loadImage promotes it
+// into the frame so the centered image never disappears (no black flash).
+let heldPeekUrl: string | null = null
+let loadToken = 0
+let suppressThumbMotion = false
+
 const currentPek = ref<CryptoKey | null>(null)
 const newComment = ref('')
 const commentListEl = ref<HTMLElement | null>(null)
@@ -154,7 +160,9 @@ const frameClass = computed(() => ({
 
 const peekStyle = computed(() => {
   if (gesturePhase.value === 'slide') {
-    return { transform: 'translate3d(0, 0, 0)' }
+    // Fully opaque as it takes over the center: the frame handoff at the
+    // end of the slide is then pixel-identical (no brightness pop).
+    return { transform: 'translate3d(0, 0, 0)', opacity: '1' }
   }
   const side = peekSide.value === 'prev' ? -1 : 1
   return { transform: `translate3d(calc(${side * 100}% + ${dragX.value * 0.35}px), 0, 0)` }
@@ -167,6 +175,11 @@ const backdropOpacity = computed(() => {
 })
 
 function onThumbLoad() {
+  if (suppressThumbMotion) {
+    suppressThumbMotion = false
+    thumbnailMotion.value = ''
+    return
+  }
   thumbnailMotion.value = resolve(thumbStartTs.value)
 }
 
@@ -381,6 +394,8 @@ function snapBack() {
 function slideOut(dir: -1 | 1, goingNext: boolean) {
   gesturePhase.value = 'slide'
   dragX.value = dir * window.innerWidth
+  const approach = goingNext ? props.nextPhoto : props.prevPhoto
+  heldPeekUrl = approach ? (peekUrls.value[approach.id] ?? null) : null
   if (gestureTimer) clearTimeout(gestureTimer)
   gestureTimer = window.setTimeout(() => {
     if (goingNext) emit('next')
@@ -527,10 +542,13 @@ async function warmPeeks() {
 }
 
 async function loadImage() {
+  const token = ++loadToken
+  const slidingIn = gesturePhase.value === 'slide' && dismissDir.value === 0
+  const promoted = slidingIn ? heldPeekUrl : null
+  heldPeekUrl = null
+
   hasError.value = false
-  isLoading.value = true
   originalLoaded.value = false
-  thumbnailUrl.value = null
   originalUrl.value = null
   thumbnailMotion.value = ''
   originalMotion.value = ''
@@ -541,11 +559,29 @@ async function loadImage() {
   commentsExpanded.value = false
   commentsStore.clearError()
   resetZoom()
-  resetGesture()
+
+  if (promoted) {
+    // The peek already fills the center with this exact photo: hand it to
+    // the frame and end the gesture in the same tick — zero black frames.
+    suppressThumbMotion = true
+    thumbnailUrl.value = promoted
+    isLoading.value = false
+    resetGesture()
+  } else {
+    if (!thumbnailUrl.value || slidingIn) {
+      thumbnailUrl.value = null
+      resetGesture()
+    }
+    // Otherwise the previous thumbnail stays visible until the new one
+    // resolves; the spinner overlay signals the wait instead of a black flash.
+    isLoading.value = true
+  }
 
   try {
     const pek = await getPEKForPhoto(props.photo.children)
+    if (token !== loadToken) return
     if (!pek) {
+      thumbnailUrl.value = null
       hasError.value = true
       isLoading.value = false
       return
@@ -556,28 +592,34 @@ async function loadImage() {
     void warmPeeks()
 
     thumbStartTs.value = performance.now()
-    thumbnailUrl.value = await fetchThumbnail(
+    const nextThumb = await fetchThumbnail(
       props.photo.id,
       pek,
       props.photo.iv_thumbnail,
       componentKey,
       props.photo.thumbnail_url,
     )
+    if (token !== loadToken) return
+    thumbnailUrl.value = nextThumb
     isLoading.value = false
 
     origStartTs.value = performance.now()
     const nav = navigator as Navigator & { connection?: { downlink?: number } }
     const downlink = nav.connection?.downlink ?? Infinity
     if (downlink >= 1.5 || props.photo.size_bytes < 5 * 1024 * 1024) {
-      originalUrl.value = await fetchOriginal(
+      const nextOriginal = await fetchOriginal(
         props.photo.id,
         pek,
         props.photo.iv_original,
         props.photo.original_mime,
         props.photo.size_bytes,
       )
+      if (token !== loadToken) return
+      originalUrl.value = nextOriginal
     }
   } catch {
+    if (token !== loadToken) return
+    thumbnailUrl.value = null
     hasError.value = true
     isLoading.value = false
   }
@@ -666,11 +708,7 @@ onBeforeUnmount(() => {
           <ChevronRight :size="32" />
         </button>
 
-        <div v-if="isLoading" class="viewer__loading">
-          <div class="viewer__spinner" />
-        </div>
-
-        <UiEmptyState v-else-if="hasError" :title="MSG.viewerError">
+        <UiEmptyState v-if="hasError" :title="MSG.viewerError">
           <template #icon>
             <AlertTriangle :size="48" />
           </template>
@@ -711,6 +749,10 @@ onBeforeUnmount(() => {
             />
           </div>
         </template>
+
+        <div v-if="isLoading && !hasError" class="viewer__loading" aria-hidden="true">
+          <div class="viewer__spinner" />
+        </div>
       </div>
 
       <section
@@ -1081,13 +1123,19 @@ onBeforeUnmount(() => {
 }
 
 .viewer__peek--anim {
-  transition: transform var(--dur-standard) var(--ease-soft);
+  transition:
+    transform var(--dur-standard) var(--ease-soft),
+    opacity var(--dur-standard) var(--ease-soft);
 }
 
 .viewer__loading {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
 }
 
 .viewer__spinner {
