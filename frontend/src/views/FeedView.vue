@@ -20,6 +20,12 @@ const photoViewerKey = ref(0)
 
 const hasPrev = computed(() => selectedPhotoIndex.value > 0)
 const hasNext = computed(() => selectedPhotoIndex.value < feedStore.photos.length - 1)
+const prevPhotoObj = computed(() =>
+  hasPrev.value ? (feedStore.photos[selectedPhotoIndex.value - 1] ?? null) : null,
+)
+const nextPhotoObj = computed(() =>
+  hasNext.value ? (feedStore.photos[selectedPhotoIndex.value + 1] ?? null) : null,
+)
 const canDelete = computed(() => true)
 const canEdit = computed(() => true)
 
@@ -235,6 +241,8 @@ async function updateDate(photoId: number, takenAt: string) {
       :can-edit="canEdit"
       :child-birth-date="null"
       :all-tags="[]"
+      :prev-photo="prevPhotoObj"
+      :next-photo="nextPhotoObj"
       @close="closePhoto"
       @prev="prevPhoto"
       @next="nextPhoto"

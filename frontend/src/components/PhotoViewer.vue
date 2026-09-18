@@ -4,14 +4,18 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Minus,
   Plus,
   Download,
   Heart,
   Pencil,
+  Info,
   AlertTriangle,
   Send,
   Trash2,
+  MessageSquare,
+  MoreVertical,
 } from '@lucide/vue'
 import { fetchOriginal, fetchThumbnail, getPEKForPhoto, cleanupComponent } from '@/services/storage'
 import { useMotionPolicy } from '@/composables/useMotionPolicy'
@@ -20,8 +24,8 @@ import { useCommentsStore, MAX_COMMENT_LENGTH } from '@/stores/comments'
 import { useAuthStore } from '@/stores/auth'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
 import UiButton from '@/components/ui/UiButton.vue'
-import UiSheet from '@/components/ui/UiSheet.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
+import UiSheet from '@/components/ui/UiSheet.vue'
 import { MSG } from '@/lib/messages'
 import type { Photo, DecryptedComment } from '@/types/photo'
 import type { TagItem } from '@/components/TagSidebar.vue'
@@ -34,6 +38,8 @@ const props = defineProps<{
   canEdit: boolean
   childBirthDate: string | null
   allTags: TagItem[]
+  prevPhoto?: Photo | null
+  nextPhoto?: Photo | null
 }>()
 
 const emit = defineEmits<{
@@ -60,6 +66,7 @@ const hasError = ref(false)
 const showChrome = ref(true)
 const showInfo = ref(false)
 const showEditSheet = ref(false)
+const showMenu = ref(false)
 const zoom = ref(1)
 const panX = ref(0)
 const panY = ref(0)
@@ -72,13 +79,49 @@ const chromeTimer = ref<number | null>(null)
 const componentKey = 'photoviewer-new'
 const thumbStartTs = ref(0)
 const origStartTs = ref(0)
+const stageEl = ref<HTMLElement | null>(null)
+
+// Gesture state: finger-following drag (dragX/dragY on the frame), plus a
+// discrete snap/slide phase that toggles CSS transitions on/off.
+type DragAxis = 'none' | 'x' | 'y'
+type GesturePhase = '' | 'snap' | 'slide'
+const dragActive = ref(false)
+const dragAxis = ref<DragAxis>('none')
+const gesturePhase = ref<GesturePhase>('')
+const dragX = ref(0)
+const dragY = ref(0)
+const panning = ref(false)
+const panStartX = ref(0)
+const panStartY = ref(0)
+const velocityX = ref(0)
+const velocityY = ref(0)
+const lastMoveX = ref(0)
+const lastMoveY = ref(0)
+const lastMoveTs = ref(0)
+const dismissDir = ref(0)
+const suppressClick = ref(false)
+let gestureTimer: number | null = null
+
+// Neighbor thumbnails for the horizontal peek; keyed by photo id so a
+// late-resolving fetch can never paint the wrong neighbor.
+const peekUrls = ref<Record<number, string>>({})
 
 const currentPek = ref<CryptoKey | null>(null)
 const newComment = ref('')
 const commentListEl = ref<HTMLElement | null>(null)
 let commentErrorTimer: number | null = null
+let prevHtmlOverflow = ''
+let prevBodyOverflow = ''
 
 const photoComments = computed(() => commentsStore.commentsFor(props.photo.id))
+const commentsStatus = computed(() => commentsStore.statusFor(props.photo.id))
+const previewComments = computed(() => photoComments.value.slice(-2))
+const totalComments = computed(() =>
+  commentsStatus.value === 'ready'
+    ? photoComments.value.length
+    : (props.photo.comment_count ?? photoComments.value.length),
+)
+const commentsExpanded = ref(false)
 
 const isAdmin = computed(() =>
   childStore.children.some((c) => c.role === 'owner' || c.role === 'admin'),
@@ -86,10 +129,51 @@ const isAdmin = computed(() =>
 
 const visibleChildren = computed(() => props.photo.children.slice(0, 3))
 
+const neighborPhotos = computed(() =>
+  [props.prevPhoto, props.nextPhoto].filter((p): p is Photo => Boolean(p)),
+)
+
+const peekSide = ref<'prev' | 'next'>('next')
+
+const peekPhoto = computed<Photo | null>(() => {
+  if (dragAxis.value !== 'x') return null
+  return peekSide.value === 'prev' ? (props.prevPhoto ?? null) : (props.nextPhoto ?? null)
+})
+
+const peekUrl = computed(() =>
+  peekPhoto.value ? (peekUrls.value[peekPhoto.value.id] ?? null) : null,
+)
+
+const frameStyle = computed(() => ({
+  transform: `translate3d(${dragX.value}px, ${dragY.value}px, 0)`,
+}))
+
+const frameClass = computed(() => ({
+  'viewer__frame--snap': gesturePhase.value === 'snap',
+  'viewer__frame--slide': gesturePhase.value === 'slide',
+  'viewer__frame--panning': panning.value,
+}))
+
+const peekStyle = computed(() => {
+  if (gesturePhase.value === 'slide') {
+    return { transform: 'translate3d(0, 0, 0)' }
+  }
+  const side = peekSide.value === 'prev' ? -1 : 1
+  return { transform: `translate3d(calc(${side * 100}% + ${dragX.value * 0.35}px), 0, 0)` }
+})
+
+const backdropOpacity = computed(() => {
+  if (gesturePhase.value === 'slide') return dismissDir.value === 0 ? 1 : 0
+  if (dragAxis.value === 'y') return Math.max(0.2, 1 - Math.abs(dragY.value) / 300)
+  return 1
+})
+
 function resetChromeTimer() {
   if (chromeTimer.value) clearTimeout(chromeTimer.value)
   chromeTimer.value = window.setTimeout(() => {
-    if (zoom.value === 1) showChrome.value = false
+    if (zoom.value === 1 && !commentsExpanded.value && !showMenu.value) {
+      showChrome.value = false
+    }
   }, 2000)
 }
 
@@ -103,6 +187,7 @@ function onThumbLoad() {
 }
 
 function onOriginalLoad() {
+  originalLoaded.value = true
   originalMotion.value = resolve(origStartTs.value)
 }
 
@@ -122,6 +207,10 @@ function zoomIn() {
 }
 function zoomOut() {
   zoom.value = Math.max(zoom.value - 0.5, 1)
+  if (zoom.value === 1) {
+    panX.value = 0
+    panY.value = 0
+  }
 }
 function resetZoom() {
   zoom.value = 1
@@ -137,17 +226,52 @@ function onDblTap() {
   }
 }
 
+function clampPan(value: number, axis: 'x' | 'y'): number {
+  const span =
+    axis === 'x'
+      ? (stageEl.value?.clientWidth ?? window.innerWidth)
+      : (stageEl.value?.clientHeight ?? window.innerHeight)
+  const limit = ((zoom.value - 1) * span) / 2
+  return Math.min(Math.max(value, -limit), limit)
+}
+
+function resetGesture() {
+  dragActive.value = false
+  dragAxis.value = 'none'
+  gesturePhase.value = ''
+  dragX.value = 0
+  dragY.value = 0
+  panning.value = false
+  velocityX.value = 0
+  velocityY.value = 0
+  dismissDir.value = 0
+}
+
 function onTouchStart(event: TouchEvent) {
+  if (gesturePhase.value === 'slide') return
   onInteraction()
   if (event.touches.length === 1) {
+    suppressClick.value = false
+    dragActive.value = true
+    dragAxis.value = 'none'
+    gesturePhase.value = ''
     touchStartX.value = event.touches[0]!.clientX
     touchStartY.value = event.touches[0]!.clientY
+    lastMoveX.value = touchStartX.value
+    lastMoveY.value = touchStartY.value
+    lastMoveTs.value = performance.now()
+    velocityX.value = 0
+    velocityY.value = 0
+    panStartX.value = panX.value
+    panStartY.value = panY.value
     const now = Date.now()
     if (now - lastTapTime.value < 300) {
       onDblTap()
     }
     lastTapTime.value = now
   } else if (event.touches.length === 2) {
+    dragActive.value = false
+    dragAxis.value = 'none'
     const dx = event.touches[0]!.clientX - event.touches[1]!.clientX
     const dy = event.touches[0]!.clientY - event.touches[1]!.clientY
     pinchStartDist.value = Math.sqrt(dx * dx + dy * dy)
@@ -162,28 +286,138 @@ function onTouchMove(event: TouchEvent) {
     const dist = Math.sqrt(dx * dx + dy * dy)
     const scale = dist / pinchStartDist.value
     zoom.value = Math.min(Math.max(pinchStartZoom.value * scale, 1), 4)
+    return
+  }
+
+  if (event.touches.length !== 1 || !dragActive.value || gesturePhase.value === 'slide') return
+  if (reducedMotion.value) return
+
+  const touch = event.touches[0]!
+  const dx = touch.clientX - touchStartX.value
+  const dy = touch.clientY - touchStartY.value
+
+  if (zoom.value > 1) {
+    panning.value = true
+    panX.value = clampPan(panStartX.value + dx / zoom.value, 'x')
+    panY.value = clampPan(panStartY.value + dy / zoom.value, 'y')
+    return
+  }
+
+  if (dragAxis.value === 'none') {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 10) return
+    dragAxis.value = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
+    peekSide.value = dx > 0 ? 'prev' : 'next'
+    suppressClick.value = true
+  }
+
+  const now = performance.now()
+  const dt = now - lastMoveTs.value
+  if (dt > 0) {
+    velocityX.value = (touch.clientX - lastMoveX.value) / dt
+    velocityY.value = (touch.clientY - lastMoveY.value) / dt
+    lastMoveX.value = touch.clientX
+    lastMoveY.value = touch.clientY
+    lastMoveTs.value = now
+  }
+
+  if (dragAxis.value === 'x') {
+    const blocked = (dx > 0 && !props.hasPrev) || (dx < 0 && !props.hasNext)
+    dragX.value = blocked ? dx * 0.25 : dx
+    dragY.value = 0
+  } else {
+    dragY.value = dy * 0.85
+    dragX.value = 0
   }
 }
 
 function onTouchEnd(event: TouchEvent) {
-  if (zoom.value !== 1 || touchStartX.value === 0) return
-  if (event.changedTouches.length === 1) {
-    const deltaX = event.changedTouches[0]!.clientX - touchStartX.value
-    const deltaY = event.changedTouches[0]!.clientY - touchStartY.value
-    touchStartX.value = 0
-    touchStartY.value = 0
+  pinchStartDist.value = 0
+  const wasSliding = gesturePhase.value === 'slide'
+  if (!dragActive.value || wasSliding || event.touches.length > 0) return
+  dragActive.value = false
 
-    if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
-      if (deltaX < 0 && props.hasNext) emit('next')
-      else if (deltaX > 0 && props.hasPrev) emit('prev')
-    } else if (Math.abs(deltaY) > 100) {
+  const touch = event.changedTouches[0]
+  if (!touch) return
+  const dx = touch.clientX - touchStartX.value
+  const dy = touch.clientY - touchStartY.value
+
+  if (zoom.value > 1) {
+    panning.value = false
+    dragAxis.value = 'none'
+    return
+  }
+
+  if (reducedMotion.value || dragAxis.value === 'none') {
+    dragAxis.value = 'none'
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0 && props.hasNext) emit('next')
+      else if (dx > 0 && props.hasPrev) emit('prev')
+    } else if (Math.abs(dy) > 100) {
       emit('close')
     }
+    return
   }
-  pinchStartDist.value = 0
+
+  if (dragAxis.value === 'x') {
+    const goingNext = dx < 0
+    const canAdvance = goingNext ? props.hasNext : props.hasPrev
+    const pastDistance = Math.abs(dx) > window.innerWidth * 0.3
+    const pastVelocity =
+      Math.abs(velocityX.value) > 0.4 && (velocityX.value < 0) === goingNext
+    if (canAdvance && (pastDistance || pastVelocity)) {
+      slideOut(goingNext ? -1 : 1, goingNext)
+    } else {
+      snapBack()
+    }
+  } else if (dragAxis.value === 'y') {
+    const pastDistance = Math.abs(dy) > 120
+    const pastVelocity = Math.abs(velocityY.value) > 0.4
+    if (pastDistance || pastVelocity) {
+      dismiss(dy >= 0 ? 1 : -1)
+    } else {
+      snapBack()
+    }
+  }
+}
+
+function snapBack() {
+  gesturePhase.value = 'snap'
+  dragX.value = 0
+  dragY.value = 0
+  velocityX.value = 0
+  velocityY.value = 0
+  if (gestureTimer) clearTimeout(gestureTimer)
+  gestureTimer = window.setTimeout(() => {
+    if (gesturePhase.value === 'snap') {
+      gesturePhase.value = ''
+      dragAxis.value = 'none'
+    }
+  }, 300)
+}
+
+function slideOut(dir: -1 | 1, goingNext: boolean) {
+  gesturePhase.value = 'slide'
+  dragX.value = dir * window.innerWidth
+  if (gestureTimer) clearTimeout(gestureTimer)
+  gestureTimer = window.setTimeout(() => {
+    if (goingNext) emit('next')
+    else emit('prev')
+  }, 260)
+}
+
+function dismiss(dir: -1 | 1) {
+  gesturePhase.value = 'slide'
+  dismissDir.value = dir
+  dragY.value = dir * window.innerHeight
+  if (gestureTimer) clearTimeout(gestureTimer)
+  gestureTimer = window.setTimeout(() => emit('close'), 260)
 }
 
 function onStageClick(event: MouseEvent) {
+  if (suppressClick.value) {
+    suppressClick.value = false
+    return
+  }
   if (zoom.value !== 1) return
   if (event.target === event.currentTarget) {
     emit('close')
@@ -220,6 +454,38 @@ function scrollToLatestComment() {
   el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion.value ? 'auto' : 'smooth' })
 }
 
+function toggleComments() {
+  commentsExpanded.value = !commentsExpanded.value
+  onInteraction()
+}
+
+function retryLoadComments() {
+  if (!currentPek.value) return
+  void commentsStore.fetchComments(props.photo.id, currentPek.value, { force: true })
+}
+
+function menuDownload() {
+  showMenu.value = false
+  downloadImage()
+}
+
+function menuEdit() {
+  showMenu.value = false
+  showEditSheet.value = true
+}
+
+function menuInfo() {
+  showMenu.value = false
+  showInfo.value = true
+}
+
+function menuDelete() {
+  showMenu.value = false
+  if (window.confirm('Delete this photo? This cannot be undone.')) {
+    emit('delete', props.photo.id)
+  }
+}
+
 async function sendComment() {
   const text = newComment.value.trim()
   if (!text || !currentPek.value || text.length > MAX_COMMENT_LENGTH) return
@@ -238,8 +504,16 @@ async function removeComment(comment: DecryptedComment) {
 function onKeydown(event: KeyboardEvent) {
   onInteraction()
   if (event.key === 'Escape') {
+    if (showMenu.value) {
+      showMenu.value = false
+      return
+    }
     if (showEditSheet.value) {
       showEditSheet.value = false
+      return
+    }
+    if (commentsExpanded.value) {
+      commentsExpanded.value = false
       return
     }
     emit('close')
@@ -249,6 +523,26 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === 'ArrowLeft' && props.hasPrev) emit('prev')
   if (event.key === 'ArrowRight' && props.hasNext) emit('next')
   if (event.key === 'i') showInfo.value = !showInfo.value
+}
+
+async function warmPeeks() {
+  peekUrls.value = {}
+  for (const neighbor of neighborPhotos.value) {
+    try {
+      const pek = await getPEKForPhoto(neighbor.children)
+      if (!pek) continue
+      const url = await fetchThumbnail(
+        neighbor.id,
+        pek,
+        neighbor.iv_thumbnail,
+        componentKey,
+        neighbor.thumbnail_url,
+      )
+      peekUrls.value = { ...peekUrls.value, [neighbor.id]: url }
+    } catch {
+      // best-effort peek; a plain backdrop is fine
+    }
+  }
 }
 
 async function loadImage() {
@@ -261,8 +555,12 @@ async function loadImage() {
   originalMotion.value = ''
   newComment.value = ''
   currentPek.value = null
+  showMenu.value = false
+  showInfo.value = false
+  commentsExpanded.value = false
   commentsStore.clearError()
   resetZoom()
+  resetGesture()
 
   try {
     const pek = await getPEKForPhoto(props.photo.children)
@@ -273,6 +571,8 @@ async function loadImage() {
     }
     currentPek.value = pek
     void commentsStore.fetchComments(props.photo.id, pek)
+    void commentsStore.prefetchComments(neighborPhotos.value, props.photo.id)
+    void warmPeeks()
 
     thumbStartTs.value = performance.now()
     thumbnailUrl.value = await fetchThumbnail(
@@ -321,16 +621,32 @@ watch(
   },
 )
 
+watch(commentsExpanded, () => {
+  if (commentsExpanded.value) {
+    showChrome.value = true
+    if (chromeTimer.value) clearTimeout(chromeTimer.value)
+  } else {
+    resetChromeTimer()
+  }
+})
+
 onMounted(() => {
   loadImage()
   window.addEventListener('keydown', onKeydown)
   resetChromeTimer()
+  prevHtmlOverflow = document.documentElement.style.overflow
+  prevBodyOverflow = document.body.style.overflow
+  document.documentElement.style.overflow = 'hidden'
+  document.body.style.overflow = 'hidden'
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   if (chromeTimer.value) clearTimeout(chromeTimer.value)
   if (commentErrorTimer) clearTimeout(commentErrorTimer)
+  if (gestureTimer) clearTimeout(gestureTimer)
+  document.documentElement.style.overflow = prevHtmlOverflow
+  document.body.style.overflow = prevBodyOverflow
   cleanupComponent(componentKey)
 })
 </script>
@@ -340,33 +656,48 @@ onBeforeUnmount(() => {
     <div
       class="viewer"
       :class="{ 'viewer--chrome-hidden': !showChrome }"
-      @click.self="emit('close')"
+      @click.self="onStageClick"
       @touchstart="onTouchStart"
-      @touchmove="onTouchMove"
+      @touchmove.prevent="onTouchMove"
       @touchend="onTouchEnd"
       @mousemove="onInteraction"
     >
-      <button class="viewer__close u-focus-ring" @click="emit('close')">
+      <div
+        class="viewer__backdrop"
+        :style="{
+          opacity: backdropOpacity,
+          transition: gesturePhase ? 'opacity var(--dur-standard) var(--ease-soft)' : 'none',
+        }"
+      />
+
+      <button class="viewer__close u-focus-ring" aria-label="Close" @click="emit('close')">
         <X :size="24" />
       </button>
 
-      <button
-        v-if="hasPrev"
-        class="viewer__nav viewer__nav--prev u-focus-ring"
-        @click="emit('prev')"
+      <div
+        ref="stageEl"
+        class="viewer__stage"
+        @wheel="onWheel"
+        @click="onStageClick"
       >
-        <ChevronLeft :size="32" />
-      </button>
+        <button
+          v-if="hasPrev"
+          class="viewer__nav viewer__nav--prev u-focus-ring"
+          aria-label="Previous photo"
+          @click="emit('prev')"
+        >
+          <ChevronLeft :size="32" />
+        </button>
 
-      <button
-        v-if="hasNext"
-        class="viewer__nav viewer__nav--next u-focus-ring"
-        @click="emit('next')"
-      >
-        <ChevronRight :size="32" />
-      </button>
+        <button
+          v-if="hasNext"
+          class="viewer__nav viewer__nav--next u-focus-ring"
+          aria-label="Next photo"
+          @click="emit('next')"
+        >
+          <ChevronRight :size="32" />
+        </button>
 
-      <div class="viewer__stage" @wheel="onWheel" @click="onStageClick">
         <div v-if="isLoading" class="viewer__loading">
           <div class="viewer__spinner" />
         </div>
@@ -382,38 +713,103 @@ onBeforeUnmount(() => {
 
         <template v-else>
           <img
-            v-if="thumbnailUrl"
-            :src="thumbnailUrl"
-            :class="thumbnailMotion"
-            class="viewer__img viewer__img--thumb"
-            :style="{ transform: `scale(${zoom}) translate(${panX}px, ${panY}px)` }"
+            v-if="peekUrl"
+            :src="peekUrl"
+            class="viewer__peek"
+            :class="{ 'viewer__peek--anim': gesturePhase !== '' }"
+            :style="peekStyle"
             alt=""
-            @load="onThumbLoad"
+            aria-hidden="true"
           />
-          <img
-            v-if="originalUrl"
-            :src="originalUrl"
-            :class="[originalMotion, { 'viewer__img--hidden': !originalLoaded }]"
-            class="viewer__img viewer__img--original"
-            :style="{ transform: `scale(${zoom}) translate(${panX}px, ${panY}px)` }"
-            alt=""
-            @load="onOriginalLoad"
-            @dblclick="onDblTap"
-          />
+          <div class="viewer__frame" :class="frameClass" :style="frameStyle">
+            <img
+              v-if="thumbnailUrl"
+              :src="thumbnailUrl"
+              :class="thumbnailMotion"
+              class="viewer__img viewer__img--thumb"
+              :style="{ transform: `scale(${zoom}) translate(${panX}px, ${panY}px)` }"
+              alt=""
+              @load="onThumbLoad"
+            />
+            <img
+              v-if="originalUrl"
+              :src="originalUrl"
+              :class="[originalMotion, { 'viewer__img--hidden': !originalLoaded }]"
+              class="viewer__img viewer__img--original"
+              :style="{ transform: `scale(${zoom}) translate(${panX}px, ${panY}px)` }"
+              alt=""
+              @load="onOriginalLoad"
+              @dblclick="onDblTap"
+            />
+          </div>
         </template>
       </div>
 
-      <div
-        class="viewer__comments"
+      <section
+        class="viewer__sheet"
+        :class="{ 'viewer__sheet--expanded': commentsExpanded }"
         role="region"
         aria-label="Comments"
         @touchstart.stop
         @touchmove.stop
         @touchend.stop
       >
-        <div ref="commentListEl" class="viewer__comment-list">
+        <div v-if="commentsExpanded" class="viewer__sheet-head">
+          <h3 class="viewer__sheet-title">Comments</h3>
+          <button
+            type="button"
+            class="viewer__sheet-collapse u-focus-ring"
+            aria-label="Collapse comments"
+            @click="commentsExpanded = false"
+          >
+            <ChevronDown :size="20" />
+          </button>
+        </div>
+
+        <div
+          v-if="commentsStatus === 'loading' && photoComments.length === 0"
+          class="viewer__skeleton"
+          aria-hidden="true"
+        >
+          <span class="viewer__skeleton-line" />
+          <span class="viewer__skeleton-line viewer__skeleton-line--short" />
+        </div>
+
+        <div
+          v-else-if="commentsStatus === 'error' && photoComments.length === 0"
+          class="viewer__load-error"
+        >
+          <p class="viewer__load-error-text">
+            {{ commentsStore.loadErrorFor(photo.id) ?? MSG.commentsLoadFailed }}
+          </p>
+          <button type="button" class="viewer__retry u-focus-ring" @click="retryLoadComments">
+            Retry
+          </button>
+        </div>
+
+        <template v-else-if="!commentsExpanded">
+          <ul v-if="previewComments.length" class="viewer__preview">
+            <li v-for="comment in previewComments" :key="comment.id" class="viewer__preview-item">
+              <span class="viewer__comment-author">{{ comment.author_name }}</span>
+              <span class="viewer__preview-text">{{ comment.text }}</span>
+            </li>
+          </ul>
+          <p v-else-if="commentsStatus === 'ready'" class="viewer__comments-status">
+            No comments yet — say something nice.
+          </p>
+          <button
+            v-if="totalComments > 2"
+            type="button"
+            class="viewer__view-all u-focus-ring"
+            @click="commentsExpanded = true"
+          >
+            View all {{ totalComments }} comments
+          </button>
+        </template>
+
+        <div v-else ref="commentListEl" class="viewer__comment-list">
           <p v-if="photoComments.length === 0" class="viewer__comments-status">
-            {{ commentsStore.isLoading ? 'Loading comments…' : 'No comments yet — say something nice.' }}
+            No comments yet — say something nice.
           </p>
           <ul v-else class="viewer__comment-items">
             <li v-for="comment in photoComments" :key="comment.id" class="viewer__comment">
@@ -460,36 +856,97 @@ onBeforeUnmount(() => {
             <Send :size="20" />
           </button>
         </form>
-      </div>
+      </section>
 
       <div v-if="zoom > 1" class="viewer__zoom-controls">
-        <button class="viewer__zoom-btn u-focus-ring" @click="zoomOut">
+        <button class="viewer__zoom-btn u-focus-ring" aria-label="Zoom out" @click="zoomOut">
           <Minus :size="16" />
         </button>
         <span class="viewer__zoom-level">{{ Math.round(zoom * 100) }}%</span>
-        <button class="viewer__zoom-btn u-focus-ring" @click="zoomIn">
+        <button class="viewer__zoom-btn u-focus-ring" aria-label="Zoom in" @click="zoomIn">
           <Plus :size="16" />
         </button>
       </div>
 
       <div class="viewer__actions" role="toolbar" aria-label="Photo actions">
-        <button class="viewer__action-btn u-focus-ring" aria-label="Favorite">
+        <button
+          type="button"
+          class="viewer__action-btn u-focus-ring"
+          :aria-label="commentsExpanded ? 'Collapse comments' : 'Show comments'"
+          :aria-expanded="commentsExpanded"
+          @click="toggleComments"
+        >
+          <MessageSquare :size="20" />
+          <span v-if="totalComments > 0" class="viewer__action-count">{{ totalComments }}</span>
+        </button>
+        <button type="button" class="viewer__action-btn u-focus-ring" aria-label="Favorite">
           <Heart :size="20" />
         </button>
+        <span class="viewer__actions-spacer" aria-hidden="true" />
         <button
+          type="button"
           class="viewer__action-btn u-focus-ring"
-          @click="downloadImage"
-          aria-label="Download"
+          aria-label="More actions"
+          aria-haspopup="menu"
+          :aria-expanded="showMenu"
+          @click="showMenu = !showMenu"
         >
-          <Download :size="20" />
+          <MoreVertical :size="20" />
+        </button>
+      </div>
+
+      <button
+        v-if="showMenu"
+        type="button"
+        class="viewer__menu-scrim"
+        aria-label="Close menu"
+        @click="showMenu = false"
+        @touchstart.stop
+        @touchmove.stop
+        @touchend.stop
+      />
+      <div
+        v-if="showMenu"
+        class="viewer__menu"
+        role="menu"
+        aria-label="More photo actions"
+        @touchstart.stop
+        @touchmove.stop
+        @touchend.stop
+      >
+        <button type="button" class="viewer__menu-item u-focus-ring" role="menuitem" @click="menuDownload">
+          <Download :size="18" />
+          <span>Download</span>
         </button>
         <button
-          v-if="isAdmin && canEdit"
-          class="viewer__action-btn u-focus-ring"
-          @click="showEditSheet = true"
-          aria-label="Edit"
+          v-if="canEdit && isAdmin"
+          type="button"
+          class="viewer__menu-item u-focus-ring"
+          role="menuitem"
+          @click="menuEdit"
         >
-          <Pencil :size="20" />
+          <Pencil :size="18" />
+          <span>Edit</span>
+        </button>
+        <button
+          v-if="visibleChildren.length > 0"
+          type="button"
+          class="viewer__menu-item u-focus-ring"
+          role="menuitem"
+          @click="menuInfo"
+        >
+          <Info :size="18" />
+          <span>Info</span>
+        </button>
+        <button
+          v-if="canDelete"
+          type="button"
+          class="viewer__menu-item viewer__menu-item--danger u-focus-ring"
+          role="menuitem"
+          @click="menuDelete"
+        >
+          <Trash2 :size="18" />
+          <span>Delete</span>
         </button>
       </div>
 
@@ -530,15 +987,21 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: var(--z-viewer);
-  background: var(--color-viewer);
+  overflow: hidden;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+}
+
+.viewer__backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--color-viewer);
+  pointer-events: none;
 }
 
 .viewer__close {
   position: absolute;
-  top: var(--space-4);
+  top: calc(var(--space-4) + var(--safe-area-t));
   right: var(--space-4);
   z-index: 10;
   width: 48px;
@@ -556,6 +1019,17 @@ onBeforeUnmount(() => {
 
 .viewer__close:hover {
   background: rgb(255 255 255 / 0.2);
+}
+
+.viewer__stage {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .viewer__nav {
@@ -588,13 +1062,22 @@ onBeforeUnmount(() => {
   right: var(--space-4);
 }
 
-.viewer__stage {
-  position: relative;
-  width: 100%;
-  height: 100%;
+.viewer__frame {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  transform: translate3d(0, 0, 0);
+}
+
+.viewer__frame--snap,
+.viewer__frame--slide {
+  transition: transform var(--dur-standard) var(--ease-soft);
+}
+
+.viewer__frame--panning .viewer__img {
+  transition: none;
 }
 
 .viewer__img {
@@ -619,6 +1102,20 @@ onBeforeUnmount(() => {
   opacity: 0;
 }
 
+.viewer__peek {
+  position: absolute;
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  opacity: 0.85;
+}
+
+.viewer__peek--anim {
+  transition: transform var(--dur-standard) var(--ease-soft);
+}
+
 .viewer__loading {
   display: flex;
   align-items: center;
@@ -636,7 +1133,7 @@ onBeforeUnmount(() => {
 
 .viewer__zoom-controls {
   position: absolute;
-  bottom: calc(var(--tabbar-h) + var(--space-4));
+  bottom: calc(var(--target-min) + var(--space-8) + var(--safe-area-b));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -645,7 +1142,7 @@ onBeforeUnmount(() => {
   padding: var(--space-2) var(--space-3);
   background: rgb(0 0 0 / 0.6);
   border-radius: var(--radius-pill);
-  z-index: 10;
+  z-index: 20;
 }
 
 .viewer__zoom-btn {
@@ -672,76 +1169,156 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.viewer__actions {
-  position: absolute;
-  bottom: var(--space-4);
-  left: 50%;
-  transform: translateX(-50%);
+.viewer__sheet {
+  position: relative;
+  z-index: 5;
+  flex-shrink: 0;
   display: flex;
-  gap: var(--space-3);
-  padding: var(--space-2);
-  background: rgb(0 0 0 / 0.6);
-  border-radius: var(--radius-pill);
-  z-index: 10;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) var(--space-1);
+  color: #fff;
 }
 
-.viewer__action-btn {
-  width: 48px;
-  height: 48px;
+.viewer__sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.viewer__sheet-title {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 800;
+  color: #fff;
+}
+
+.viewer__sheet-collapse {
+  width: var(--target-min);
+  height: var(--target-min);
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: #fff;
+  color: rgb(255 255 255 / 0.7);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--dur-micro) var(--ease-soft);
 }
 
-.viewer__action-btn:hover {
+.viewer__sheet-collapse:hover {
   background: rgb(255 255 255 / 0.1);
+  color: #fff;
 }
 
-.viewer__info {
-  position: absolute;
-  bottom: var(--space-4);
-  left: var(--space-4);
-  z-index: 10;
-}
-
-.viewer__info-kids {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.viewer__comments {
-  position: absolute;
-  left: var(--space-4);
-  right: var(--space-4);
-  bottom: calc(var(--target-min) + var(--space-4) + var(--space-2) * 2 + var(--space-4));
-  z-index: 10;
+.viewer__preview {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  max-height: min(40vh, 320px);
-  padding: var(--space-3) var(--space-4) var(--space-4);
-  background: var(--color-surface);
-  border-radius: var(--radius-sheet);
-  box-shadow: var(--shadow-2);
-  animation: comments-in var(--dur-standard) var(--ease-soft) both;
+  gap: var(--space-1);
+}
+
+.viewer__preview-item {
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  color: rgb(255 255 255 / 0.92);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.viewer__preview-text {
+  margin-left: var(--space-2);
+}
+
+.viewer__view-all {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  padding: var(--space-1) 0;
+  min-height: var(--target-min);
+  font-family: inherit;
+  font-size: var(--text-body);
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+}
+
+.viewer__view-all:hover {
+  text-decoration: underline;
 }
 
 .viewer__comment-list {
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  max-height: 45vh;
   min-height: 0;
-  flex: 1;
+  scrollbar-width: none;
+}
+
+.viewer__comment-list::-webkit-scrollbar {
+  display: none;
+}
+
+.viewer__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.viewer__skeleton-line {
+  height: 12px;
+  width: 70%;
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 0.14);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.viewer__skeleton-line--short {
+  width: 45%;
+}
+
+.viewer__load-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.viewer__load-error-text {
+  margin: 0;
+  font-size: var(--text-meta);
+  color: rgb(255 255 255 / 0.75);
+}
+
+.viewer__retry {
+  border: 0;
+  background: rgb(255 255 255 / 0.12);
+  color: #fff;
+  font-family: inherit;
+  font-size: var(--text-meta);
+  font-weight: 700;
+  padding: var(--space-2) var(--space-3);
+  min-height: var(--target-min);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.viewer__retry:hover {
+  background: rgb(255 255 255 / 0.2);
 }
 
 .viewer__comments-status {
   margin: 0;
   font-size: var(--text-meta);
-  color: var(--color-ink-soft);
+  color: rgb(255 255 255 / 0.55);
 }
 
 .viewer__comment-items {
@@ -753,7 +1330,7 @@ onBeforeUnmount(() => {
 .viewer__comment {
   position: relative;
   padding: var(--space-2) 0;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid rgb(255 255 255 / 0.1);
 }
 
 .viewer__comment:first-child {
@@ -772,12 +1349,12 @@ onBeforeUnmount(() => {
 .viewer__comment-author {
   font-size: var(--text-meta);
   font-weight: 700;
-  color: var(--color-ink-soft);
+  color: #fff;
 }
 
 .viewer__comment-time {
   font-size: var(--text-meta);
-  color: var(--color-ink-soft);
+  color: rgb(255 255 255 / 0.5);
 }
 
 .viewer__comment-text {
@@ -785,7 +1362,7 @@ onBeforeUnmount(() => {
   padding-right: var(--target-min);
   font-size: var(--text-body);
   line-height: var(--lh-body);
-  color: var(--color-ink);
+  color: rgb(255 255 255 / 0.92);
   overflow-wrap: anywhere;
 }
 
@@ -797,7 +1374,7 @@ onBeforeUnmount(() => {
   height: var(--target-min);
   border: 0;
   background: transparent;
-  color: var(--color-ink-soft);
+  color: rgb(255 255 255 / 0.5);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -812,7 +1389,7 @@ onBeforeUnmount(() => {
 .viewer__comments-error {
   margin: 0;
   font-size: var(--text-meta);
-  color: var(--color-danger);
+  color: #ff9d94;
 }
 
 .viewer__comment-form {
@@ -826,14 +1403,18 @@ onBeforeUnmount(() => {
   min-height: var(--target-min);
   max-height: 96px;
   padding: var(--space-3);
-  border: 1px solid var(--color-border);
+  border: 1px solid rgb(255 255 255 / 0.16);
   border-radius: var(--radius-card);
-  background: var(--color-surface-2);
-  color: var(--color-ink);
+  background: rgb(255 255 255 / 0.08);
+  color: #fff;
   font-family: inherit;
   font-size: var(--text-body);
   line-height: var(--lh-body);
   resize: none;
+}
+
+.viewer__comment-input::placeholder {
+  color: rgb(255 255 255 / 0.45);
 }
 
 .viewer__comment-send {
@@ -856,14 +1437,129 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-@keyframes comments-in {
+.viewer__actions {
+  position: relative;
+  z-index: 6;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  padding-bottom: calc(var(--space-2) + var(--safe-area-b));
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+  background: rgb(0 0 0 / 0.35);
+}
+
+.viewer__actions-spacer {
+  flex: 1;
+}
+
+.viewer__action-btn {
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  transition: background var(--dur-micro) var(--ease-soft);
+}
+
+.viewer__action-btn:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.viewer__action-count {
+  font-size: var(--text-meta);
+  font-weight: 700;
+  color: rgb(255 255 255 / 0.85);
+}
+
+.viewer__menu-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 29;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.viewer__menu {
+  position: absolute;
+  right: var(--space-4);
+  bottom: calc(var(--target-min) + var(--space-8) + var(--safe-area-b));
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: var(--space-2);
+  background: rgb(0 0 0 / 0.88);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-2);
+  animation: menu-in var(--dur-micro) var(--ease-soft) both;
+}
+
+.viewer__menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: #fff;
+  font-family: inherit;
+  font-size: var(--text-body);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-soft);
+}
+
+.viewer__menu-item:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.viewer__menu-item--danger {
+  color: #ff9d94;
+}
+
+.viewer__info {
+  position: absolute;
+  bottom: calc(var(--target-min) + var(--space-8) + var(--safe-area-b));
+  left: var(--space-4);
+  z-index: 10;
+}
+
+.viewer__info-kids {
+  display: flex;
+  gap: var(--space-2);
+}
+
+@keyframes menu-in {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
   }
 }
 
@@ -897,7 +1593,15 @@ onBeforeUnmount(() => {
   .viewer__img {
     transition: none;
   }
-  .viewer__comments {
+  .viewer__frame--snap,
+  .viewer__frame--slide,
+  .viewer__peek--anim {
+    transition: none;
+  }
+  .viewer__skeleton-line {
+    animation: none;
+  }
+  .viewer__menu {
     animation: none;
   }
   .viewer--chrome-hidden .viewer__close,
