@@ -19,10 +19,15 @@ vi.mock('@/crypto/encrypt', () => ({
   decryptBlob: vi.fn<(buffer: ArrayBuffer, dek: CryptoKey, iv: string) => Promise<ArrayBuffer>>(),
 }))
 
+vi.mock('@/services/storage', () => ({
+  getPEKForPhoto: vi.fn<(children: PhotoChild[]) => Promise<CryptoKey | null>>(),
+}))
+
 import { api } from '@/services/api'
 import { encryptString, decryptBlob } from '@/crypto/encrypt'
-import { useCommentsStore, MAX_COMMENT_LENGTH } from '@/stores/comments'
-import type { CommentListResponse, PhotoComment } from '@/types/photo'
+import { getPEKForPhoto } from '@/services/storage'
+import { useCommentsStore, MAX_COMMENT_LENGTH, type PrefetchablePhoto } from '@/stores/comments'
+import type { CommentListResponse, PhotoChild, PhotoComment } from '@/types/photo'
 
 const pek = {} as CryptoKey
 const HEX_IV = '00112233445566778899aabbccddeeff'
@@ -60,6 +65,14 @@ function encoded(text: string): ArrayBuffer {
   return new TextEncoder().encode(text).buffer as ArrayBuffer
 }
 
+function makeChild(id: number): PhotoChild {
+  return { id, name: `Kid ${id}`, avatar_color: null, encrypted_pek: 'pek', iv_pek: 'iv' }
+}
+
+function makePrefetchPhoto(id: number): PrefetchablePhoto {
+  return { id, children: [makeChild(id * 10)] }
+}
+
 describe('comments store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -68,6 +81,7 @@ describe('comments store', () => {
     vi.mocked(api.delete).mockReset()
     vi.mocked(encryptString).mockReset()
     vi.mocked(decryptBlob).mockReset()
+    vi.mocked(getPEKForPhoto).mockReset()
   })
 
   it('encrypts with the PEK and posts ciphertext over the wire contract', async () => {
@@ -268,6 +282,134 @@ describe('comments store', () => {
     resolvePost!(ok({ data: makePhotoComment({ id: 11, created_at: '2026-09-17T10:30:00.000Z' }) }))
     await inflightPost
     expect(store.commentsFor(5).map((c) => c.id)).toEqual([10, 12, 11])
+  })
+
+  it('tracks per-photo status: loading during fetch, ready after', async () => {
+    let resolveGet: ((value: AxiosResponse<CommentListResponse>) => void) | undefined
+    const getGate = new Promise<AxiosResponse<CommentListResponse>>((resolve) => {
+      resolveGet = resolve
+    })
+    vi.mocked(api.get).mockReturnValue(getGate)
+    vi.mocked(decryptBlob).mockResolvedValue(encoded('x'))
+
+    const store = useCommentsStore()
+    expect(store.statusFor(5)).toBe('idle')
+
+    const inflight = store.fetchComments(5, pek)
+    expect(store.statusFor(5)).toBe('loading')
+
+    resolveGet!(ok(makeListResponse([makePhotoComment()])))
+    await inflight
+    expect(store.statusFor(5)).toBe('ready')
+  })
+
+  it('is idempotent: a second fetchComments on a ready photo is a no-op', async () => {
+    vi.mocked(api.get).mockResolvedValue(ok(makeListResponse([makePhotoComment()])))
+    vi.mocked(decryptBlob).mockResolvedValue(encoded('hi'))
+
+    const store = useCommentsStore()
+    await store.fetchComments(5, pek)
+    await store.fetchComments(5, pek)
+
+    expect(api.get).toHaveBeenCalledTimes(1)
+    expect(store.statusFor(5)).toBe('ready')
+  })
+
+  it('does not start a second request while one is already in flight', async () => {
+    let resolveGet: ((value: AxiosResponse<CommentListResponse>) => void) | undefined
+    const getGate = new Promise<AxiosResponse<CommentListResponse>>((resolve) => {
+      resolveGet = resolve
+    })
+    vi.mocked(api.get).mockReturnValue(getGate)
+    vi.mocked(decryptBlob).mockResolvedValue(encoded('hi'))
+
+    const store = useCommentsStore()
+    const first = store.fetchComments(5, pek)
+    const second = store.fetchComments(5, pek)
+
+    resolveGet!(ok(makeListResponse([])))
+    await Promise.all([first, second])
+    expect(api.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('force refetches a ready photo', async () => {
+    vi.mocked(api.get).mockResolvedValue(ok(makeListResponse([makePhotoComment()])))
+    vi.mocked(decryptBlob).mockResolvedValue(encoded('hi'))
+
+    const store = useCommentsStore()
+    await store.fetchComments(5, pek)
+    await store.fetchComments(5, pek, { force: true })
+
+    expect(api.get).toHaveBeenCalledTimes(2)
+    expect(store.statusFor(5)).toBe('ready')
+  })
+
+  it('marks only the failed photo as error and records a per-photo load error', async () => {
+    vi.mocked(decryptBlob).mockResolvedValue(encoded('ok'))
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.includes('/photos/5/')) return ok(makeListResponse([makePhotoComment()]))
+      throw new Error('network down')
+    })
+
+    const store = useCommentsStore()
+    await store.fetchComments(5, pek)
+    await store.fetchComments(6, pek)
+
+    expect(store.statusFor(6)).toBe('error')
+    expect(store.loadErrorFor(6)).toBe("Couldn't load comments — try again")
+    expect(store.statusFor(5)).toBe('ready')
+    expect(store.loadErrorFor(5)).toBeNull()
+  })
+
+  it('prefetchComments fetches up to four idle photos', async () => {
+    const photos = Array.from({ length: 6 }, (_, i) => makePrefetchPhoto(i + 1))
+    vi.mocked(getPEKForPhoto).mockResolvedValue(pek)
+    vi.mocked(api.get).mockResolvedValue(ok(makeListResponse([])))
+
+    const store = useCommentsStore()
+    await store.prefetchComments(photos)
+
+    expect(api.get).toHaveBeenCalledTimes(4)
+    expect(api.get).toHaveBeenNthCalledWith(1, '/photos/1/comments')
+    expect(api.get).toHaveBeenNthCalledWith(2, '/photos/2/comments')
+    expect(api.get).toHaveBeenNthCalledWith(3, '/photos/3/comments')
+    expect(api.get).toHaveBeenNthCalledWith(4, '/photos/4/comments')
+  })
+
+  it('prefetchComments skips the excluded photo and any non-idle photo', async () => {
+    const photos = Array.from({ length: 5 }, (_, i) => makePrefetchPhoto(i + 1))
+    vi.mocked(getPEKForPhoto).mockResolvedValue(pek)
+    vi.mocked(api.get).mockResolvedValue(ok(makeListResponse([])))
+    vi.mocked(decryptBlob).mockResolvedValue(encoded('hi'))
+
+    const store = useCommentsStore()
+    await store.fetchComments(1, pek) // photo 1 ends up 'ready'
+
+    await store.prefetchComments(photos, 2) // and 2 is excluded outright
+
+    expect(api.get).toHaveBeenNthCalledWith(1, '/photos/1/comments')
+    expect(api.get).toHaveBeenNthCalledWith(2, '/photos/3/comments')
+    expect(api.get).toHaveBeenNthCalledWith(3, '/photos/4/comments')
+    expect(api.get).toHaveBeenNthCalledWith(4, '/photos/5/comments')
+    expect(store.statusFor(2)).toBe('idle')
+  })
+
+  it('prefetchComments swallows PEK failures without rejecting or blocking others', async () => {
+    const photos = [makePrefetchPhoto(1), makePrefetchPhoto(2)]
+    vi.mocked(getPEKForPhoto).mockImplementation(async (children: PhotoChild[]) => {
+      if (children[0]!.id === 10) throw new Error('no DEK')
+      return pek
+    })
+    vi.mocked(api.get).mockResolvedValue(ok(makeListResponse([])))
+
+    const store = useCommentsStore()
+    await expect(store.prefetchComments(photos)).resolves.toBeUndefined()
+
+    // The healthy photo still got warmed; the broken one stays idle.
+    expect(api.get).toHaveBeenCalledTimes(1)
+    expect(api.get).toHaveBeenCalledWith('/photos/2/comments')
+    expect(store.statusFor(1)).toBe('idle')
+    expect(store.statusFor(2)).toBe('ready')
   })
 
   it('completes a real WebCrypto postComment -> fetchComments round trip (unwrapPEK key-usage regression)', async () => {
