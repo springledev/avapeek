@@ -15,7 +15,6 @@ const recentsStore = useRecentsStore()
 const selectedPhoto = ref<Photo | null>(null)
 const selectedGroupPhotos = ref<Photo[]>([])
 const selectedPhotoIndex = ref(0)
-const photoViewerKey = ref(0)
 
 const grouped = computed(() => {
   const groups: {
@@ -61,6 +60,12 @@ const grouped = computed(() => {
 
 const hasPrev = computed(() => selectedPhotoIndex.value > 0)
 const hasNext = computed(() => selectedPhotoIndex.value < selectedGroupPhotos.value.length - 1)
+const prevPhotoObj = computed(() =>
+  hasPrev.value ? (selectedGroupPhotos.value[selectedPhotoIndex.value - 1] ?? null) : null,
+)
+const nextPhotoObj = computed(() =>
+  hasNext.value ? (selectedGroupPhotos.value[selectedPhotoIndex.value + 1] ?? null) : null,
+)
 
 function schedulePreload() {
   requestAnimationFrame(async () => {
@@ -80,7 +85,6 @@ function openPhoto(photo: Photo, groupPhotos: Photo[]) {
   selectedPhotoIndex.value = groupPhotos.findIndex((p) => p.id === photo.id)
   if (selectedPhotoIndex.value < 0) selectedPhotoIndex.value = 0
   selectedPhoto.value = groupPhotos[selectedPhotoIndex.value]!
-  photoViewerKey.value++
   schedulePreload()
 }
 
@@ -92,7 +96,6 @@ function prevPhoto() {
   if (selectedPhotoIndex.value > 0) {
     selectedPhotoIndex.value--
     selectedPhoto.value = selectedGroupPhotos.value[selectedPhotoIndex.value]!
-    photoViewerKey.value++
     schedulePreload()
   }
 }
@@ -101,7 +104,6 @@ function nextPhoto() {
   if (selectedPhotoIndex.value < selectedGroupPhotos.value.length - 1) {
     selectedPhotoIndex.value++
     selectedPhoto.value = selectedGroupPhotos.value[selectedPhotoIndex.value]!
-    photoViewerKey.value++
     schedulePreload()
   }
 }
@@ -193,7 +195,6 @@ onMounted(async () => {
 
     <PhotoViewer
       v-if="selectedPhoto"
-      :key="photoViewerKey"
       :photo="selectedPhoto"
       :has-prev="hasPrev"
       :has-next="hasNext"
@@ -201,6 +202,8 @@ onMounted(async () => {
       :can-edit="true"
       :child-birth-date="null"
       :all-tags="[]"
+      :prev-photo="prevPhotoObj"
+      :next-photo="nextPhotoObj"
       @close="closePhoto"
       @prev="prevPhoto"
       @next="nextPhoto"

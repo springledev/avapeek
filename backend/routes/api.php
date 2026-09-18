@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ChildController;
+use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\EncryptionKeysController;
 use App\Http\Controllers\Api\InviteController;
 use App\Http\Controllers\Api\PhotoController;
@@ -71,6 +72,11 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Photo-Tag management
     Route::post('/photos/{photo}/tags', [TagController::class, 'attach']);
     Route::delete('/photos/{photo}/tags/{tag}', [TagController::class, 'detach']);
+
+    // Photo comments (E2E-encrypted ciphertext only)
+    Route::post('/photos/{photo}/comments', [CommentController::class, 'store']);
+    Route::get('/photos/{photo}/comments', [CommentController::class, 'index']);
+    Route::delete('/photos/{photo}/comments/{comment}', [CommentController::class, 'destroy']);
 
     // Child-scoped routes
     Route::middleware('child.member')->group(function () {

@@ -1,4 +1,5 @@
 import { useFeedStore } from '@/stores/feed'
+import { useCommentsStore } from '@/stores/comments'
 import { warmCache } from '@/lib/cache/decrypted-cache'
 import { getPEKForPhoto, fetchAndDecrypt } from '@/services/storage'
 import { api } from '@/services/api'
@@ -39,6 +40,12 @@ export function usePrefetch() {
           },
         })),
       )
+
+      try {
+        void useCommentsStore().prefetchComments(data)
+      } catch {
+        // comments warm-up must never break thumbnail prefetch
+      }
     } catch {
       // ponytail: best-effort prefetch
     } finally {

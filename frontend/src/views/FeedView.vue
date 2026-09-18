@@ -16,10 +16,15 @@ const { prefetchNextPage } = usePrefetch()
 
 const selectedPhoto = ref<Photo | null>(null)
 const selectedPhotoIndex = ref(0)
-const photoViewerKey = ref(0)
 
 const hasPrev = computed(() => selectedPhotoIndex.value > 0)
 const hasNext = computed(() => selectedPhotoIndex.value < feedStore.photos.length - 1)
+const prevPhotoObj = computed(() =>
+  hasPrev.value ? (feedStore.photos[selectedPhotoIndex.value - 1] ?? null) : null,
+)
+const nextPhotoObj = computed(() =>
+  hasNext.value ? (feedStore.photos[selectedPhotoIndex.value + 1] ?? null) : null,
+)
 const canDelete = computed(() => true)
 const canEdit = computed(() => true)
 
@@ -91,7 +96,6 @@ function openPhoto(photo: Photo) {
   const idx = feedStore.photos.findIndex((p) => p.id === photo.id)
   selectedPhotoIndex.value = idx >= 0 ? idx : 0
   selectedPhoto.value = photo
-  photoViewerKey.value++
   schedulePreload()
 }
 
@@ -103,7 +107,6 @@ function prevPhoto() {
   if (selectedPhotoIndex.value > 0) {
     selectedPhotoIndex.value--
     selectedPhoto.value = feedStore.photos[selectedPhotoIndex.value]!
-    photoViewerKey.value++
     schedulePreload()
   }
 }
@@ -112,7 +115,6 @@ function nextPhoto() {
   if (selectedPhotoIndex.value < feedStore.photos.length - 1) {
     selectedPhotoIndex.value++
     selectedPhoto.value = feedStore.photos[selectedPhotoIndex.value]!
-    photoViewerKey.value++
     schedulePreload()
   }
 }
@@ -227,7 +229,6 @@ async function updateDate(photoId: number, takenAt: string) {
 
     <PhotoViewer
       v-if="selectedPhoto"
-      :key="photoViewerKey"
       :photo="selectedPhoto"
       :has-prev="hasPrev"
       :has-next="hasNext"
@@ -235,6 +236,8 @@ async function updateDate(photoId: number, takenAt: string) {
       :can-edit="canEdit"
       :child-birth-date="null"
       :all-tags="[]"
+      :prev-photo="prevPhotoObj"
+      :next-photo="nextPhotoObj"
       @close="closePhoto"
       @prev="prevPhoto"
       @next="nextPhoto"

@@ -1,6 +1,6 @@
 import { getThumbnail, getOriginal, removeUrlFromCache } from '@/lib/cache/decrypted-cache'
 import { api } from '@/services/api'
-import { decryptBlob, blobToObjectURL, revokeObjectURL } from '@/crypto/encrypt'
+import { decryptBlob, revokeObjectURL } from '@/crypto/encrypt'
 import { unwrapPEK } from '@/crypto/keychain'
 import { useChildStore } from '@/stores/child'
 import { decodeHeicBuffer } from '@/crypto/heic'

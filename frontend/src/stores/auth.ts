@@ -2,11 +2,12 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/services/api'
 import apiService from '@/services/api'
+import { apiErrorMessage } from '@/lib/util'
 import { clearDecryptedCache } from '@/lib/cache/decrypted-cache'
+import type { Photo } from '@/types/photo'
 import type {
   User,
   EncryptionKey,
-  RegisterRequest,
   LoginRequest,
   AuthResponse,
 } from '@/types/auth'
@@ -86,9 +87,9 @@ export const useAuthStore = defineStore('auth', () => {
       }
 
       localStorage.removeItem('pending_invite_token')
-    } catch (err: any) {
+    } catch (err) {
       console.error('Registration error:', err)
-      error.value = err.response?.data?.message || 'Registration failed. Please try again.'
+      error.value = apiErrorMessage(err, 'Registration failed. Please try again.')
       throw err
     } finally {
       isLoading.value = false
@@ -123,9 +124,9 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem('kek', kekJwk)
 
       localStorage.setItem('user', JSON.stringify(userData))
-    } catch (err: any) {
+    } catch (err) {
       console.error('Login error:', err)
-      error.value = err.response?.data?.message || 'Login failed. Please check your credentials.'
+      error.value = apiErrorMessage(err, 'Login failed. Please check your credentials.')
       throw err
     } finally {
       isLoading.value = false
@@ -140,16 +141,17 @@ export const useAuthStore = defineStore('auth', () => {
       const data = response.data.data
       if (!Array.isArray(data)) return
       await warmCache(
-        data.map((photo: any) => ({
+        data.map((photo: Photo) => ({
           id: photo.id,
           fetchAndDecrypt: async () => {
             const pek = await getPEKForPhoto(photo.children)
             if (!pek) throw new Error('No PEK')
-            const decrypted = await fetchAndDecrypt(
-              photo.thumbnail_url,
-              pek,
-              photo.iv_thumbnail,
-            )
+            let url = photo.thumbnail_url
+            if (!url) {
+              const thumbnailResponse = await api.get(`/photos/${photo.id}/thumbnail`)
+              url = thumbnailResponse.data.data.presigned_url as string
+            }
+            const decrypted = await fetchAndDecrypt(url, pek, photo.iv_thumbnail)
             return new Blob([decrypted], { type: 'image/webp' })
           },
         })),
@@ -167,7 +169,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       // Call logout API
       await api.post('/auth/logout')
-    } catch (err: any) {
+    } catch (err) {
       console.error('Logout error:', err)
       // Continue with local cleanup even if API call fails
     } finally {
@@ -263,8 +265,8 @@ export const useAuthStore = defineStore('auth', () => {
         const kekJwk = await exportKEK(newKEK)
         localStorage.setItem('kek', kekJwk)
       }
-    } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to update profile.'
+    } catch (err) {
+      error.value = apiErrorMessage(err, 'Failed to update profile.')
       throw err
     } finally {
       isLoading.value = false

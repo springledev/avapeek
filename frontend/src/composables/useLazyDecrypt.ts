@@ -1,12 +1,18 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { getThumbnail } from '@/lib/cache/decrypted-cache'
-import { getPEKForPhoto, fetchAndDecrypt, fetchEncryptedBlob } from '@/services/storage'
+import { getPEKForPhoto, fetchAndDecrypt } from '@/services/storage'
 import { api } from '@/services/api'
 import type { Photo } from '@/types/photo'
+
+interface LazyPhotoTarget {
+  photo: Photo
+  onUrl: (url: string) => void
+}
 
 export function useLazyDecrypt() {
   const observer = ref<IntersectionObserver | null>(null)
   const pendingDecrypts = new Map<Element, AbortController>()
+  const lazyTargets = new WeakMap<HTMLElement, LazyPhotoTarget>()
 
   function observePhoto(
     el: HTMLElement,
@@ -14,7 +20,7 @@ export function useLazyDecrypt() {
     onUrl: (url: string) => void,
   ) {
     if (!observer.value) return
-    ;(el as any)._lazyPhoto = { photo, onUrl }
+    lazyTargets.set(el, { photo, onUrl })
     observer.value.observe(el)
   }
 
@@ -32,9 +38,11 @@ export function useLazyDecrypt() {
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            const { photo, onUrl } = (entry.target as any)._lazyPhoto || {}
+            const target = entry.target as HTMLElement
+            const { photo, onUrl } = lazyTargets.get(target) || {}
             if (photo && onUrl) {
-              decryptAndSet(entry.target as HTMLElement, photo, onUrl)
+              decryptAndSet(target, photo, onUrl)
+              lazyTargets.delete(target)
               observer.value?.unobserve(entry.target)
             }
           }

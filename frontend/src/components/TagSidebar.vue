@@ -7,7 +7,7 @@ export interface TagItem {
   photo_count: number
 }
 
-const props = defineProps<{
+defineProps<{
   tags: TagItem[]
   activeTag: string | null
   totalPhotos: number

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/services/api'
+import { apiErrorMessage } from '@/lib/util'
 import { useAuthStore } from '@/stores/auth'
 import { generateDEK, wrapDEK, unwrapDEK, importPublicKey, wrapDEKWithPublicKey } from '@/crypto/keychain'
 import type { Child, ChildDetail, InviteResponse } from '@/types/child'
@@ -73,9 +74,9 @@ export const useChildStore = defineStore('child', () => {
     try {
       const response = await api.get<{ data: Child[] }>('/children')
       children.value = response.data.data
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to fetch children:', err)
-      error.value = err.response?.data?.message || 'Failed to load children.'
+      error.value = apiErrorMessage(err, 'Failed to load children.')
       throw err
     } finally {
       isLoading.value = false
@@ -90,9 +91,9 @@ export const useChildStore = defineStore('child', () => {
       const response = await api.get<{ data: ChildDetail }>(`/children/${childId}`)
       currentChildDetail.value = response.data.data
       return response.data.data
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to fetch child detail:', err)
-      error.value = err.response?.data?.message || 'Failed to load child details.'
+      error.value = apiErrorMessage(err, 'Failed to load child details.')
       throw err
     } finally {
       isLoading.value = false
@@ -140,9 +141,9 @@ export const useChildStore = defineStore('child', () => {
       children.value.push(child)
 
       return child
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to create child:', err)
-      error.value = err.response?.data?.message || 'Failed to create child profile.'
+      error.value = apiErrorMessage(err, 'Failed to create child profile.')
       throw err
     } finally {
       isLoading.value = false
@@ -160,9 +161,9 @@ export const useChildStore = defineStore('child', () => {
       })
 
       return response.data.data
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to create invite:', err)
-      error.value = err.response?.data?.message || 'Failed to create invite.'
+      error.value = apiErrorMessage(err, 'Failed to create invite.')
       throw err
     } finally {
       isLoading.value = false
@@ -195,9 +196,9 @@ export const useChildStore = defineStore('child', () => {
         user_id: inviteeUserId,
         wrapped_dek: wrappedDek,
       })
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to grant access:', err)
-      error.value = err.response?.data?.message || 'Failed to grant encrypted access.'
+      error.value = apiErrorMessage(err, 'Failed to grant encrypted access.')
       throw err
     } finally {
       isLoading.value = false

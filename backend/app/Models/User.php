@@ -45,6 +45,11 @@ class User extends Authenticatable
         return $this->hasMany(Photo::class, 'uploaded_by');
     }
 
+    public function comments(): HasMany
+    {
+        return $this->hasMany(Comment::class);
+    }
+
     public function deviceTokens(): HasMany
     {
         return $this->hasMany(DeviceToken::class);
