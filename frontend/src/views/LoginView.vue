@@ -43,12 +43,14 @@ async function handleSubmit() {
     await authStore.login(email.value, password.value)
     const redirect = (route.query.redirect as string) || '/'
     router.push(redirect)
-  } catch (error: any) {
+  } catch (error) {
     // Handle validation errors from API
-    if (error.response?.data?.errors) {
-      formErrors.value = Object.entries(error.response.data.errors).reduce(
+    const apiErrors = (error as { response?: { data?: { errors?: Record<string, string[]> } } })
+      .response?.data?.errors
+    if (apiErrors) {
+      formErrors.value = Object.entries(apiErrors).reduce(
         (acc, [key, messages]) => {
-          acc[key] = (messages as string[])[0] ?? ''
+          acc[key] = messages[0] ?? ''
           return acc
         },
         {} as Record<string, string>,

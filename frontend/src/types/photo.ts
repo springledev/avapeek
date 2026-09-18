@@ -34,6 +34,36 @@ export interface Photo {
   created_at: string
   tags: PhotoTag[]
   children: PhotoChild[]
+  comment_count?: number
+}
+
+export interface PhotoComment {
+  id: number
+  user_id: number
+  author_name: string
+  body_encrypted: string
+  iv_body: string
+  created_at: string
+}
+
+export interface DecryptedComment {
+  id: number
+  user_id: number
+  author_name: string
+  text: string
+  created_at: string
+}
+
+export interface CommentListMeta {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+export interface CommentListResponse {
+  data: PhotoComment[]
+  meta: CommentListMeta
 }
 
 export interface PhotoListMeta {

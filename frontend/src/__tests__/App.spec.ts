@@ -6,14 +6,14 @@ import App from '../App.vue'
 
 vi.mock('@/composables/useDarkMode', () => ({
   useDarkMode: () => ({
-    initDarkMode: vi.fn(),
+    initDarkMode: vi.fn<() => void>(),
   }),
 }))
 
 vi.mock('@/composables/useNetwork', () => ({
   useNetwork: () => ({
-    initNetwork: vi.fn(),
-    cleanup: vi.fn(),
+    initNetwork: vi.fn<() => void>(),
+    cleanup: vi.fn<() => void>(),
   }),
 }))
 
