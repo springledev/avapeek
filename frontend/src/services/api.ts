@@ -1,5 +1,7 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
 import { toast } from 'vue-sonner'
+import { getSessionItem, setSessionItem, clearSession } from '@/lib/auth-storage'
+import { clearDecryptedCache } from '@/lib/cache/decrypted-cache'
 
 class ApiService {
   private client: AxiosInstance
@@ -17,7 +19,7 @@ class ApiService {
 
     this.client.interceptors.request.use(
       (config: InternalAxiosRequestConfig) => {
-        const token = localStorage.getItem('auth_token')
+        const token = getSessionItem('auth_token')
         if (token && config.headers) {
           config.headers.Authorization = `Bearer ${token}`
         }
@@ -35,15 +37,13 @@ class ApiService {
         }
 
         if (error.response?.status === 401) {
-          localStorage.removeItem('auth_token')
-          localStorage.removeItem('user')
-          localStorage.removeItem('encryption_keys')
-          localStorage.removeItem('kek')
+          clearSession()
+          clearDecryptedCache()
           const publicPaths = ['/login', '/register', '/invite/']
           const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p))
           if (!isPublicPage) {
             const redirect = encodeURIComponent(window.location.pathname + window.location.search)
-            window.location.href = `/login?redirect=${redirect}`
+            window.location.href = `/login?reauth=1&redirect=${redirect}`
           }
           return Promise.reject(error)
         }
@@ -74,11 +74,11 @@ class ApiService {
   }
 
   setAuthToken(token: string) {
-    localStorage.setItem('auth_token', token)
+    setSessionItem('auth_token', token)
   }
 
   clearAuthToken() {
-    localStorage.removeItem('auth_token')
+    clearSession()
   }
 
   getInstance(): AxiosInstance {

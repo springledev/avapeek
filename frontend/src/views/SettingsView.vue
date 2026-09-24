@@ -1,14 +1,27 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { User, Users, ChevronRight, ChevronLeft, LayoutGrid, Sun, Moon } from '@lucide/vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  User,
+  Users,
+  ChevronRight,
+  ChevronLeft,
+  LayoutGrid,
+  Sun,
+  Moon,
+  ShieldCheck,
+  LogOut,
+} from '@lucide/vue'
 import { api } from '@/services/api'
 import { toast } from 'vue-sonner'
+import { useAuthStore } from '@/stores/auth'
 import { useChildStore } from '@/stores/child'
 import { useGridDensity, type FeedDensity } from '@/composables/useGridDensity'
 import { useDarkMode } from '@/composables/useDarkMode'
 
 const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
 const childStore = useChildStore()
 const { density, setDensity } = useGridDensity()
 const { isDark, toggle: toggleDark } = useDarkMode()
@@ -62,6 +75,11 @@ function onDensityChange(value: FeedDensity) {
   setDensity(value)
 }
 
+async function handleLogout() {
+  await authStore.logout()
+  router.push('/login')
+}
+
 onMounted(fetchPendingInvites)
 </script>
 
@@ -84,6 +102,17 @@ onMounted(fetchPendingInvites)
         <div class="settings__text">
           <p class="settings__label">Profile</p>
           <p class="settings__desc">Name, email, password</p>
+        </div>
+        <ChevronRight :size="20" class="settings__chevron" />
+      </router-link>
+
+      <router-link to="/settings/security" class="settings__row">
+        <div class="settings__icon settings__icon--accent">
+          <ShieldCheck :size="20" />
+        </div>
+        <div class="settings__text">
+          <p class="settings__label">Security</p>
+          <p class="settings__desc">Extra lock, authenticator, recovery codes</p>
         </div>
         <ChevronRight :size="20" class="settings__chevron" />
       </router-link>
@@ -146,6 +175,15 @@ onMounted(fetchPendingInvites)
           <ChevronRight :size="20" class="settings__chevron" />
         </router-link>
       </template>
+
+      <button type="button" class="settings__row settings__row--danger" @click="handleLogout">
+        <div class="settings__icon settings__icon--danger">
+          <LogOut :size="20" />
+        </div>
+        <div class="settings__text">
+          <p class="settings__label">Log out</p>
+        </div>
+      </button>
     </div>
 
     <div v-if="!hasSubRoute && isAdmin && pendingInvites.length > 0" class="settings__invites">
@@ -243,6 +281,22 @@ a.settings__row:hover {
 .settings__icon--accent {
   background: var(--color-accent-soft);
   color: var(--color-accent-ink);
+}
+
+.settings__icon--danger {
+  background: var(--color-danger);
+  color: var(--color-on-danger);
+}
+
+.settings__row--danger {
+  cursor: pointer;
+  border-color: var(--color-danger);
+  text-align: start;
+  width: 100%;
+}
+
+.settings__row--danger:hover {
+  background: var(--color-surface-2);
 }
 
 .settings__text {

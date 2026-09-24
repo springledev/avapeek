@@ -4,6 +4,14 @@ import { api } from '@/services/api'
 import apiService from '@/services/api'
 import { apiErrorMessage } from '@/lib/util'
 import { clearDecryptedCache } from '@/lib/cache/decrypted-cache'
+import {
+  getSessionItem,
+  setSessionItem,
+  removeSessionItem,
+  clearSession,
+  removePendingInviteToken,
+  setStaySignedIn,
+} from '@/lib/auth-storage'
 import type { Photo } from '@/types/photo'
 import type {
   User,
@@ -19,6 +27,25 @@ import {
   exportKEK,
   importKEK,
 } from '@/crypto/keychain'
+
+export interface MfaRequiredResponse {
+  mfa_required: true
+  mfa_token: string
+  mfa_methods: string[]
+}
+
+export function isMfaRequired(value: unknown): value is MfaRequiredResponse {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'mfa_required' in value &&
+    (value as Record<string, unknown>).mfa_required === true &&
+    'mfa_token' in value &&
+    typeof (value as Record<string, unknown>).mfa_token === 'string' &&
+    'mfa_methods' in value &&
+    Array.isArray((value as Record<string, unknown>).mfa_methods)
+  )
+}
 
 export const useAuthStore = defineStore('auth', () => {
   // State
@@ -41,6 +68,7 @@ export const useAuthStore = defineStore('auth', () => {
     password: string,
     displayName: string,
     inviteToken?: string,
+    staySignedIn: boolean = true,
   ): Promise<void> {
     isLoading.value = true
     error.value = null
@@ -71,22 +99,24 @@ export const useAuthStore = defineStore('auth', () => {
       const response = await api.post<AuthResponse & { accepted_child?: { child_id: number; child_name: string; child_slug: string } }>('/auth/register', registerData)
       const { user: userData, token, accepted_child } = response.data
 
+      setStaySignedIn(staySignedIn)
+
       // Store user and token
       user.value = userData
       apiService.setAuthToken(token)
 
-      // ponytail: KEK in localStorage, re-auth on next app load if XSS risk is unacceptable
+      // ponytail: KEK in active storage, re-auth on next app load if XSS risk is unacceptable
       const kekJwk = await exportKEK(derivedKEK)
-      localStorage.setItem('kek', kekJwk)
+      setSessionItem('kek', kekJwk)
 
-      localStorage.setItem('user', JSON.stringify(userData))
+      setSessionItem('user', JSON.stringify(userData))
 
       if (accepted_child) {
         encryptionKeys.value = []
-        localStorage.setItem('encryption_keys', JSON.stringify([]))
+        setSessionItem('encryption_keys', JSON.stringify([]))
       }
 
-      localStorage.removeItem('pending_invite_token')
+      removePendingInviteToken()
     } catch (err) {
       console.error('Registration error:', err)
       error.value = apiErrorMessage(err, 'Registration failed. Please try again.')
@@ -99,34 +129,92 @@ export const useAuthStore = defineStore('auth', () => {
   /**
    * Logs in an existing user and retrieves their encryption keys.
    */
-  async function login(email: string, password: string): Promise<void> {
+  async function login(
+    email: string,
+    password: string,
+    staySignedIn: boolean = true,
+  ): Promise<void | MfaRequiredResponse> {
     isLoading.value = true
     error.value = null
 
     try {
       const loginData: LoginRequest = { email, password }
-      const response = await api.post<AuthResponse>('/auth/login', loginData)
-      const { user: userData, token, encryption_keys } = response.data
+      const response = await api.post<AuthResponse | MfaRequiredResponse>('/auth/login', loginData)
+      const data = response.data
 
-      user.value = userData
-      apiService.setAuthToken(token)
-
-      const derivedKEK = await deriveKEK(password, userData.master_key_salt)
-      kek.value = derivedKEK
-
-      if (encryption_keys) {
-        encryptionKeys.value = encryption_keys
-        localStorage.setItem('encryption_keys', JSON.stringify(encryption_keys))
+      if (isMfaRequired(data)) {
+        return {
+          mfa_required: true,
+          mfa_token: data.mfa_token,
+          mfa_methods: data.mfa_methods,
+        }
       }
 
-      // ponytail: KEK in localStorage, re-auth on next app load if XSS risk is unacceptable
-      const kekJwk = await exportKEK(derivedKEK)
-      localStorage.setItem('kek', kekJwk)
-
-      localStorage.setItem('user', JSON.stringify(userData))
+      setStaySignedIn(staySignedIn)
+      await storeAuthSession(data, password)
     } catch (err) {
       console.error('Login error:', err)
       error.value = apiErrorMessage(err, 'Login failed. Please check your credentials.')
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function storeAuthSession(data: AuthResponse, password: string): Promise<void> {
+    const { user: userData, token, encryption_keys } = data
+
+    user.value = userData
+    apiService.setAuthToken(token)
+
+    const derivedKEK = await deriveKEK(password, userData.master_key_salt)
+    kek.value = derivedKEK
+
+    if (encryption_keys) {
+      encryptionKeys.value = encryption_keys
+      setSessionItem('encryption_keys', JSON.stringify(encryption_keys))
+    }
+
+    // ponytail: KEK in active storage, re-auth on next app load if XSS risk is unacceptable
+    const kekJwk = await exportKEK(derivedKEK)
+    setSessionItem('kek', kekJwk)
+
+    setSessionItem('user', JSON.stringify(userData))
+  }
+
+  /**
+   * Completes an MFA challenge and stores the full session on success.
+   */
+  async function mfaChallenge(
+    mfaToken: string,
+    method: string,
+    code?: string,
+    passkeyResponse?: Record<string, unknown>,
+    password?: string,
+  ): Promise<void> {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const payload: Record<string, unknown> = { mfa_token: mfaToken, method }
+      if (code !== undefined) {
+        payload.code = code
+      }
+      if (passkeyResponse !== undefined) {
+        payload.passkey_response = passkeyResponse
+      }
+
+      const response = await api.post<AuthResponse>('/auth/mfa/challenge', payload)
+      const data = response.data
+
+      if (!password) {
+        throw new Error('Password is required to restore encryption keys.')
+      }
+
+      await storeAuthSession(data, password)
+    } catch (err) {
+      console.error('MFA challenge error:', err)
+      error.value = apiErrorMessage(err, 'MFA verification failed. Please try again.')
       throw err
     } finally {
       isLoading.value = false
@@ -178,59 +266,57 @@ export const useAuthStore = defineStore('auth', () => {
       encryptionKeys.value = []
       kek.value = null
       apiService.clearAuthToken()
-      localStorage.removeItem('user')
-      localStorage.removeItem('encryption_keys')
-      localStorage.removeItem('kek')
+      clearSession()
       clearDecryptedCache()
       isLoading.value = false
     }
   }
 
   /**
-   * Initializes auth state from localStorage (synchronous).
+   * Initializes auth state from storage (synchronous).
    * Must be called before router initialization to ensure guards have correct state.
    */
   function initializeAuth(): void {
-    const token = localStorage.getItem('auth_token')
+    const token = getSessionItem('auth_token')
     if (!token) {
-      localStorage.removeItem('user')
-      localStorage.removeItem('encryption_keys')
+      clearDecryptedCache()
+      clearSession()
       return
     }
 
-    const storedUser = localStorage.getItem('user')
+    const storedUser = getSessionItem('user')
     if (storedUser) {
       try {
         user.value = JSON.parse(storedUser)
       } catch (err) {
         console.error('Failed to parse stored user data:', err)
-        localStorage.removeItem('user')
+        removeSessionItem('user')
       }
     }
 
-    const storedEncryptionKeys = localStorage.getItem('encryption_keys')
+    const storedEncryptionKeys = getSessionItem('encryption_keys')
     if (storedEncryptionKeys) {
       try {
         encryptionKeys.value = JSON.parse(storedEncryptionKeys)
       } catch (err) {
         console.error('Failed to parse stored encryption keys:', err)
-        localStorage.removeItem('encryption_keys')
+        removeSessionItem('encryption_keys')
       }
     }
   }
 
   /**
-   * Restores KEK from sessionStorage (asynchronous).
+   * Restores KEK from active storage (asynchronous).
    * Called after app mount to avoid blocking initial render.
    */
   async function restoreKEK(): Promise<void> {
-    const storedKekJwk = localStorage.getItem('kek')
+    const storedKekJwk = getSessionItem('kek')
     if (storedKekJwk) {
       try {
         kek.value = await importKEK(storedKekJwk)
       } catch (err) {
-        console.error('Failed to import KEK from localStorage:', err)
-        localStorage.removeItem('kek')
+        console.error('Failed to import KEK from storage:', err)
+        removeSessionItem('kek')
       }
     }
   }
@@ -257,13 +343,13 @@ export const useAuthStore = defineStore('auth', () => {
       const userData = response.data.user
 
       user.value = userData
-      localStorage.setItem('user', JSON.stringify(userData))
+      setSessionItem('user', JSON.stringify(userData))
 
       if (data.new_password && userData.master_key_salt) {
         const newKEK = await deriveKEK(data.new_password, userData.master_key_salt)
         kek.value = newKEK
         const kekJwk = await exportKEK(newKEK)
-        localStorage.setItem('kek', kekJwk)
+        setSessionItem('kek', kekJwk)
       }
     } catch (err) {
       error.value = apiErrorMessage(err, 'Failed to update profile.')
@@ -294,6 +380,7 @@ export const useAuthStore = defineStore('auth', () => {
     // Actions
     register,
     login,
+    mfaChallenge,
     logout,
     initializeAuth,
     restoreKEK,

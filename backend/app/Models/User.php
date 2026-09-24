@@ -13,8 +13,8 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['email', 'password_hash', 'display_name', 'master_key_salt', 'public_key', 'last_seen_at'])]
-#[Hidden(['password_hash', 'remember_token'])]
+#[Fillable(['email', 'password_hash', 'display_name', 'master_key_salt', 'public_key', 'last_seen_at', 'totp_secret_encrypted', 'totp_confirmed_at', 'totp_last_timestep', 'mfa_recovery_codes_hash'])]
+#[Hidden(['password_hash', 'remember_token', 'totp_secret_encrypted', 'mfa_recovery_codes_hash'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -26,6 +26,10 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password_hash' => 'hashed',
             'last_seen_at' => 'datetime',
+            'totp_secret_encrypted' => 'encrypted',
+            'totp_confirmed_at' => 'datetime',
+            'totp_last_timestep' => 'integer',
+            'mfa_recovery_codes_hash' => 'string',
         ];
     }
 
@@ -53,5 +57,33 @@ class User extends Authenticatable
     public function deviceTokens(): HasMany
     {
         return $this->hasMany(DeviceToken::class);
+    }
+
+    public function webauthnCredentials(): HasMany
+    {
+        return $this->hasMany(WebAuthnCredential::class);
+    }
+
+    public function hasMfaEnabled(): bool
+    {
+        return $this->totp_confirmed_at !== null || $this->webauthnCredentials()->exists();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function enabledMfaMethods(): array
+    {
+        $methods = [];
+
+        if ($this->totp_confirmed_at !== null) {
+            $methods[] = 'totp';
+        }
+
+        if ($this->webauthnCredentials()->exists()) {
+            $methods[] = 'passkey';
+        }
+
+        return $methods;
     }
 }
