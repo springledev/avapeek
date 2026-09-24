@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\ChildController;
 use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\EncryptionKeysController;
 use App\Http\Controllers\Api\InviteController;
+use App\Http\Controllers\Api\MfaController;
 use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\Api\QuotaController;
 use App\Http\Controllers\Api\StorageInfoController;
@@ -17,6 +18,10 @@ Route::post('/auth/register', [AuthController::class, 'register'])->middleware('
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
 Route::get('/auth/registration-mode', [AuthController::class, 'registrationMode']);
 
+// MFA challenge routes (no auth required, bound to mfa_token)
+Route::post('/auth/mfa/challenge', [MfaController::class, 'challenge'])->middleware('throttle:auth');
+Route::post('/auth/mfa/passkey/options', [MfaController::class, 'passkeyOptions'])->middleware('throttle:auth');
+
 // Invite preview (no auth required — preview before login)
 Route::get('/invites/{token}', [InviteController::class, 'show'])
     ->middleware('throttle:10,1')
@@ -27,6 +32,16 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Auth
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/refresh', [AuthController::class, 'refresh']);
+
+    // MFA setup routes
+    Route::post('/auth/mfa/totp/setup', [MfaController::class, 'setupTotp']);
+    Route::post('/auth/mfa/totp/confirm', [MfaController::class, 'confirmTotp']);
+    Route::delete('/auth/mfa/totp', [MfaController::class, 'disableTotp']);
+    Route::get('/auth/mfa/methods', [MfaController::class, 'methods']);
+    Route::post('/auth/mfa/passkeys/register/options', [MfaController::class, 'registerPasskeyOptions']);
+    Route::post('/auth/mfa/passkeys/register/verify', [MfaController::class, 'registerPasskeyVerify']);
+    Route::delete('/auth/mfa/passkeys/{credential}', [MfaController::class, 'removePasskey']);
+    Route::post('/auth/mfa/recovery-codes', [MfaController::class, 'regenerateRecoveryCodes']);
 
     // User public key (for DEK re-wrapping during invites)
     Route::get('/users/{user}/public-key', function (User $user) {

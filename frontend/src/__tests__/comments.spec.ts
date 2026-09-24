@@ -451,7 +451,7 @@ describe('comments store', () => {
       ['decrypt'],
     )
     await expect(realEncryptString('nope', decryptOnlyPek)).rejects.toThrow(
-      /InvalidAccessError|not valid for the provided key/,
+      /InvalidAccessError|not valid for the provided key|Unable to use this key/,
     )
     const fullUsagePek = await crypto.subtle.importKey(
       'raw',

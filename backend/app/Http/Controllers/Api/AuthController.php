@@ -122,6 +122,16 @@ class AuthController extends Controller
             ]);
         }
 
+        if ($user->hasMfaEnabled()) {
+            $mfaToken = app(MfaController::class)->createMfaToken($user);
+
+            return response()->json([
+                'mfa_required' => true,
+                'mfa_token' => $mfaToken,
+                'mfa_methods' => $user->enabledMfaMethods(),
+            ]);
+        }
+
         // Load the user's encryption keys for all children they belong to
         $encryptionKeys = $user->encryptionKeys()
             ->with('child')

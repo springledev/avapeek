@@ -1,8 +1,12 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
-import { LayoutGrid, Plus, Settings, Clock } from '@lucide/vue'
+import { useRouter } from 'vue-router'
+import { LayoutGrid, Plus, Settings, Clock, LogOut } from '@lucide/vue'
+import { useAuthStore } from '@/stores/auth'
 import { useRecentsStore } from '@/stores/recents'
 
+const router = useRouter()
+const authStore = useAuthStore()
 const recentsStore = useRecentsStore()
 
 const items = computed(() => [
@@ -11,6 +15,11 @@ const items = computed(() => [
   { to: '/upload', label: 'Upload', icon: Plus },
   { to: '/settings', label: 'Settings', icon: Settings },
 ])
+
+async function handleLogout() {
+  await authStore.logout()
+  router.push('/login')
+}
 </script>
 
 <template>
@@ -24,6 +33,21 @@ const items = computed(() => [
             {{ item.badge > 99 ? '99+' : item.badge }}
           </span>
         </RouterLink>
+      </li>
+
+      <li class="tabbar__user">
+        <div class="tabbar__user-avatar" aria-hidden="true">
+          {{ authStore.currentUser?.display_name?.charAt(0)?.toUpperCase() || '?' }}
+        </div>
+        <span class="tabbar__user-name">{{ authStore.currentUser?.display_name }}</span>
+        <button
+          type="button"
+          class="tabbar__user-logout u-focus-ring"
+          aria-label="Log out"
+          @click="handleLogout"
+        >
+          <LogOut class="tabbar__user-logout-icon" aria-hidden="true" />
+        </button>
       </li>
     </ul>
   </nav>
@@ -97,6 +121,10 @@ const items = computed(() => [
   line-height: 1;
 }
 
+.tabbar__user {
+  display: none;
+}
+
 @media (min-width: 640px) {
   .tabbar {
     position: sticky;
@@ -140,6 +168,70 @@ const items = computed(() => [
   .tabbar__badge {
     position: static;
     margin-left: auto;
+  }
+
+  .tabbar__user {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: auto;
+    margin-right: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    min-height: var(--target-min);
+    border-radius: 0 var(--radius-card) var(--radius-card) 0;
+    background: var(--color-surface);
+    color: var(--color-ink);
+  }
+
+  .tabbar__user-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+    font-size: var(--text-body);
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .tabbar__user-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-body);
+    font-weight: 700;
+  }
+
+  .tabbar__user-logout {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--target-min);
+    height: var(--target-min);
+    border: 0;
+    border-radius: var(--radius-card);
+    background: transparent;
+    color: var(--color-ink-soft);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition:
+      background-color var(--dur-micro) var(--ease-soft),
+      color var(--dur-micro) var(--ease-soft);
+  }
+
+  .tabbar__user-logout:hover {
+    background: var(--color-surface-2);
+    color: var(--color-danger);
+  }
+
+  .tabbar__user-logout-icon {
+    width: 20px;
+    height: 20px;
   }
 }
 </style>

@@ -48,6 +48,23 @@ export interface AuthResponse {
 }
 
 /**
+ * Login response when MFA is required.
+ */
+export interface MfaLoginResponse {
+  mfa_required: true
+  mfa_token: string
+  mfa_methods: string[]
+}
+
+/**
+ * Available MFA methods for the authenticated user.
+ */
+export interface MfaMethodsResponse {
+  methods: string[]
+  passkeys: Array<{ id: string; name: string; last_used_at: string | null }>
+}
+
+/**
  * API error response.
  */
 export interface ApiError {
