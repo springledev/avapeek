@@ -5,28 +5,37 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\WebAuthnCredential;
+use App\Services\AuthSessionService;
+use App\Services\MfaTokenService;
 use App\Services\MfaWebAuthnService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use PragmaRX\Google2FA\Google2FA;
-use Throwable;
 use Webauthn\Exception\AuthenticatorResponseVerificationException;
 use Webauthn\PublicKeyCredentialCreationOptions;
 use Webauthn\PublicKeyCredentialRequestOptions;
 
 class MfaController extends Controller
 {
-    private const MFA_TOKEN_TTL_MINUTES = 5;
+    /**
+     * Wrong TOTP or recovery codes allowed per account before a lockout.
+     */
+    private const CODE_MAX_FAILURES = 10;
 
-    private const RECOVERY_MAX_ATTEMPTS = 10;
+    private const CODE_LOCKOUT_SECONDS = 900;
+
+    private const OPTIONS_TTL_MINUTES = 5;
 
     public function __construct(
         private MfaWebAuthnService $webAuthnService,
+        private MfaTokenService $mfaTokens,
+        private AuthSessionService $authSession,
         private Google2FA $google2fa,
     ) {}
 
@@ -40,27 +49,58 @@ class MfaController extends Controller
         $validated = $request->validate([
             'mfa_token' => ['required', 'string'],
             'method' => ['required', 'string', 'in:totp,recovery,passkey'],
-            'code' => ['required_if:method,totp,recovery', 'string'],
+            'code' => ['required_if:method,totp,recovery', 'string', 'max:64'],
             'passkey_response' => ['required_if:method,passkey', 'array'],
         ]);
 
-        $user = $this->validateMfaToken($validated['mfa_token']);
+        $session = $this->mfaTokens->resolve($validated['mfa_token']);
+        $user = $session['user'];
         $method = $validated['method'];
+        $usesCode = $method !== 'passkey';
 
-        $response = match ($method) {
-            'totp' => $this->verifyTotpChallenge($user, $validated['code']),
-            'recovery' => $this->verifyRecoveryChallenge($user, $validated['code'], $validated['mfa_token']),
-            'passkey' => $this->verifyPasskeyChallenge($user, $validated['passkey_response'], $validated['mfa_token']),
-            default => throw ValidationException::withMessages(['method' => ['Invalid MFA method.']]),
-        };
+        if ($usesCode) {
+            $this->ensureNotLockedOut($user);
+        }
 
-        $this->consumeMfaToken($validated['mfa_token']);
+        $lock = $this->mfaTokens->lock($session['nonce']);
 
-        return $response;
+        if (! $lock->get()) {
+            throw ValidationException::withMessages([
+                'code' => ['Verification is already in progress. Please wait a moment.'],
+            ]);
+        }
+
+        try {
+            $this->mfaTokens->ensureUnused($session['nonce']);
+
+            try {
+                match ($method) {
+                    'totp' => $this->verifyTotpChallenge($user, $validated['code']),
+                    'recovery' => $this->verifyRecoveryChallenge($user, $validated['code']),
+                    'passkey' => $this->verifyPasskeyChallenge($user, $validated['passkey_response'], $session['nonce']),
+                };
+            } catch (ValidationException $e) {
+                if ($usesCode) {
+                    RateLimiter::hit($this->codeFailuresKey($user), self::CODE_LOCKOUT_SECONDS);
+                }
+
+                throw $e;
+            }
+
+            $this->mfaTokens->consume($session['nonce']);
+        } finally {
+            $lock->release();
+        }
+
+        RateLimiter::clear($this->codeFailuresKey($user));
+
+        return $this->authSession->loginResponse($user, $session['remember']);
     }
 
     /**
      * Return WebAuthn assertion options for the MFA challenge.
+     *
+     * @throws ValidationException
      */
     public function passkeyOptions(Request $request): JsonResponse
     {
@@ -68,20 +108,20 @@ class MfaController extends Controller
             'mfa_token' => ['required', 'string'],
         ]);
 
-        $user = $this->validateMfaToken($validated['mfa_token']);
+        $session = $this->mfaTokens->resolve($validated['mfa_token']);
+        $user = $session['user'];
 
         if (! in_array('passkey', $user->enabledMfaMethods(), true)) {
             throw ValidationException::withMessages([
-                'mfa_token' => ['Passkey is not enabled for this account.'],
+                'passkey_response' => ['Passkey is not enabled for this account.'],
             ]);
         }
 
         $options = $this->webAuthnService->buildAssertionOptions($user);
-        $payload = $this->parseMfaToken($validated['mfa_token']);
         Cache::put(
-            $this->passkeyOptionsCacheKey($payload['nonce']),
+            $this->passkeyOptionsCacheKey($session['nonce']),
             $this->webAuthnService->deserializeRequestOptions(json_encode($options, JSON_THROW_ON_ERROR)),
-            now()->addMinutes(self::MFA_TOKEN_TTL_MINUTES)
+            now()->addMinutes(self::OPTIONS_TTL_MINUTES)
         );
 
         return response()->json([
@@ -91,10 +131,24 @@ class MfaController extends Controller
 
     /**
      * Start TOTP setup by generating a new unconfirmed secret.
+     *
+     * @throws ValidationException
      */
     public function setupTotp(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'current_password' => ['required', 'string'],
+        ]);
+
         $user = $request->user();
+
+        $this->ensureCurrentPassword($user, $validated['current_password']);
+
+        if ($user->totp_confirmed_at !== null) {
+            throw ValidationException::withMessages([
+                'totp' => ['An authenticator is already enabled. Disable it before setting up a new one.'],
+            ]);
+        }
 
         $secret = $this->google2fa->generateSecretKey(32);
         $user->totp_secret_encrypted = $secret;
@@ -116,42 +170,52 @@ class MfaController extends Controller
     /**
      * Confirm TOTP setup with a verification code.
      *
+     * Recovery codes are only issued when this is the account's first MFA
+     * method; otherwise the codes the user already saved stay valid.
+     *
      * @throws ValidationException
      */
     public function confirmTotp(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'code' => ['required', 'string', 'digits:6'],
+            'code' => ['required', 'string'],
         ]);
 
         $user = $request->user();
 
-        if ($user->totp_secret_encrypted === null) {
+        if ($user->totp_confirmed_at !== null) {
             throw ValidationException::withMessages([
-                'code' => ['TOTP setup has not been started.'],
+                'code' => ['An authenticator is already enabled.'],
             ]);
         }
 
-        $verified = $this->google2fa->verifyKey(
+        if ($user->totp_secret_encrypted === null) {
+            throw ValidationException::withMessages([
+                'code' => ['Authenticator setup has not been started.'],
+            ]);
+        }
+
+        $timestep = $this->google2fa->verifyKeyNewer(
             $user->totp_secret_encrypted,
-            $validated['code'],
+            $this->normalizeTotpCode($validated['code']),
+            0,
             1
         );
 
-        if ($verified === false) {
+        if ($timestep === false) {
             throw ValidationException::withMessages([
-                'code' => ['The code is invalid.'],
+                'code' => ['That code didn\'t match. Check your authenticator app and try again.'],
             ]);
         }
 
+        $isFirstMfaMethod = ! $user->hasMfaEnabled();
+
         $user->totp_confirmed_at = now();
-        $user->totp_last_timestep = null;
+        $user->totp_last_timestep = is_int($timestep) ? $timestep : null;
         $user->save();
 
-        $recoveryCodes = $this->generateRecoveryCodes($user);
-
         return response()->json([
-            'recovery_codes' => $recoveryCodes,
+            'recovery_codes' => $isFirstMfaMethod ? $this->generateRecoveryCodes($user) : null,
         ]);
     }
 
@@ -168,11 +232,7 @@ class MfaController extends Controller
 
         $user = $request->user();
 
-        if (! Hash::check($validated['current_password'], $user->password_hash)) {
-            throw ValidationException::withMessages([
-                'current_password' => ['The current password is incorrect.'],
-            ]);
-        }
+        $this->ensureCurrentPassword($user, $validated['current_password']);
 
         $user->totp_secret_encrypted = null;
         $user->totp_confirmed_at = null;
@@ -198,6 +258,7 @@ class MfaController extends Controller
 
         return response()->json([
             'methods' => $user->enabledMfaMethods(),
+            'recovery_codes_remaining' => $this->remainingRecoveryCodes($user),
             'passkeys' => $user->webauthnCredentials()
                 ->get()
                 ->map(fn (WebAuthnCredential $credential): array => [
@@ -210,16 +271,24 @@ class MfaController extends Controller
 
     /**
      * Return WebAuthn registration options for adding a passkey.
+     *
+     * @throws ValidationException
      */
     public function registerPasskeyOptions(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'current_password' => ['required', 'string'],
+        ]);
+
         $user = $request->user();
+
+        $this->ensureCurrentPassword($user, $validated['current_password']);
         $options = $this->webAuthnService->buildRegistrationOptions($user);
 
         Cache::put(
             $this->registerOptionsCacheKey($user->id),
             $this->webAuthnService->deserializeCreationOptions(json_encode($options, JSON_THROW_ON_ERROR)),
-            now()->addMinutes(self::MFA_TOKEN_TTL_MINUTES)
+            now()->addMinutes(self::OPTIONS_TTL_MINUTES)
         );
 
         return response()->json([
@@ -296,11 +365,7 @@ class MfaController extends Controller
             abort(403, 'This passkey does not belong to your account.');
         }
 
-        if (! Hash::check($validated['current_password'], $user->password_hash)) {
-            throw ValidationException::withMessages([
-                'current_password' => ['The current password is incorrect.'],
-            ]);
-        }
+        $this->ensureCurrentPassword($user, $validated['current_password']);
 
         $credential->delete();
 
@@ -327,11 +392,7 @@ class MfaController extends Controller
 
         $user = $request->user();
 
-        if (! Hash::check($validated['current_password'], $user->password_hash)) {
-            throw ValidationException::withMessages([
-                'current_password' => ['The current password is incorrect.'],
-            ]);
-        }
+        $this->ensureCurrentPassword($user, $validated['current_password']);
 
         $recoveryCodes = $this->generateRecoveryCodes($user);
 
@@ -341,116 +402,73 @@ class MfaController extends Controller
     }
 
     /**
-     * Build the full login response for a user after MFA verification.
-     */
-    private function buildLoginResponse(User $user): JsonResponse
-    {
-        $encryptionKeys = $user->encryptionKeys()
-            ->with('child')
-            ->get()
-            ->map(function ($key) {
-                return [
-                    'child_id' => $key->child_id,
-                    'child_name' => $key->child->name ?? null,
-                    'encrypted_dek' => $key->encrypted_dek,
-                    'key_version' => $key->key_version,
-                ];
-            });
-
-        $token = $user->createToken('auth-token')->plainTextToken;
-
-        return response()->json([
-            'user' => [
-                'id' => $user->id,
-                'email' => $user->email,
-                'display_name' => $user->display_name,
-                'master_key_salt' => $user->master_key_salt,
-                'public_key' => $user->public_key,
-            ],
-            'token' => $token,
-            'encryption_keys' => $encryptionKeys,
-        ]);
-    }
-
-    /**
-     * Verify a TOTP challenge code.
+     * Verify a TOTP challenge code. The user row is locked so the same
+     * timestep cannot be redeemed by two concurrent logins.
      *
      * @throws ValidationException
      */
-    private function verifyTotpChallenge(User $user, string $code): JsonResponse
+    private function verifyTotpChallenge(User $user, string $code): void
     {
-        if ($user->totp_secret_encrypted === null || $user->totp_confirmed_at === null) {
-            throw ValidationException::withMessages([
-                'code' => ['TOTP is not enabled for this account.'],
-            ]);
-        }
+        DB::transaction(function () use ($user, $code): void {
+            $lockedUser = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
 
-        $result = $this->google2fa->verifyKeyNewer(
-            $user->totp_secret_encrypted,
-            $code,
-            $user->totp_last_timestep,
-            1
-        );
-
-        if ($result === false) {
-            throw ValidationException::withMessages([
-                'code' => ['The code is invalid.'],
-            ]);
-        }
-
-        $user->totp_last_timestep = is_int($result) ? $result : $this->google2fa->getTimestamp();
-        $user->save();
-
-        return $this->buildLoginResponse($user);
-    }
-
-    /**
-     * Verify a recovery code challenge.
-     *
-     * @throws ValidationException
-     */
-    private function verifyRecoveryChallenge(User $user, string $code, string $mfaToken): JsonResponse
-    {
-        if ($user->mfa_recovery_codes_hash === null) {
-            throw ValidationException::withMessages([
-                'code' => ['No recovery codes are available for this account.'],
-            ]);
-        }
-
-        $payload = $this->parseMfaToken($mfaToken);
-        $attemptsKey = $this->recoveryAttemptsCacheKey($payload['nonce']);
-        $attempts = (int) Cache::get($attemptsKey, 0);
-
-        if ($attempts >= self::RECOVERY_MAX_ATTEMPTS) {
-            throw ValidationException::withMessages([
-                'code' => ['Too many recovery code attempts. Please request a new MFA challenge.'],
-            ]);
-        }
-
-        Cache::put($attemptsKey, $attempts + 1, now()->addMinutes(self::MFA_TOKEN_TTL_MINUTES));
-
-        /** @var array<int, string|null> $hashes */
-        $hashes = json_decode($user->mfa_recovery_codes_hash, true) ?? [];
-        $matchedIndex = null;
-
-        foreach ($hashes as $index => $hash) {
-            if ($hash !== null && Hash::check($code, $hash)) {
-                $matchedIndex = $index;
-                break;
+            if ($lockedUser->totp_secret_encrypted === null || $lockedUser->totp_confirmed_at === null) {
+                throw ValidationException::withMessages([
+                    'code' => ['Authenticator codes are not enabled for this account.'],
+                ]);
             }
-        }
 
-        if ($matchedIndex === null) {
-            throw ValidationException::withMessages([
-                'code' => ['The recovery code is invalid.'],
-            ]);
-        }
+            $result = $this->google2fa->verifyKeyNewer(
+                $lockedUser->totp_secret_encrypted,
+                $this->normalizeTotpCode($code),
+                $lockedUser->totp_last_timestep,
+                1
+            );
 
-        $hashes[$matchedIndex] = null;
-        $user->mfa_recovery_codes_hash = json_encode($hashes, JSON_THROW_ON_ERROR);
-        $user->save();
+            if ($result === false) {
+                throw ValidationException::withMessages([
+                    'code' => ['That code didn\'t work. Wait for a new code and try again.'],
+                ]);
+            }
 
-        return $this->buildLoginResponse($user);
+            $lockedUser->totp_last_timestep = is_int($result) ? $result : $this->google2fa->getTimestamp();
+            $lockedUser->save();
+        });
+    }
+
+    /**
+     * Verify and burn a recovery code.
+     *
+     * @throws ValidationException
+     */
+    private function verifyRecoveryChallenge(User $user, string $code): void
+    {
+        $normalizedCode = strtolower((string) preg_replace('/[^a-z0-9]/i', '', $code));
+
+        DB::transaction(function () use ($user, $normalizedCode): void {
+            $lockedUser = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+
+            /** @var array<int, string|null> $hashes */
+            $hashes = json_decode($lockedUser->mfa_recovery_codes_hash ?? '[]', true) ?? [];
+            $matchedIndex = null;
+
+            foreach ($hashes as $index => $hash) {
+                if ($hash !== null && Hash::check($normalizedCode, $hash)) {
+                    $matchedIndex = $index;
+                    break;
+                }
+            }
+
+            if ($matchedIndex === null) {
+                throw ValidationException::withMessages([
+                    'code' => ['That recovery code isn\'t valid or has already been used.'],
+                ]);
+            }
+
+            $hashes[$matchedIndex] = null;
+            $lockedUser->mfa_recovery_codes_hash = json_encode($hashes, JSON_THROW_ON_ERROR);
+            $lockedUser->save();
+        });
     }
 
     /**
@@ -460,7 +478,7 @@ class MfaController extends Controller
      *
      * @throws ValidationException
      */
-    private function verifyPasskeyChallenge(User $user, array $passkeyResponse, string $mfaToken): JsonResponse
+    private function verifyPasskeyChallenge(User $user, array $passkeyResponse, string $nonce): void
     {
         if (! in_array('passkey', $user->enabledMfaMethods(), true)) {
             throw ValidationException::withMessages([
@@ -468,8 +486,7 @@ class MfaController extends Controller
             ]);
         }
 
-        $payload = $this->parseMfaToken($mfaToken);
-        $options = Cache::get($this->passkeyOptionsCacheKey($payload['nonce']));
+        $options = Cache::get($this->passkeyOptionsCacheKey($nonce));
 
         if (! $options instanceof PublicKeyCredentialRequestOptions) {
             throw ValidationException::withMessages([
@@ -499,7 +516,7 @@ class MfaController extends Controller
         $credentialRecord->last_used_at = now();
         $credentialRecord->save();
 
-        return $this->buildLoginResponse($user);
+        Cache::forget($this->passkeyOptionsCacheKey($nonce));
     }
 
     /**
@@ -515,7 +532,14 @@ class MfaController extends Controller
             return null;
         }
 
-        $credentialId = base64_encode(base64_decode($rawId, true));
+        $base64 = strtr($rawId, '-_', '+/');
+        $decoded = base64_decode(str_pad($base64, (int) ceil(strlen($base64) / 4) * 4, '=', STR_PAD_RIGHT), true);
+
+        if ($decoded === false || $decoded === '') {
+            return null;
+        }
+
+        $credentialId = base64_encode($decoded);
 
         return $user->webauthnCredentials()
             ->where('credential_id', $credentialId)
@@ -542,94 +566,64 @@ class MfaController extends Controller
     }
 
     /**
-     * Create a short-lived MFA challenge token for a user.
-     */
-    public function createMfaToken(User $user): string
-    {
-        $nonce = bin2hex(random_bytes(16));
-        $payload = [
-            'user_id' => $user->id,
-            'expires_at' => now()->addMinutes(self::MFA_TOKEN_TTL_MINUTES)->getTimestamp(),
-            'nonce' => $nonce,
-        ];
-
-        Cache::put(
-            $this->tokenCacheKey($nonce),
-            true,
-            now()->addMinutes(self::MFA_TOKEN_TTL_MINUTES)
-        );
-
-        return Crypt::encryptString(json_encode($payload, JSON_THROW_ON_ERROR));
-    }
-
-    /**
-     * Validate and parse an MFA token, returning the bound user.
+     * Abort with a validation error unless the password matches the user's.
      *
      * @throws ValidationException
      */
-    private function validateMfaToken(string $token): User
+    private function ensureCurrentPassword(User $user, string $password): void
     {
-        try {
-            $payload = $this->parseMfaToken($token);
-        } catch (Throwable $e) {
+        if (! Hash::check($password, $user->password_hash)) {
             throw ValidationException::withMessages([
-                'mfa_token' => ['The MFA token is invalid or has expired.'],
+                'current_password' => ['The current password is incorrect.'],
             ]);
         }
-
-        if ($payload['expires_at'] < now()->getTimestamp()) {
-            throw ValidationException::withMessages([
-                'mfa_token' => ['The MFA token has expired.'],
-            ]);
-        }
-
-        if (! Cache::has($this->tokenCacheKey($payload['nonce']))) {
-            throw ValidationException::withMessages([
-                'mfa_token' => ['The MFA token has already been used or has expired.'],
-            ]);
-        }
-
-        $user = User::find($payload['user_id']);
-
-        if ($user === null) {
-            throw ValidationException::withMessages([
-                'mfa_token' => ['The MFA token is invalid.'],
-            ]);
-        }
-
-        return $user;
     }
 
     /**
-     * Parse the encrypted MFA token payload.
+     * Count the recovery codes that have not been used yet.
+     */
+    private function remainingRecoveryCodes(User $user): int
+    {
+        if ($user->mfa_recovery_codes_hash === null) {
+            return 0;
+        }
+
+        /** @var array<int, string|null> $hashes */
+        $hashes = json_decode($user->mfa_recovery_codes_hash, true) ?? [];
+
+        return count(array_filter($hashes, fn (?string $hash): bool => $hash !== null));
+    }
+
+    /**
+     * Refuse code-based MFA while the account is locked out after repeated failures.
      *
-     * @return array{user_id: int, expires_at: int, nonce: string}
+     * @throws ValidationException
      */
-    private function parseMfaToken(string $token): array
+    private function ensureNotLockedOut(User $user): void
     {
-        $decrypted = Crypt::decryptString($token);
-        /** @var array{user_id: int, expires_at: int, nonce: string} $payload */
-        $payload = json_decode($decrypted, true, 512, JSON_THROW_ON_ERROR);
+        $key = $this->codeFailuresKey($user);
 
-        if (! isset($payload['user_id'], $payload['expires_at'], $payload['nonce'])) {
-            throw new \RuntimeException('Invalid MFA token payload.');
+        if (RateLimiter::tooManyAttempts($key, self::CODE_MAX_FAILURES)) {
+            $minutes = max(1, (int) ceil(RateLimiter::availableIn($key) / 60));
+            $alternative = in_array('passkey', $user->enabledMfaMethods(), true) ? ' or use your passkey' : '';
+
+            throw ValidationException::withMessages([
+                'code' => ["Too many incorrect codes. Try again in {$minutes} ".Str::plural('minute', $minutes)."{$alternative}."],
+            ]);
         }
-
-        return $payload;
     }
 
     /**
-     * Mark an MFA token as used so it cannot be replayed.
+     * Strip spaces and separators people copy along with authenticator codes.
      */
-    private function consumeMfaToken(string $token): void
+    private function normalizeTotpCode(string $code): string
     {
-        $payload = $this->parseMfaToken($token);
-        Cache::forget($this->tokenCacheKey($payload['nonce']));
+        return (string) preg_replace('/\D/', '', $code);
     }
 
-    private function tokenCacheKey(string $nonce): string
+    private function codeFailuresKey(User $user): string
     {
-        return 'mfa_token:'.$nonce;
+        return 'mfa_code_failures:'.$user->id;
     }
 
     private function passkeyOptionsCacheKey(string $nonce): string
@@ -640,10 +634,5 @@ class MfaController extends Controller
     private function registerOptionsCacheKey(int $userId): string
     {
         return 'webauthn_register_options:'.$userId;
-    }
-
-    private function recoveryAttemptsCacheKey(string $nonce): string
-    {
-        return 'mfa_recovery_attempts:'.$nonce;
     }
 }

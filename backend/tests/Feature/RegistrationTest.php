@@ -30,6 +30,7 @@ describe('POST /api/auth/register — first user bootstrap', function () {
             'display_name' => 'First User',
             'master_key_salt' => str_repeat('a', 64),
             'public_key' => 'test-public-key',
+            'encrypted_private_key' => 'wrapped-private-key',
         ]);
 
         $response->assertStatus(201)
@@ -45,6 +46,7 @@ describe('POST /api/auth/register — first user bootstrap', function () {
             'display_name' => 'First User',
             'master_key_salt' => str_repeat('a', 64),
             'public_key' => 'test-public-key',
+            'encrypted_private_key' => 'wrapped-private-key',
         ]);
     });
 });
@@ -59,6 +61,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
             'display_name' => 'New User',
             'master_key_salt' => str_repeat('a', 64),
             'public_key' => 'test-public-key',
+            'encrypted_private_key' => 'wrapped-private-key',
         ]);
 
         $response->assertStatus(403)
@@ -80,6 +83,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
             'display_name' => 'Invited User',
             'master_key_salt' => str_repeat('b', 64),
             'public_key' => 'invited-public-key',
+            'encrypted_private_key' => 'wrapped-private-key',
             'invite_token' => $invite->token,
         ]);
 
@@ -99,6 +103,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
             'display_name' => 'Accepted User',
             'master_key_salt' => str_repeat('c', 64),
             'public_key' => 'accepted-public-key',
+            'encrypted_private_key' => 'wrapped-private-key',
             'invite_token' => $invite->token,
         ]);
 
@@ -116,6 +121,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
             'display_name' => 'Revoked User',
             'master_key_salt' => str_repeat('d', 64),
             'public_key' => 'revoked-public-key',
+            'encrypted_private_key' => 'wrapped-private-key',
             'invite_token' => $invite->token,
         ]);
 
@@ -131,6 +137,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
             'display_name' => 'Expired User',
             'master_key_salt' => str_repeat('e', 64),
             'public_key' => 'expired-public-key',
+            'encrypted_private_key' => 'wrapped-private-key',
             'invite_token' => $invite->token,
         ]);
 
@@ -146,6 +153,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
             'display_name' => 'Invalid User',
             'master_key_salt' => str_repeat('f', 64),
             'public_key' => 'invalid-public-key',
+            'encrypted_private_key' => 'wrapped-private-key',
             'invite_token' => str_repeat('z', 64),
         ]);
 
@@ -171,6 +179,7 @@ describe('POST /api/auth/register — invite acceptance side effects', function 
             'display_name' => 'Side Effect User',
             'master_key_salt' => str_repeat('0', 64),
             'public_key' => 'sideeffect-public-key',
+            'encrypted_private_key' => 'wrapped-private-key',
             'invite_token' => $invite->token,
         ]);
 
@@ -201,6 +210,7 @@ describe('POST /api/auth/register — invite acceptance side effects', function 
             'display_name' => 'Accept Set User',
             'master_key_salt' => str_repeat('1', 64),
             'public_key' => 'acceptset-public-key',
+            'encrypted_private_key' => 'wrapped-private-key',
             'invite_token' => $invite->token,
         ]);
 
@@ -233,6 +243,7 @@ describe('POST /api/auth/register — invite acceptance side effects', function 
             'display_name' => 'Return Child User',
             'master_key_salt' => str_repeat('2', 64),
             'public_key' => 'returnchild-public-key',
+            'encrypted_private_key' => 'wrapped-private-key',
             'invite_token' => $invite->token,
         ]);
 

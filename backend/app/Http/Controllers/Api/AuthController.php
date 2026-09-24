@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Contracts\RegistrationServiceInterface;
 use App\Http\Controllers\Controller;
+use App\Models\EncryptionKey;
 use App\Models\Invite;
 use App\Models\User;
+use App\Services\AuthSessionService;
+use App\Services\MfaTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,15 +16,21 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
+    public function __construct(
+        private AuthSessionService $authSession,
+        private MfaTokenService $mfaTokens,
+    ) {}
+
     /**
      * Register a new user account.
      *
      * Creates a new user with email, password, and display name.
-     * Also stores encryption metadata (master_key_salt and public_key)
-     * needed for the zero-knowledge encryption system.
+     * Also stores encryption metadata (master_key_salt, public_key and the
+     * KEK-wrapped private key) needed for the zero-knowledge encryption system.
      *
      * When a valid invite_token is provided, the invite is auto-accepted
      * during registration and the user is added as a member of the child.
@@ -42,58 +51,58 @@ class AuthController extends Controller
             'display_name' => ['required', 'string', 'max:100', 'regex:/^[\pL\pN\s\-.,\']+$/u'],
             'master_key_salt' => ['required', 'string', 'max:64', 'regex:/^[a-f0-9]+$/i'],
             'public_key' => ['required', 'string', 'max:2000'],
+            'encrypted_private_key' => ['required', 'string', 'max:4000'],
             'invite_token' => ['sometimes', 'string', 'max:64'],
+            'remember' => ['sometimes', 'boolean'],
         ]);
 
-        $user = User::create([
-            'email' => $validated['email'],
-            'password_hash' => Hash::make($validated['password']),
-            'display_name' => $validated['display_name'],
-            'master_key_salt' => $validated['master_key_salt'],
-            'public_key' => $validated['public_key'],
-        ]);
+        [$user, $acceptedChild] = DB::transaction(function () use ($validated, $inviteToken): array {
+            $user = User::create([
+                'email' => $validated['email'],
+                'password_hash' => Hash::make($validated['password']),
+                'display_name' => $validated['display_name'],
+                'master_key_salt' => $validated['master_key_salt'],
+                'public_key' => $validated['public_key'],
+                'encrypted_private_key' => $validated['encrypted_private_key'],
+            ]);
 
-        $token = $user->createToken('auth-token')->plainTextToken;
+            if (! $inviteToken) {
+                return [$user, null];
+            }
 
-        $acceptedChild = null;
-
-        if ($inviteToken) {
             $invite = Invite::where('token', $inviteToken)
                 ->whereNull('accepted_at')
                 ->whereNull('revoked_at')
                 ->where('expires_at', '>', now())
+                ->lockForUpdate()
                 ->first();
 
-            if ($invite) {
-                $invite->accepted_at = now();
-                $invite->accepted_by = $user->id;
-                $invite->save();
-
-                DB::table('child_users')->insert([
-                    'child_id' => $invite->child_id,
-                    'user_id' => $user->id,
-                    'role' => $invite->role,
-                    'relationship' => $invite->relationship ?? '',
-                    'joined_at' => now(),
-                ]);
-
-                $acceptedChild = [
-                    'child_id' => $invite->child_id,
-                    'child_name' => $invite->child->name,
-                    'child_slug' => $invite->child->slug,
-                ];
+            if (! $invite) {
+                return [$user, null];
             }
-        }
+
+            $invite->accepted_at = now();
+            $invite->accepted_by = $user->id;
+            $invite->save();
+
+            DB::table('child_users')->insert([
+                'child_id' => $invite->child_id,
+                'user_id' => $user->id,
+                'role' => $invite->role,
+                'relationship' => $invite->relationship ?? '',
+                'joined_at' => now(),
+            ]);
+
+            return [$user, [
+                'child_id' => $invite->child_id,
+                'child_name' => $invite->child->name,
+                'child_slug' => $invite->child->slug,
+            ]];
+        });
 
         return response()->json([
-            'user' => [
-                'id' => $user->id,
-                'email' => $user->email,
-                'display_name' => $user->display_name,
-                'master_key_salt' => $user->master_key_salt,
-                'public_key' => $user->public_key,
-            ],
-            'token' => $token,
+            'user' => $this->authSession->userPayload($user),
+            'token' => $this->authSession->issueToken($user, $validated['remember'] ?? true),
             'accepted_child' => $acceptedChild,
         ], 201);
     }
@@ -103,7 +112,7 @@ class AuthController extends Controller
      *
      * Authenticates the user and returns their wrapped DEKs
      * for all families they belong to, allowing client-side decryption.
-     *
+     * Accounts with MFA get a short-lived challenge token instead.
      *
      * @throws ValidationException
      */
@@ -112,8 +121,10 @@ class AuthController extends Controller
         $validated = $request->validate([
             'email' => ['required', 'string', 'email'],
             'password' => ['required', 'string'],
+            'remember' => ['sometimes', 'boolean'],
         ]);
 
+        $remember = $validated['remember'] ?? true;
         $user = User::where('email', $validated['email'])->first();
 
         if (! $user || ! Hash::check($validated['password'], $user->password_hash)) {
@@ -123,41 +134,14 @@ class AuthController extends Controller
         }
 
         if ($user->hasMfaEnabled()) {
-            $mfaToken = app(MfaController::class)->createMfaToken($user);
-
             return response()->json([
                 'mfa_required' => true,
-                'mfa_token' => $mfaToken,
+                'mfa_token' => $this->mfaTokens->create($user, $remember),
                 'mfa_methods' => $user->enabledMfaMethods(),
             ]);
         }
 
-        // Load the user's encryption keys for all children they belong to
-        $encryptionKeys = $user->encryptionKeys()
-            ->with('child')
-            ->get()
-            ->map(function ($key) {
-                return [
-                    'child_id' => $key->child_id,
-                    'child_name' => $key->child->name ?? null,
-                    'encrypted_dek' => $key->encrypted_dek,
-                    'key_version' => $key->key_version,
-                ];
-            });
-
-        $token = $user->createToken('auth-token')->plainTextToken;
-
-        return response()->json([
-            'user' => [
-                'id' => $user->id,
-                'email' => $user->email,
-                'display_name' => $user->display_name,
-                'master_key_salt' => $user->master_key_salt,
-                'public_key' => $user->public_key,
-            ],
-            'token' => $token,
-            'encryption_keys' => $encryptionKeys,
-        ]);
+        return $this->authSession->loginResponse($user, $remember);
     }
 
     /**
@@ -181,13 +165,8 @@ class AuthController extends Controller
      */
     public function refresh(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $user->currentAccessToken()->delete();
-
-        $token = $user->createToken('auth-token')->plainTextToken;
-
         return response()->json([
-            'token' => $token,
+            'token' => $this->authSession->refreshToken($request->user()),
         ]);
     }
 
@@ -209,8 +188,8 @@ class AuthController extends Controller
     /**
      * Update the authenticated user's profile.
      *
-     * Allows updating display_name, email, and/or password.
-     * Password change requires current_password for verification.
+     * Allows updating display_name and/or email. Password changes go through
+     * changePassword() because they must re-wrap the user's keys.
      */
     public function updateProfile(Request $request): JsonResponse
     {
@@ -219,38 +198,138 @@ class AuthController extends Controller
         $validated = $request->validate([
             'display_name' => ['sometimes', 'string', 'max:100', 'regex:/^[\pL\pN\s\-.,\']+$/u'],
             'email' => ['sometimes', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
-            'current_password' => ['required_with:new_password', 'string'],
-            'new_password' => ['nullable', 'string', Password::defaults(), 'confirmed'],
         ]);
 
-        if ($request->filled('new_password')) {
-            if (! Hash::check($validated['current_password'], $user->password_hash)) {
-                throw ValidationException::withMessages([
-                    'current_password' => ['The current password is incorrect.'],
-                ]);
-            }
-
-            $user->password_hash = $validated['new_password'];
-        }
-
-        if ($request->has('display_name')) {
+        if (array_key_exists('display_name', $validated)) {
             $user->display_name = $validated['display_name'];
         }
 
-        if ($request->has('email')) {
+        if (array_key_exists('email', $validated)) {
             $user->email = $validated['email'];
         }
 
         $user->save();
 
         return response()->json([
-            'user' => [
-                'id' => $user->id,
-                'email' => $user->email,
-                'display_name' => $user->display_name,
-                'master_key_salt' => $user->master_key_salt,
-                'public_key' => $user->public_key,
-            ],
+            'user' => $this->authSession->userPayload($user),
+        ]);
+    }
+
+    /**
+     * Change the user's password.
+     *
+     * The KEK is derived from the password, so the client re-wraps every
+     * KEK-wrapped DEK and the private key with the new KEK and sends them
+     * here. They are saved together with the new password hash, or not at all.
+     * Other sessions are signed out because they hold the old KEK.
+     *
+     * @throws ValidationException
+     */
+    public function changePassword(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'current_password' => ['required', 'string'],
+            'new_password' => ['required', 'string', Password::defaults(), 'confirmed', 'different:current_password'],
+            'encryption_keys' => ['present', 'array'],
+            'encryption_keys.*.child_id' => ['required', 'integer'],
+            'encryption_keys.*.key_version' => ['required', 'integer'],
+            'encryption_keys.*.encrypted_dek' => ['required', 'string', 'max:2000'],
+            'encrypted_private_key' => [Rule::requiredIf($user->encrypted_private_key !== null), 'nullable', 'string', 'max:4000'],
+        ]);
+
+        if (! Hash::check($validated['current_password'], $user->password_hash)) {
+            throw ValidationException::withMessages([
+                'current_password' => ['The current password is incorrect.'],
+            ]);
+        }
+
+        $storedKeys = $user->encryptionKeys()
+            ->where('wrap_type', EncryptionKey::WRAP_KEK)
+            ->get()
+            ->keyBy(fn (EncryptionKey $key): string => $key->child_id.':'.$key->key_version);
+
+        $submittedKeys = collect($validated['encryption_keys'])
+            ->keyBy(fn (array $key): string => $key['child_id'].':'.$key['key_version']);
+
+        if ($submittedKeys->count() !== count($validated['encryption_keys'])
+            || $storedKeys->keys()->sort()->values()->all() !== $submittedKeys->keys()->sort()->values()->all()) {
+            throw ValidationException::withMessages([
+                'encryption_keys' => ['Your album keys changed while you were doing this. Reload the page and try again.'],
+            ]);
+        }
+
+        DB::transaction(function () use ($user, $validated, $storedKeys, $submittedKeys): void {
+            foreach ($storedKeys as $index => $key) {
+                $key->encrypted_dek = $submittedKeys[$index]['encrypted_dek'];
+                $key->save();
+            }
+
+            $user->password_hash = $validated['new_password'];
+
+            if ($user->encrypted_private_key !== null) {
+                $user->encrypted_private_key = $validated['encrypted_private_key'];
+            }
+
+            $user->save();
+
+            $currentToken = $user->currentAccessToken();
+            $user->tokens()
+                ->when($currentToken instanceof PersonalAccessToken, fn ($query) => $query->whereKeyNot($currentToken->getKey()))
+                ->delete();
+        });
+
+        return response()->json([
+            'user' => $this->authSession->userPayload($user),
+            'encryption_keys' => $this->authSession->encryptionKeysPayload($user),
+        ]);
+    }
+
+    /**
+     * Set the key pair for an account created before private keys were stored.
+     *
+     * Only allowed once: replacing an existing key pair would let a stolen
+     * session redirect future key shares to an attacker's key. Shares already
+     * wrapped for the old public key can't be opened and are dropped so an
+     * admin re-shares them.
+     *
+     * @throws ValidationException
+     */
+    public function setKeyPair(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'current_password' => ['required', 'string'],
+            'public_key' => ['required', 'string', 'max:2000'],
+            'encrypted_private_key' => ['required', 'string', 'max:4000'],
+        ]);
+
+        if (! Hash::check($validated['current_password'], $user->password_hash)) {
+            throw ValidationException::withMessages([
+                'current_password' => ['The current password is incorrect.'],
+            ]);
+        }
+
+        if ($user->encrypted_private_key !== null) {
+            return response()->json([
+                'message' => 'This account already has a key pair.',
+            ], 409);
+        }
+
+        DB::transaction(function () use ($user, $validated): void {
+            $user->public_key = $validated['public_key'];
+            $user->encrypted_private_key = $validated['encrypted_private_key'];
+            $user->save();
+
+            $user->encryptionKeys()
+                ->where('wrap_type', EncryptionKey::WRAP_PUBLIC_KEY)
+                ->delete();
+        });
+
+        return response()->json([
+            'user' => $this->authSession->userPayload($user),
         ]);
     }
 }

@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Shield, Eye, EyeOff, Mail, Lock, ArrowLeft } from '@lucide/vue'
-import { useAuthStore, isMfaRequired, type MfaRequiredResponse } from '@/stores/auth'
+import { Shield, Eye, EyeOff, Mail, Lock, ArrowLeft, KeyRound } from '@lucide/vue'
+import { startAuthentication } from '@simplewebauthn/browser'
+import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/types'
+import {
+  useAuthStore,
+  isMfaRequired,
+  type MfaMethod,
+  type MfaRequiredResponse,
+} from '@/stores/auth'
 import { getPendingInviteToken } from '@/lib/auth-storage'
 import { api } from '@/services/api'
+import { apiErrorMessage } from '@/lib/util'
 import UiButton from '@/components/ui/UiButton.vue'
 import AuthCard from '@/components/AuthCard.vue'
 
@@ -22,7 +30,11 @@ const registrationMode = ref<'open' | 'invite_only' | null>(null)
 
 const mfaState = ref<MfaRequiredResponse | null>(null)
 const mfaCode = ref('')
-const mfaMethod = ref<'totp' | 'recovery'>('totp')
+const mfaMethod = ref<MfaMethod>('totp')
+const passkeyPending = ref(false)
+const codeInput = ref<HTMLInputElement | null>(null)
+
+const isBusy = computed(() => authStore.isLoading || passkeyPending.value)
 
 const inviteToken = computed(() => getPendingInviteToken() || (route.query.invite_token as string))
 const showRegisterLink = computed(
@@ -38,10 +50,38 @@ const registerLink = computed(() => {
   return { path: '/register', query }
 })
 
+const mfaSubtitle = computed(() => {
+  switch (mfaMethod.value) {
+    case 'passkey':
+      return 'Use your passkey to finish signing in.'
+    case 'recovery':
+      return 'Enter one of the recovery codes you saved.'
+    default:
+      return 'Enter the code from your authenticator app.'
+  }
+})
+
+/** Other ways to finish sign-in, offered as links under the active method. */
+const alternativeMethods = computed(() => {
+  const available = mfaState.value?.mfa_methods ?? []
+  const options: Array<{ method: MfaMethod; label: string }> = []
+  if (available.includes('passkey')) options.push({ method: 'passkey', label: 'Use a passkey' })
+  if (available.includes('totp')) options.push({ method: 'totp', label: 'Use authenticator code' })
+  options.push({ method: 'recovery', label: 'Use a recovery code' })
+  return options.filter((option) => option.method !== mfaMethod.value)
+})
+
 onMounted(async () => {
+  // Re-auth after the key was lost: we still know who this is.
+  if (route.query.reauth === '1' && authStore.user?.email) {
+    email.value = authStore.user.email
+  }
+
   try {
-    const { data } = await api.get<{ mode: 'open' | 'invite_only' }>('/auth/registration-mode')
-    registrationMode.value = data.mode
+    const { data } = await api.get<{ data: { mode: 'open' | 'invite_only' } }>(
+      '/auth/registration-mode',
+    )
+    registrationMode.value = data.data.mode
   } catch {
     registrationMode.value = 'invite_only'
   }
@@ -50,6 +90,11 @@ onMounted(async () => {
 function clearServerError() {
   serverError.value = null
   authStore.clearError()
+}
+
+async function finishSignIn() {
+  const redirect = (route.query.redirect as string) || '/'
+  await router.push(redirect)
 }
 
 async function submitStep1() {
@@ -65,23 +110,50 @@ async function submitStep1() {
     if (isMfaRequired(result)) {
       mfaState.value = result
       mfaCode.value = ''
-      mfaMethod.value = 'totp'
+      mfaMethod.value = result.mfa_methods.includes('totp') ? 'totp' : 'passkey'
       step.value = 2
       return
     }
-    const redirect = (route.query.redirect as string) || '/'
-    await router.push(redirect)
+    await finishSignIn()
   } catch {
     serverError.value = authStore.error
   }
+}
+
+/**
+ * The mfa_token is single-use and short-lived. Once the server rejects it,
+ * nothing on step 2 can succeed, so send the user back to their password
+ * with the server's explanation.
+ */
+function mfaSessionError(err: unknown): string | null {
+  const errors = (err as { response?: { data?: { errors?: Record<string, string[]> } } } | null)
+    ?.response?.data?.errors
+  if (!errors || !('mfa_token' in errors)) return null
+  return errors.mfa_token?.[0] ?? 'Your sign-in step timed out. Please sign in again.'
+}
+
+function handleMfaError(err: unknown, fallback: string) {
+  const sessionError = mfaSessionError(err)
+  if (sessionError) {
+    goBack()
+    serverError.value = sessionError
+    return
+  }
+  serverError.value = authStore.error ?? apiErrorMessage(err, fallback)
+  focusCodeInput()
 }
 
 async function submitMfa() {
   clearServerError()
 
   if (!mfaState.value) {
-    serverError.value = 'MFA session expired. Please sign in again.'
-    step.value = 1
+    goBack()
+    serverError.value = 'Your sign-in step timed out. Please sign in again.'
+    return
+  }
+
+  if (mfaMethod.value === 'passkey') {
+    await submitPasskey(mfaState.value.mfa_token)
     return
   }
 
@@ -90,23 +162,65 @@ async function submitMfa() {
     return
   }
   if (mfaMethod.value === 'recovery' && !mfaCode.value.trim()) {
-    serverError.value = 'Please enter a recovery code.'
+    serverError.value = 'Please enter one of your recovery codes.'
     return
   }
 
   try {
-    await authStore.mfaChallenge(
-      mfaState.value.mfa_token,
-      mfaMethod.value,
-      mfaCode.value,
-      undefined,
-      password.value,
-    )
-    const redirect = (route.query.redirect as string) || '/'
-    await router.push(redirect)
-  } catch {
-    serverError.value = authStore.error
+    await authStore.mfaChallenge({
+      mfaToken: mfaState.value.mfa_token,
+      method: mfaMethod.value,
+      code: mfaCode.value.trim(),
+      password: password.value,
+      staySignedIn: staySignedIn.value,
+    })
+    await finishSignIn()
+  } catch (err) {
+    handleMfaError(err, 'Verification failed. Please try again.')
   }
+}
+
+async function submitPasskey(mfaToken: string) {
+  passkeyPending.value = true
+  let passkeyResponse: Record<string, unknown>
+  try {
+    const { data } = await api.post<{ options: PublicKeyCredentialRequestOptionsJSON }>(
+      '/auth/mfa/passkey/options',
+      { mfa_token: mfaToken },
+    )
+    passkeyResponse = (await startAuthentication({ optionsJSON: data.options })) as unknown as Record<
+      string,
+      unknown
+    >
+  } catch (err) {
+    if (err instanceof Error && err.name === 'NotAllowedError') {
+      serverError.value = 'Passkey sign-in was cancelled. Try again or use another method.'
+      return
+    }
+    handleMfaError(err, "We couldn't start passkey sign-in. Please try again.")
+    return
+  } finally {
+    passkeyPending.value = false
+  }
+
+  try {
+    await authStore.mfaChallenge({
+      mfaToken,
+      method: 'passkey',
+      passkeyResponse,
+      password: password.value,
+      staySignedIn: staySignedIn.value,
+    })
+    await finishSignIn()
+  } catch (err) {
+    handleMfaError(err, 'Passkey verification failed. Please try again.')
+  }
+}
+
+function switchMethod(method: MfaMethod) {
+  mfaMethod.value = method
+  mfaCode.value = ''
+  clearServerError()
 }
 
 function goBack() {
@@ -116,11 +230,19 @@ function goBack() {
   clearServerError()
 }
 
-function sanitizeTotp(event: Event) {
-  const input = event.target as HTMLInputElement
-  const cleaned = input.value.replace(/\D/g, '').slice(0, 6)
-  mfaCode.value = cleaned
+/** Authenticator codes are digits only; strip what people paste along with them. */
+watch(mfaCode, (value) => {
+  if (mfaMethod.value !== 'totp') return
+  const digits = value.replace(/\D/g, '').slice(0, 6)
+  if (digits !== value) mfaCode.value = digits
+})
+
+/** Inputs appear after the first render, where `autofocus` has no effect. */
+function focusCodeInput() {
+  void nextTick(() => codeInput.value?.focus())
 }
+
+watch([step, mfaMethod], focusCodeInput)
 </script>
 
 <template>
@@ -210,14 +332,14 @@ function sanitizeTotp(event: Event) {
     </div>
 
     <div v-else class="login__step">
-      <button type="button" class="login__back" :disabled="authStore.isLoading" @click="goBack">
+      <button type="button" class="login__back" :disabled="isBusy" @click="goBack">
         <ArrowLeft :size="18" aria-hidden="true" />
         Back
       </button>
 
       <div class="login__header">
         <h1 class="login__title">Verify it's you</h1>
-        <p class="login__subtitle">Enter the code from your authenticator app.</p>
+        <p class="login__subtitle">{{ mfaSubtitle }}</p>
       </div>
 
       <div v-if="serverError" class="login__error" role="alert">
@@ -229,61 +351,62 @@ function sanitizeTotp(event: Event) {
           <label class="login__label" for="mfa-code">6-digit code</label>
           <input
             id="mfa-code"
-            :value="mfaCode"
+            ref="codeInput"
+            v-model="mfaCode"
             type="text"
             inputmode="numeric"
-            pattern="[0-9]*"
             autocomplete="one-time-code"
             class="login__input login__input--center"
             placeholder="000000"
-            maxlength="6"
-            autofocus
-            :disabled="authStore.isLoading"
-            @input="sanitizeTotp"
+            :disabled="isBusy"
           />
         </div>
 
-        <div v-else class="login__field">
+        <div v-else-if="mfaMethod === 'recovery'" class="login__field">
           <label class="login__label" for="recovery-code">Recovery code</label>
           <input
             id="recovery-code"
+            ref="codeInput"
             v-model="mfaCode"
             type="text"
             autocomplete="off"
-            class="login__input"
-            placeholder="Enter a recovery code"
-            :disabled="authStore.isLoading"
+            autocapitalize="off"
+            spellcheck="false"
+            class="login__input login__input--center"
+            placeholder="xxxx-xxxx-xxxx-xxxx"
+            aria-describedby="recovery-code-hint"
+            :disabled="isBusy"
           />
+          <p id="recovery-code-hint" class="login__hint">
+            16 letters and numbers from the list you saved. Each code works once.
+          </p>
         </div>
 
         <UiButton
           variant="accent"
           size="lg"
           type="submit"
-          :loading="authStore.isLoading"
+          :loading="isBusy"
           class="login__submit"
         >
-          Verify
+          <template v-if="mfaMethod === 'passkey'">
+            <KeyRound :size="18" aria-hidden="true" />
+            Use passkey
+          </template>
+          <template v-else>Verify</template>
         </UiButton>
       </form>
 
       <div class="login__options">
         <button
-          v-if="mfaState?.mfa_methods.includes('passkey')"
+          v-for="option in alternativeMethods"
+          :key="option.method"
           type="button"
           class="login__option"
-          :disabled="authStore.isLoading"
-          @click="serverError = 'Passkey sign-in coming soon.'"
+          :disabled="isBusy"
+          @click="switchMethod(option.method)"
         >
-          Use a passkey
-        </button>
-        <button
-          type="button"
-          class="login__option"
-          :disabled="authStore.isLoading"
-          @click="mfaMethod = mfaMethod === 'totp' ? 'recovery' : 'totp'"
-        >
-          {{ mfaMethod === 'totp' ? 'Use a recovery code' : 'Use authenticator code' }}
+          {{ option.label }}
         </button>
       </div>
     </div>
@@ -475,6 +598,13 @@ function sanitizeTotp(event: Event) {
 
 .login__submit {
   width: 100%;
+}
+
+.login__hint {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
 }
 
 .login__footer {

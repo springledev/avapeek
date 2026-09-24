@@ -5,6 +5,7 @@ import { Shield, Eye, EyeOff, Mail, Lock, User } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth'
 import { getPendingInviteToken, removePendingInviteToken } from '@/lib/auth-storage'
 import { api } from '@/services/api'
+import { apiErrorMessage } from '@/lib/util'
 import type { InvitePreview } from '@/types/child'
 import UiButton from '@/components/ui/UiButton.vue'
 import AuthCard from '@/components/AuthCard.vue'
@@ -16,14 +17,21 @@ const authStore = useAuthStore()
 const registrationMode = ref<'open' | 'invite_only' | null>(null)
 const invitePreview = ref<InvitePreview | null>(null)
 const invitePreviewError = ref(false)
+const inviteRejectedMessage = ref<string | null>(null)
+const isReady = ref(false)
 
-const inviteToken = computed(
+const requestedInviteToken = computed(
   () => (route.query.invite_token as string) || getPendingInviteToken() || undefined,
+)
+/** The invite to register with, dropped once the server says it can't be used. */
+const inviteToken = computed(() =>
+  inviteRejectedMessage.value ? undefined : requestedInviteToken.value,
 )
 
 const displayName = ref('')
 const email = ref('')
 const password = ref('')
+const passwordConfirmation = ref('')
 const staySignedIn = ref(true)
 const showPassword = ref(false)
 const serverError = ref<string | null>(null)
@@ -31,47 +39,76 @@ const fieldErrors = ref<Record<string, string>>({})
 
 onMounted(async () => {
   try {
-    const { data } = await api.get<{ mode: 'open' | 'invite_only' }>('/auth/registration-mode')
-    registrationMode.value = data.mode
+    const { data } = await api.get<{ data: { mode: 'open' | 'invite_only' } }>(
+      '/auth/registration-mode',
+    )
+    registrationMode.value = data.data.mode
   } catch {
     registrationMode.value = 'invite_only'
   }
 
-  if (inviteToken.value) {
+  if (requestedInviteToken.value) {
     try {
-      const { data } = await api.get<{ data: InvitePreview }>(`/invites/${inviteToken.value}`)
+      const { data } = await api.get<{ data: InvitePreview }>(
+        `/invites/${requestedInviteToken.value}`,
+      )
       invitePreview.value = data.data
-    } catch {
-      invitePreviewError.value = true
+    } catch (err) {
+      const status = (err as { response?: { status?: number } } | null)?.response?.status
+      if (status === 404 || status === 410) {
+        inviteRejectedMessage.value = apiErrorMessage(err, 'This invite is no longer valid.')
+        removePendingInviteToken()
+      } else {
+        invitePreviewError.value = true
+      }
     }
   }
+
+  isReady.value = true
 })
 
 const isGated = computed(() => registrationMode.value === 'invite_only' && !inviteToken.value)
 
+const inviteRoleWithArticle = computed(() => {
+  const role = invitePreview.value?.role ?? ''
+  return `${/^[aeiou]/i.test(role) ? 'an' : 'a'} ${role}`
+})
+
 const heading = computed(() => (inviteToken.value ? "You're invited" : 'Create your account'))
 
+const subtitle = computed(() =>
+  inviteToken.value && invitePreview.value
+    ? `Create an account to see ${invitePreview.value.child_name}'s photos.`
+    : 'Join Avapeek and start sharing photos securely',
+)
+
+const MIN_PASSWORD_LENGTH = 8
+
+/**
+ * Only rates passwords that meet the minimum, so an accepted password is
+ * never labelled "Weak".
+ */
 const passwordStrength = computed(() => {
   const pwd = password.value
-  if (!pwd) return { level: 0, text: '', color: '', width: '0%' }
+  if (!pwd) return { text: '', color: '', width: '0%' }
+  if (pwd.length < MIN_PASSWORD_LENGTH) {
+    return {
+      text: `Too short — ${MIN_PASSWORD_LENGTH - pwd.length} more`,
+      color: 'var(--color-danger)',
+      width: `${(pwd.length / MIN_PASSWORD_LENGTH) * 25}%`,
+    }
+  }
 
-  let strength = 0
-  if (pwd.length >= 8) strength++
-  if (pwd.length >= 12) strength++
-  if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) strength++
-  if (/\d/.test(pwd)) strength++
-  if (/[^a-zA-Z0-9]/.test(pwd)) strength++
+  let score = 0
+  if (pwd.length >= 12) score++
+  if (pwd.length >= 16) score++
+  if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) score++
+  if (/\d/.test(pwd)) score++
+  if (/[^a-zA-Z0-9]/.test(pwd)) score++
 
-  if (strength <= 2) {
-    return { level: strength, text: 'Weak', color: 'var(--color-danger)', width: `${(strength / 5) * 100}%` }
-  }
-  if (strength === 3) {
-    return { level: strength, text: 'Fair', color: 'var(--color-accent)', width: `${(strength / 5) * 100}%` }
-  }
-  if (strength === 4) {
-    return { level: strength, text: 'Good', color: 'var(--color-accent)', width: `${(strength / 5) * 100}%` }
-  }
-  return { level: strength, text: 'Strong', color: 'var(--color-success)', width: `${(strength / 5) * 100}%` }
+  if (score <= 1) return { text: 'Fair', color: 'var(--color-accent)', width: '50%' }
+  if (score <= 3) return { text: 'Good', color: 'var(--color-accent)', width: '75%' }
+  return { text: 'Strong', color: 'var(--color-success)', width: '100%' }
 })
 
 function validateForm(): boolean {
@@ -89,8 +126,12 @@ function validateForm(): boolean {
 
   if (!password.value) {
     fieldErrors.value.password = 'Password is required'
-  } else if (password.value.length < 8) {
-    fieldErrors.value.password = 'Password must be at least 8 characters long'
+  } else if (password.value.length < MIN_PASSWORD_LENGTH) {
+    fieldErrors.value.password = `Password must be at least ${MIN_PASSWORD_LENGTH} characters long`
+  }
+
+  if (password.value && passwordConfirmation.value !== password.value) {
+    fieldErrors.value.passwordConfirmation = "Passwords don't match"
   }
 
   return Object.keys(fieldErrors.value).length === 0
@@ -112,7 +153,6 @@ async function handleSubmit() {
       inviteToken.value,
       staySignedIn.value,
     )
-    removePendingInviteToken()
     if (acceptedChild) {
       await router.push('/welcome')
       return
@@ -127,10 +167,16 @@ async function handleSubmit() {
 
 <template>
   <AuthCard>
-    <div v-if="isGated" class="register__step">
+    <div v-if="!isReady" class="register__loading" aria-busy="true" aria-label="Loading" />
+    <div v-else-if="isGated" class="register__step">
       <div class="register__header">
-        <h1 class="register__title">You need an invitation</h1>
-        <p class="register__subtitle">
+        <h1 class="register__title">
+          {{ inviteRejectedMessage ? "This invite can't be used" : 'You need an invitation' }}
+        </h1>
+        <p v-if="inviteRejectedMessage" class="register__subtitle">
+          {{ inviteRejectedMessage }} Ask a family member to send you a new invite link.
+        </p>
+        <p v-else class="register__subtitle">
           Avapeek is a private family album. Ask a family member to send you an invite link.
         </p>
       </div>
@@ -141,18 +187,21 @@ async function handleSubmit() {
     <div v-else class="register__step">
       <div class="register__header">
         <h1 class="register__title">{{ heading }}</h1>
-        <p class="register__subtitle">Join Avapeek and start sharing photos securely</p>
+        <p class="register__subtitle">{{ subtitle }}</p>
       </div>
       <div v-if="inviteToken && invitePreview" class="register__invite">
-        You're joining <strong>{{ invitePreview.child_name }}'s album</strong> as a
-        {{ invitePreview.role }}, invited by {{ invitePreview.inviter_name }}.
+        You're joining <strong>{{ invitePreview.child_name }}'s album</strong> as
+        {{ inviteRoleWithArticle }}, invited by {{ invitePreview.inviter_name }}.
       </div>
       <div v-if="inviteToken && invitePreviewError" class="register__warning" role="status">
         We couldn't load the invitation details, but you can still create your account.
       </div>
       <div class="register__security">
         <Shield :size="20" aria-hidden="true" />
-        <span>Your encryption keys are generated locally and never leave your device.</span>
+        <span>
+          Your password is the key to your photos. We can't see it or reset it — if you forget
+          it, your photos can't be recovered.
+        </span>
       </div>
       <div v-if="serverError" class="register__error" role="alert">{{ serverError }}</div>
       <form class="register__form" @submit.prevent="handleSubmit">
@@ -233,6 +282,26 @@ async function handleSubmit() {
           <p v-if="fieldErrors.password" class="register__field-error">{{ fieldErrors.password }}</p>
         </div>
 
+        <div class="register__field">
+          <label class="register__label" for="register-password-confirmation">Confirm password</label>
+          <div class="register__input-wrap">
+            <Lock :size="18" class="register__input-icon" aria-hidden="true" />
+            <input
+              id="register-password-confirmation"
+              v-model="passwordConfirmation"
+              :type="showPassword ? 'text' : 'password'"
+              autocomplete="new-password"
+              class="register__input register__input--with-icon"
+              :class="{ 'register__input--invalid': fieldErrors.passwordConfirmation }"
+              placeholder="••••••••"
+              :disabled="authStore.isLoading"
+            />
+          </div>
+          <p v-if="fieldErrors.passwordConfirmation" class="register__field-error">
+            {{ fieldErrors.passwordConfirmation }}
+          </p>
+        </div>
+
         <label class="register__checkbox">
           <input v-model="staySignedIn" type="checkbox" :disabled="authStore.isLoading" />
           <span>Keep me signed in</span>
@@ -261,6 +330,10 @@ async function handleSubmit() {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.register__loading {
+  min-height: 20rem;
 }
 
 .register__header {

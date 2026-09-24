@@ -29,6 +29,7 @@ class UserFactory extends Factory
             'display_name' => fake()->name(),
             'master_key_salt' => Str::random(64),
             'public_key' => Str::random(128),
+            'encrypted_private_key' => Str::random(128),
         ];
     }
 }
