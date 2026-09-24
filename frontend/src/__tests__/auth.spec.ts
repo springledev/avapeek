@@ -34,6 +34,11 @@ vi.mock('@/crypto/keychain', () => ({
   exportPublicKey: vi.fn<(key: CryptoKey) => Promise<string>>(),
   exportKEK: vi.fn<(kek: CryptoKey) => Promise<string>>(),
   importKEK: vi.fn<(jwk: string) => Promise<CryptoKey>>(),
+  wrapPrivateKey: vi.fn<(privateKey: CryptoKey, kek: CryptoKey) => Promise<string>>(
+    async () => 'wrapped-private-key',
+  ),
+  rewrapDEK: vi.fn<(wrapped: string, oldKek: CryptoKey, newKek: CryptoKey) => Promise<string>>(),
+  rewrapPrivateKey: vi.fn<(wrapped: string, oldKek: CryptoKey, newKek: CryptoKey) => Promise<string>>(),
 }))
 
 vi.mock('@/lib/cache/decrypted-cache', () => ({
@@ -53,9 +58,17 @@ import {
   generateSalt,
   generateKeyPair,
   exportPublicKey,
+  wrapPrivateKey,
+  rewrapDEK,
+  rewrapPrivateKey,
 } from '@/crypto/keychain'
 import apiService from '@/services/api'
-import { useAuthStore, isMfaRequired, type MfaRequiredResponse } from '@/stores/auth'
+import {
+  useAuthStore,
+  isMfaRequired,
+  WrongPasswordError,
+  type MfaRequiredResponse,
+} from '@/stores/auth'
 import type { User, AuthResponse } from '@/types/auth'
 
 function ok<T>(data: T): AxiosResponse<T> {
@@ -75,6 +88,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     display_name: 'Ana',
     master_key_salt: 'deadbeef',
     public_key: 'jwk',
+    encrypted_private_key: 'wrapped-private-key',
     ...overrides,
   }
 }
@@ -116,6 +130,8 @@ describe('auth store', () => {
       privateKey: { type: 'private' } as unknown as CryptoKey,
     })
     vi.mocked(exportPublicKey).mockResolvedValue('public-key-jwk')
+    vi.mocked(rewrapDEK).mockReset()
+    vi.mocked(rewrapPrivateKey).mockReset()
   })
 
   describe('isMfaRequired', () => {
@@ -177,13 +193,20 @@ describe('auth store', () => {
     vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
 
     const store = useAuthStore()
-    await store.mfaChallenge('mfa-token', 'totp', '123456', undefined, 'secret')
+    await store.mfaChallenge({
+      mfaToken: 'mfa-token',
+      method: 'totp',
+      code: '123456',
+      password: 'secret',
+      staySignedIn: false,
+    })
 
     expect(api.post).toHaveBeenCalledWith('/auth/mfa/challenge', {
       mfa_token: 'mfa-token',
       method: 'totp',
       code: '123456',
     })
+    expect(setStaySignedIn).toHaveBeenCalledWith(false)
     expect(apiService.setAuthToken).toHaveBeenCalledWith('token-123')
     expect(setSessionItem).toHaveBeenCalledWith('kek', 'kek-jwk')
     expect(store.user?.email).toBe('ana@example.com')
@@ -193,9 +216,30 @@ describe('auth store', () => {
     vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
 
     const store = useAuthStore()
-    await expect(store.mfaChallenge('mfa-token', 'totp', '123456')).rejects.toThrow(
-      'Password is required',
-    )
+    await expect(
+      store.mfaChallenge({ mfaToken: 'mfa-token', method: 'totp', code: '123456' }),
+    ).rejects.toThrow('Password is required')
+    // The single-use mfa_token must not be spent on a request that can't finish.
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('sends the passkey response for a passkey challenge', async () => {
+    vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
+
+    const store = useAuthStore()
+    await store.mfaChallenge({
+      mfaToken: 'mfa-token',
+      method: 'passkey',
+      passkeyResponse: { id: 'cred' },
+      password: 'secret',
+    })
+
+    expect(api.post).toHaveBeenCalledWith('/auth/mfa/challenge', {
+      mfa_token: 'mfa-token',
+      method: 'passkey',
+      passkey_response: { id: 'cred' },
+    })
+    expect(setStaySignedIn).toHaveBeenCalledWith(true)
   })
 
   it('registers a new user and clears the pending invite token', async () => {
@@ -244,6 +288,135 @@ describe('auth store', () => {
 
     expect(store.isAuthenticated).toBe(true)
     expect(store.user?.email).toBe('stored@example.com')
+  })
+
+  it('sends the stay-signed-in choice so the server can expire the token', async () => {
+    vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
+
+    const store = useAuthStore()
+    await store.login('ana@example.com', 'secret', false)
+
+    expect(api.post).toHaveBeenCalledWith('/auth/login', {
+      email: 'ana@example.com',
+      password: 'secret',
+      remember: false,
+    })
+  })
+
+  it('registers with a KEK-wrapped private key so albums can be shared later', async () => {
+    vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
+
+    const store = useAuthStore()
+    await store.register('ana@example.com', 'secret', 'Ana', undefined, false)
+
+    expect(wrapPrivateKey).toHaveBeenCalledWith({ type: 'private' }, fakeKEK)
+    expect(api.post).toHaveBeenCalledWith(
+      '/auth/register',
+      expect.objectContaining({
+        public_key: 'public-key-jwk',
+        encrypted_private_key: 'wrapped-private-key',
+        remember: false,
+      }),
+    )
+  })
+
+  it('creates a key pair at sign-in for accounts that never stored one', async () => {
+    vi.mocked(api.post).mockResolvedValue(
+      ok(makeAuthResponse({ user: makeUser({ encrypted_private_key: null }) })),
+    )
+    vi.mocked(api.put).mockResolvedValue(ok({ user: makeUser() }))
+
+    const store = useAuthStore()
+    await store.login('ana@example.com', 'secret')
+
+    expect(api.put).toHaveBeenCalledWith('/user/keypair', {
+      current_password: 'secret',
+      public_key: 'public-key-jwk',
+      encrypted_private_key: 'wrapped-private-key',
+    })
+    expect(store.user?.encrypted_private_key).toBe('wrapped-private-key')
+  })
+
+  describe('changePassword', () => {
+    const newKEK = { type: 'secret', which: 'new' } as unknown as CryptoKey
+
+    beforeEach(() => {
+      vi.mocked(deriveKEK).mockImplementation(async (password: string) =>
+        password === 'new-password' ? newKEK : fakeKEK,
+      )
+      vi.mocked(api.get).mockResolvedValue(
+        ok({
+          data: [
+            { child_id: 1, child_name: 'Wren', encrypted_dek: 'dek-1', wrap_type: 'kek', key_version: 1 },
+            { child_id: 2, child_name: 'Ivy', encrypted_dek: 'shared', wrap_type: 'public_key', key_version: 1 },
+          ],
+        }),
+      )
+    })
+
+    it('re-wraps every own key and the private key, then saves them with the new password', async () => {
+      vi.mocked(rewrapDEK).mockResolvedValue('dek-1-new')
+      vi.mocked(rewrapPrivateKey).mockResolvedValue('private-new')
+      const savedKeys = [
+        { child_id: 1, child_name: 'Wren', encrypted_dek: 'dek-1-new', wrap_type: 'kek', key_version: 1 },
+      ]
+      vi.mocked(api.put).mockResolvedValue(
+        ok({ user: makeUser({ encrypted_private_key: 'private-new' }), encryption_keys: savedKeys }),
+      )
+
+      const store = useAuthStore()
+      store.user = makeUser()
+      await store.changePassword({
+        currentPassword: 'old-password',
+        newPassword: 'new-password',
+        newPasswordConfirmation: 'new-password',
+      })
+
+      expect(rewrapDEK).toHaveBeenCalledTimes(1)
+      expect(rewrapDEK).toHaveBeenCalledWith('dek-1', fakeKEK, newKEK)
+      expect(rewrapPrivateKey).toHaveBeenCalledWith('wrapped-private-key', fakeKEK, newKEK)
+      expect(api.put).toHaveBeenCalledWith('/user/password', {
+        current_password: 'old-password',
+        new_password: 'new-password',
+        new_password_confirmation: 'new-password',
+        encryption_keys: [{ child_id: 1, key_version: 1, encrypted_dek: 'dek-1-new' }],
+        encrypted_private_key: 'private-new',
+      })
+      expect(store.kek).toEqual(newKEK)
+      expect(store.encryptionKeys).toEqual(savedKeys)
+    })
+
+    it('stops before calling the server when the current password is wrong', async () => {
+      vi.mocked(rewrapDEK).mockRejectedValue(new DOMException('bad tag', 'OperationError'))
+
+      const store = useAuthStore()
+      store.user = makeUser()
+      store.kek = fakeKEK
+
+      await expect(
+        store.changePassword({
+          currentPassword: 'typo',
+          newPassword: 'new-password',
+          newPasswordConfirmation: 'new-password',
+        }),
+      ).rejects.toBeInstanceOf(WrongPasswordError)
+      expect(api.put).not.toHaveBeenCalled()
+      expect(store.kek).toEqual(fakeKEK)
+      expect(store.error).toBe('The current password is incorrect.')
+    })
+  })
+
+  it('restores the KEK once, however many callers wait for it', async () => {
+    vi.mocked(getSessionItem).mockImplementation((key: string) => (key === 'kek' ? 'kek-jwk' : null))
+    const { importKEK } = await import('@/crypto/keychain')
+    vi.mocked(importKEK).mockReset()
+    vi.mocked(importKEK).mockResolvedValue(fakeKEK)
+
+    const store = useAuthStore()
+    await Promise.all([store.restoreKEK(), store.restoreKEK()])
+
+    expect(importKEK).toHaveBeenCalledTimes(1)
+    expect(store.kek).toEqual(fakeKEK)
   })
 
   it('clears the session on logout', async () => {

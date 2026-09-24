@@ -17,7 +17,9 @@ import type {
   User,
   EncryptionKey,
   LoginRequest,
+  RegisterRequest,
   AuthResponse,
+  MfaRequiredResponse,
 } from '@/types/auth'
 import {
   deriveKEK,
@@ -26,12 +28,36 @@ import {
   exportPublicKey,
   exportKEK,
   importKEK,
+  wrapPrivateKey,
+  rewrapDEK,
+  rewrapPrivateKey,
 } from '@/crypto/keychain'
 
-export interface MfaRequiredResponse {
-  mfa_required: true
-  mfa_token: string
-  mfa_methods: string[]
+export type { MfaRequiredResponse } from '@/types/auth'
+
+export type MfaMethod = 'totp' | 'recovery' | 'passkey'
+
+export interface MfaChallengeRequest {
+  mfaToken: string
+  method: MfaMethod
+  code?: string
+  passkeyResponse?: Record<string, unknown>
+  password?: string
+  staySignedIn?: boolean
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string
+  newPassword: string
+  newPasswordConfirmation: string
+}
+
+/** Thrown when the typed current password can't open the user's keys. */
+export class WrongPasswordError extends Error {
+  constructor() {
+    super('The current password is incorrect.')
+    this.name = 'WrongPasswordError'
+  }
 }
 
 export function isMfaRequired(value: unknown): value is MfaRequiredResponse {
@@ -54,11 +80,28 @@ export const useAuthStore = defineStore('auth', () => {
   const kek = ref<CryptoKey | null>(null) // Kept in memory only
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  let kekRestore: Promise<void> | null = null
 
   // Getters
   const isAuthenticated = computed(() => !!user.value)
   const needsReauth = computed(() => !!user.value && !kek.value)
   const currentUser = computed(() => user.value)
+
+  function setUser(userData: User): void {
+    user.value = userData
+    setSessionItem('user', JSON.stringify(userData))
+  }
+
+  function setEncryptionKeys(keys: EncryptionKey[]): void {
+    encryptionKeys.value = keys
+    setSessionItem('encryption_keys', JSON.stringify(keys))
+  }
+
+  async function setKEK(newKEK: CryptoKey): Promise<void> {
+    kek.value = newKEK
+    // ponytail: KEK in active storage, re-auth on next app load if XSS risk is unacceptable
+    setSessionItem('kek', await exportKEK(newKEK))
+  }
 
   /**
    * Registers a new user account with encryption setup.
@@ -77,44 +120,29 @@ export const useAuthStore = defineStore('auth', () => {
       // Generate cryptographic materials
       const salt = generateSalt()
       const keyPair = await generateKeyPair()
-      const publicKeyJwk = await exportPublicKey(keyPair.publicKey)
-
-      // Derive KEK from password (keep in memory)
       const derivedKEK = await deriveKEK(password, salt)
-      kek.value = derivedKEK
 
-      // Prepare registration data
-      const registerData: Record<string, unknown> = {
+      const registerData: RegisterRequest = {
         email,
         password,
         display_name: displayName,
         master_key_salt: salt,
-        public_key: publicKeyJwk,
+        public_key: await exportPublicKey(keyPair.publicKey),
+        encrypted_private_key: await wrapPrivateKey(keyPair.privateKey, derivedKEK),
+        remember: staySignedIn,
       }
       if (inviteToken) {
         registerData.invite_token = inviteToken
       }
 
-      // Call API
       const response = await api.post<AuthResponse>('/auth/register', registerData)
       const { user: userData, token, accepted_child } = response.data
 
       setStaySignedIn(staySignedIn)
-
-      // Store user and token
-      user.value = userData
       apiService.setAuthToken(token)
-
-      // ponytail: KEK in active storage, re-auth on next app load if XSS risk is unacceptable
-      const kekJwk = await exportKEK(derivedKEK)
-      setSessionItem('kek', kekJwk)
-
-      setSessionItem('user', JSON.stringify(userData))
-
-      if (accepted_child) {
-        encryptionKeys.value = []
-        setSessionItem('encryption_keys', JSON.stringify([]))
-      }
+      setUser(userData)
+      setEncryptionKeys([])
+      await setKEK(derivedKEK)
 
       removePendingInviteToken()
 
@@ -140,7 +168,7 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
 
     try {
-      const loginData: LoginRequest = { email, password }
+      const loginData: LoginRequest = { email, password, remember: staySignedIn }
       const response = await api.post<AuthResponse | MfaRequiredResponse>('/auth/login', loginData)
       const data = response.data
 
@@ -166,38 +194,61 @@ export const useAuthStore = defineStore('auth', () => {
   async function storeAuthSession(data: AuthResponse, password: string): Promise<void> {
     const { user: userData, token, encryption_keys } = data
 
-    user.value = userData
     apiService.setAuthToken(token)
+    setUser(userData)
 
     const derivedKEK = await deriveKEK(password, userData.master_key_salt)
-    kek.value = derivedKEK
+    await setKEK(derivedKEK)
 
     if (encryption_keys) {
-      encryptionKeys.value = encryption_keys
-      setSessionItem('encryption_keys', JSON.stringify(encryption_keys))
+      setEncryptionKeys(encryption_keys)
     }
 
-    // ponytail: KEK in active storage, re-auth on next app load if XSS risk is unacceptable
-    const kekJwk = await exportKEK(derivedKEK)
-    setSessionItem('kek', kekJwk)
+    if (!userData.encrypted_private_key) {
+      await createMissingKeyPair(password, derivedKEK)
+    }
+  }
 
-    setSessionItem('user', JSON.stringify(userData))
+  /**
+   * Accounts created before private keys were stored threw theirs away, so
+   * nobody could share an album with them. Give them a fresh key pair; the
+   * password is only available at sign-in, which is why this runs here.
+   */
+  async function createMissingKeyPair(password: string, derivedKEK: CryptoKey): Promise<void> {
+    try {
+      const keyPair = await generateKeyPair()
+      const response = await api.put<{ user: User }>('/user/keypair', {
+        current_password: password,
+        public_key: await exportPublicKey(keyPair.publicKey),
+        encrypted_private_key: await wrapPrivateKey(keyPair.privateKey, derivedKEK),
+      })
+      setUser(response.data.user)
+    } catch (err) {
+      // Best effort: sign-in still works, and this is retried at the next sign-in.
+      console.error('Failed to create key pair:', err)
+    }
   }
 
   /**
    * Completes an MFA challenge and stores the full session on success.
    */
-  async function mfaChallenge(
-    mfaToken: string,
-    method: string,
-    code?: string,
-    passkeyResponse?: Record<string, unknown>,
-    password?: string,
-  ): Promise<void> {
+  async function mfaChallenge({
+    mfaToken,
+    method,
+    code,
+    passkeyResponse,
+    password,
+    staySignedIn = true,
+  }: MfaChallengeRequest): Promise<void> {
     isLoading.value = true
     error.value = null
 
     try {
+      // Checked before the request: a successful challenge consumes the single-use mfa_token.
+      if (!password) {
+        throw new Error('Password is required to restore encryption keys.')
+      }
+
       const payload: Record<string, unknown> = { mfa_token: mfaToken, method }
       if (code !== undefined) {
         payload.code = code
@@ -207,13 +258,9 @@ export const useAuthStore = defineStore('auth', () => {
       }
 
       const response = await api.post<AuthResponse>('/auth/mfa/challenge', payload)
-      const data = response.data
 
-      if (!password) {
-        throw new Error('Password is required to restore encryption keys.')
-      }
-
-      await storeAuthSession(data, password)
+      setStaySignedIn(staySignedIn)
+      await storeAuthSession(response.data, password)
     } catch (err) {
       console.error('MFA challenge error:', err)
       error.value = apiErrorMessage(err, 'MFA verification failed. Please try again.')
@@ -250,7 +297,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Logs out the current user and clears all sensitive data.
+   * Logs out the current user and clears all sensitive data from storage.
+   *
+   * Other stores still hold decrypted keys and data in memory, so callers
+   * must follow this with a full page load: use signOut() from '@/lib/sign-out'.
    */
   async function logout(): Promise<void> {
     isLoading.value = true
@@ -309,52 +359,112 @@ export const useAuthStore = defineStore('auth', () => {
 
   /**
    * Restores KEK from active storage (asynchronous).
-   * Called after app mount to avoid blocking initial render.
+   *
+   * Memoized so the router guard can await the same restore App.vue starts;
+   * otherwise the first navigation after a reload sees no KEK and bounces
+   * the user to the sign-in page.
    */
-  async function restoreKEK(): Promise<void> {
-    const storedKekJwk = getSessionItem('kek')
-    if (storedKekJwk) {
+  function restoreKEK(): Promise<void> {
+    kekRestore ??= (async () => {
+      const storedKekJwk = getSessionItem('kek')
+      if (!storedKekJwk || kek.value) return
       try {
         kek.value = await importKEK(storedKekJwk)
       } catch (err) {
         console.error('Failed to import KEK from storage:', err)
         removeSessionItem('kek')
       }
-    }
+    })()
+    return kekRestore
   }
 
   /**
-   * Updates the authenticated user's profile.
-   *
-   * Supports changing display_name, email, and/or password.
-   * When password is changed, the KEK is re-derived with the new password
-   * so the user stays logged in without re-authentication.
+   * Updates the authenticated user's display name and/or email.
    */
-  async function updateProfile(data: {
-    display_name?: string
-    email?: string
-    current_password?: string
-    new_password?: string
-    new_password_confirmation?: string
-  }): Promise<void> {
+  async function updateProfile(data: { display_name?: string; email?: string }): Promise<void> {
     isLoading.value = true
     error.value = null
 
     try {
-      const response = await api.put('/user/profile', data)
-      const userData = response.data.user
-
-      user.value = userData
-      setSessionItem('user', JSON.stringify(userData))
-
-      if (data.new_password && userData.master_key_salt) {
-        const newKEK = await deriveKEK(data.new_password, userData.master_key_salt)
-        kek.value = newKEK
-        const kekJwk = await exportKEK(newKEK)
-        setSessionItem('kek', kekJwk)
-      }
+      const response = await api.put<{ user: User }>('/user/profile', data)
+      setUser(response.data.user)
     } catch (err) {
       error.value = apiErrorMessage(err, 'Failed to update profile.')
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
+   * Changes the password without losing access to any photos.
+   *
+   * The KEK comes from the password, so every album key and the private key
+   * are re-wrapped with the new KEK here and saved with the new password in
+   * one request. The server rejects the change if any key is missing.
+   */
+  async function changePassword({
+    currentPassword,
+    newPassword,
+    newPasswordConfirmation,
+  }: ChangePasswordRequest): Promise<void> {
+    if (!user.value) {
+      throw new Error('You need to be signed in to change your password.')
+    }
+
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const salt = user.value.master_key_salt
+      const oldKEK = await deriveKEK(currentPassword, salt)
+      const newKEK = await deriveKEK(newPassword, salt)
+
+      // Fresh copy, so a key added on another device isn't left behind.
+      const { data: keyList } = await api.get<{ data: EncryptionKey[] }>('/encryption-keys')
+      const ownKeys = keyList.data.filter((key) => (key.wrap_type ?? 'kek') === 'kek')
+
+      let rewrappedKeys: Array<{ child_id: number; key_version: number; encrypted_dek: string }>
+      let rewrappedPrivateKey: string | null = null
+      try {
+        rewrappedKeys = await Promise.all(
+          ownKeys.map(async (key) => ({
+            child_id: key.child_id,
+            key_version: key.key_version,
+            encrypted_dek: await rewrapDEK(key.encrypted_dek, oldKEK, newKEK),
+          })),
+        )
+        if (user.value.encrypted_private_key) {
+          rewrappedPrivateKey = await rewrapPrivateKey(
+            user.value.encrypted_private_key,
+            oldKEK,
+            newKEK,
+          )
+        }
+      } catch {
+        // AES-GCM unwrap only fails here when the typed password is wrong.
+        throw new WrongPasswordError()
+      }
+
+      const response = await api.put<{ user: User; encryption_keys: EncryptionKey[] }>(
+        '/user/password',
+        {
+          current_password: currentPassword,
+          new_password: newPassword,
+          new_password_confirmation: newPasswordConfirmation,
+          encryption_keys: rewrappedKeys,
+          encrypted_private_key: rewrappedPrivateKey,
+        },
+      )
+
+      setUser(response.data.user)
+      setEncryptionKeys(response.data.encryption_keys)
+      await setKEK(newKEK)
+    } catch (err) {
+      error.value =
+        err instanceof WrongPasswordError
+          ? err.message
+          : apiErrorMessage(err, 'Failed to change password.')
       throw err
     } finally {
       isLoading.value = false
@@ -387,6 +497,8 @@ export const useAuthStore = defineStore('auth', () => {
     initializeAuth,
     restoreKEK,
     updateProfile,
+    changePassword,
+    setEncryptionKeys,
     clearError,
     postLoginWarmup,
   }

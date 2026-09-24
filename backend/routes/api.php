@@ -14,13 +14,13 @@ use App\Models\User;
 use Illuminate\Support\Facades\Route;
 
 // Authentication routes (no auth required)
-Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:auth');
+Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:register');
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
 Route::get('/auth/registration-mode', [AuthController::class, 'registrationMode']);
 
 // MFA challenge routes (no auth required, bound to mfa_token)
-Route::post('/auth/mfa/challenge', [MfaController::class, 'challenge'])->middleware('throttle:auth');
-Route::post('/auth/mfa/passkey/options', [MfaController::class, 'passkeyOptions'])->middleware('throttle:auth');
+Route::post('/auth/mfa/challenge', [MfaController::class, 'challenge'])->middleware('throttle:mfa');
+Route::post('/auth/mfa/passkey/options', [MfaController::class, 'passkeyOptions'])->middleware('throttle:mfa');
 
 // Invite preview (no auth required — preview before login)
 Route::get('/invites/{token}', [InviteController::class, 'show'])
@@ -34,14 +34,18 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::post('/auth/refresh', [AuthController::class, 'refresh']);
 
     // MFA setup routes
-    Route::post('/auth/mfa/totp/setup', [MfaController::class, 'setupTotp']);
-    Route::post('/auth/mfa/totp/confirm', [MfaController::class, 'confirmTotp']);
-    Route::delete('/auth/mfa/totp', [MfaController::class, 'disableTotp']);
     Route::get('/auth/mfa/methods', [MfaController::class, 'methods']);
-    Route::post('/auth/mfa/passkeys/register/options', [MfaController::class, 'registerPasskeyOptions']);
+    Route::post('/auth/mfa/totp/confirm', [MfaController::class, 'confirmTotp'])->middleware('throttle:mfa');
     Route::post('/auth/mfa/passkeys/register/verify', [MfaController::class, 'registerPasskeyVerify']);
-    Route::delete('/auth/mfa/passkeys/{credential}', [MfaController::class, 'removePasskey']);
-    Route::post('/auth/mfa/recovery-codes', [MfaController::class, 'regenerateRecoveryCodes']);
+
+    // Password-confirmed security changes
+    Route::middleware('throttle:password-confirm')->group(function () {
+        Route::post('/auth/mfa/totp/setup', [MfaController::class, 'setupTotp']);
+        Route::delete('/auth/mfa/totp', [MfaController::class, 'disableTotp']);
+        Route::post('/auth/mfa/passkeys/register/options', [MfaController::class, 'registerPasskeyOptions']);
+        Route::delete('/auth/mfa/passkeys/{credential}', [MfaController::class, 'removePasskey']);
+        Route::post('/auth/mfa/recovery-codes', [MfaController::class, 'regenerateRecoveryCodes']);
+    });
 
     // User public key (for DEK re-wrapping during invites)
     Route::get('/users/{user}/public-key', function (User $user) {
@@ -65,6 +69,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // User
     Route::put('/user/profile', [AuthController::class, 'updateProfile']);
+    Route::put('/user/password', [AuthController::class, 'changePassword'])->middleware('throttle:password-confirm');
+    Route::put('/user/keypair', [AuthController::class, 'setKeyPair'])->middleware('throttle:password-confirm');
     Route::put('/user/seen', [PhotoController::class, 'markSeen']);
 
     // Unified photo feed (across all children)
@@ -112,6 +118,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::delete('/invites/{invite}', [InviteController::class, 'destroy']);
 
     // Encryption Keys
+    Route::get('/encryption-keys', [EncryptionKeysController::class, 'index']);
     Route::post('/encryption-keys', [EncryptionKeysController::class, 'store']);
+    Route::get('/encryption-keys/pending-grants', [EncryptionKeysController::class, 'pendingGrants']);
     Route::post('/encryption-keys/wrap-for-invitee', [EncryptionKeysController::class, 'wrapForInvitee']);
 });

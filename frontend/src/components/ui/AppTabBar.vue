@@ -1,11 +1,10 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
 import { LayoutGrid, Plus, Settings, Clock, LogOut } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth'
+import { signOut } from '@/lib/sign-out'
 import { useRecentsStore } from '@/stores/recents'
 
-const router = useRouter()
 const authStore = useAuthStore()
 const recentsStore = useRecentsStore()
 
@@ -17,8 +16,7 @@ const items = computed(() => [
 ])
 
 async function handleLogout() {
-  await authStore.logout()
-  router.push('/login')
+  await signOut()
 }
 </script>
 

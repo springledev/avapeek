@@ -349,6 +349,11 @@ describe('POST /api/encryption-keys/wrap-for-invitee', function () {
             'user_id' => $inviter->id,
             'role' => 'owner',
         ]);
+        ChildUser::create([
+            'child_id' => $child->id,
+            'user_id' => $invitee->id,
+            'role' => 'member',
+        ]);
 
         $wrappedDek = base64_encode(random_bytes(64));
 
@@ -372,7 +377,7 @@ describe('POST /api/encryption-keys/wrap-for-invitee', function () {
         ]);
     });
 
-    it('updates an existing wrapped DEK for the same user and child', function () {
+    it('refuses to overwrite a key the member already has', function () {
         $inviter = User::factory()->create();
         $invitee = User::factory()->create();
         $child = Child::factory()->create(['created_by' => $inviter->id]);
@@ -380,6 +385,11 @@ describe('POST /api/encryption-keys/wrap-for-invitee', function () {
             'child_id' => $child->id,
             'user_id' => $inviter->id,
             'role' => 'owner',
+        ]);
+        ChildUser::create([
+            'child_id' => $child->id,
+            'user_id' => $invitee->id,
+            'role' => 'member',
         ]);
 
         $oldDek = base64_encode(random_bytes(64));
@@ -390,22 +400,19 @@ describe('POST /api/encryption-keys/wrap-for-invitee', function () {
             'key_version' => 1,
         ]);
 
-        $newDek = base64_encode(random_bytes(64));
-
         $response = $this->actingAs($inviter, 'sanctum')
             ->postJson('/api/encryption-keys/wrap-for-invitee', [
                 'child_id' => $child->id,
                 'user_id' => $invitee->id,
-                'wrapped_dek' => $newDek,
+                'wrapped_dek' => base64_encode(random_bytes(64)),
             ]);
 
-        $response->assertStatus(201);
+        $response->assertStatus(409);
 
         $this->assertDatabaseHas('encryption_keys', [
             'child_id' => $child->id,
             'user_id' => $invitee->id,
-            'encrypted_dek' => $newDek,
-            'key_version' => 1,
+            'encrypted_dek' => $oldDek,
         ]);
     });
 

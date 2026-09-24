@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import {
   User,
   Users,
@@ -14,14 +14,12 @@ import {
 } from '@lucide/vue'
 import { api } from '@/services/api'
 import { toast } from 'vue-sonner'
-import { useAuthStore } from '@/stores/auth'
+import { signOut } from '@/lib/sign-out'
 import { useChildStore } from '@/stores/child'
 import { useGridDensity, type FeedDensity } from '@/composables/useGridDensity'
 import { useDarkMode } from '@/composables/useDarkMode'
 
 const route = useRoute()
-const router = useRouter()
-const authStore = useAuthStore()
 const childStore = useChildStore()
 const { density, setDensity } = useGridDensity()
 const { isDark, toggle: toggleDark } = useDarkMode()
@@ -76,8 +74,7 @@ function onDensityChange(value: FeedDensity) {
 }
 
 async function handleLogout() {
-  await authStore.logout()
-  router.push('/login')
+  await signOut()
 }
 
 onMounted(fetchPendingInvites)

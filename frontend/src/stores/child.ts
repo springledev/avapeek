@@ -3,8 +3,9 @@ import { ref, computed } from 'vue'
 import { api } from '@/services/api'
 import { apiErrorMessage } from '@/lib/util'
 import { useAuthStore } from '@/stores/auth'
-import { generateDEK, wrapDEK, unwrapDEK, importPublicKey, wrapDEKWithPublicKey } from '@/crypto/keychain'
+import { generateDEK, wrapDEK, unwrapDEK, importPublicKey, rewrapDEKForPublicKey } from '@/crypto/keychain'
 import type { Child, ChildDetail, InviteResponse } from '@/types/child'
+import type { EncryptionKey } from '@/types/auth'
 
 export const useChildStore = defineStore('child', () => {
   const children = ref<Child[]>([])
@@ -29,6 +30,16 @@ export const useChildStore = defineStore('child', () => {
     deks.value.set(childId, dek)
   }
 
+  /**
+   * The child's DEK wrapped with the user's KEK. Keys still wrapped with the
+   * user's public key can't be opened until key sync re-wraps them.
+   */
+  function findOwnKey(childId: number): EncryptionKey | undefined {
+    return useAuthStore().encryptionKeys.find(
+      (k) => k.child_id === childId && (k.wrap_type ?? 'kek') === 'kek',
+    )
+  }
+
   async function ensureDEK(childId: number): Promise<CryptoKey> {
     const existing = deks.value.get(childId)
     if (existing) return existing
@@ -38,7 +49,7 @@ export const useChildStore = defineStore('child', () => {
       throw new Error('Session expired. Please log in again.')
     }
 
-    const ek = authStore.encryptionKeys.find((k) => k.child_id === childId)
+    const ek = findOwnKey(childId)
     if (!ek) {
       throw new Error('No encryption key found for this child.')
     }
@@ -55,7 +66,7 @@ export const useChildStore = defineStore('child', () => {
     const authStore = useAuthStore()
     if (!authStore.kek) return null
 
-    const ek = authStore.encryptionKeys.find((k) => k.child_id === childId)
+    const ek = findOwnKey(childId)
     if (!ek) return null
 
     try {
@@ -129,13 +140,16 @@ export const useChildStore = defineStore('child', () => {
         wrapped_dek: wrappedDek,
       })
 
-      authStore.encryptionKeys.push({
-        child_id: child.id,
-        child_name: child.name,
-        encrypted_dek: wrappedDek,
-        key_version: 1,
-      })
-      localStorage.setItem('encryption_keys', JSON.stringify(authStore.encryptionKeys))
+      authStore.setEncryptionKeys([
+        ...authStore.encryptionKeys,
+        {
+          child_id: child.id,
+          child_name: child.name,
+          encrypted_dek: wrappedDek,
+          wrap_type: 'kek',
+          key_version: 1,
+        },
+      ])
 
       deks.value.set(child.id, dek)
       children.value.push(child)
@@ -170,39 +184,29 @@ export const useChildStore = defineStore('child', () => {
     }
   }
 
-  async function grantAccess(childId: number, inviteeUserId: number): Promise<void> {
+  /**
+   * Shares a child's DEK with a member by wrapping it with their public key.
+   * They re-wrap it with their own KEK the next time they open the app.
+   */
+  async function grantAccess(childId: number, inviteeUserId: number, publicKeyJwk: string): Promise<void> {
     const authStore = useAuthStore()
     if (!authStore.kek) {
       throw new Error('KEK not available. Please log in again.')
     }
 
-    const dek = deks.value.get(childId)
-    if (!dek) {
-      throw new Error('DEK not available for this child.')
+    const ek = findOwnKey(childId)
+    if (!ek) {
+      throw new Error('No encryption key found for this child.')
     }
 
-    isLoading.value = true
-    error.value = null
+    const publicKey = await importPublicKey(publicKeyJwk)
+    const wrappedDek = await rewrapDEKForPublicKey(ek.encrypted_dek, authStore.kek, publicKey)
 
-    try {
-      const publicKeyResponse = await api.get<{ data: { public_key: string } }>(`/users/${inviteeUserId}/public-key`)
-      const publicKeyJwk = publicKeyResponse.data.data.public_key
-
-      const publicKey = await importPublicKey(publicKeyJwk)
-      const wrappedDek = await wrapDEKWithPublicKey(dek, publicKey)
-
-      await api.post('/encryption-keys/wrap-for-invitee', {
-        child_id: childId,
-        user_id: inviteeUserId,
-        wrapped_dek: wrappedDek,
-      })
-    } catch (err) {
-      console.error('Failed to grant access:', err)
-      error.value = apiErrorMessage(err, 'Failed to grant encrypted access.')
-      throw err
-    } finally {
-      isLoading.value = false
-    }
+    await api.post('/encryption-keys/wrap-for-invitee', {
+      child_id: childId,
+      user_id: inviteeUserId,
+      wrapped_dek: wrappedDek,
+    })
   }
 
   function setCurrentChild(childId: number | null): void {

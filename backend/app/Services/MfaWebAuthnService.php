@@ -6,7 +6,9 @@ use App\Models\User;
 use App\Models\WebAuthnCredential;
 use Illuminate\Support\Facades\Config;
 use InvalidArgumentException;
+use RuntimeException;
 use Symfony\Component\Serializer\SerializerInterface;
+use Throwable;
 use Webauthn\AttestationStatement\AttestationStatementSupportManager;
 use Webauthn\AttestationStatement\NoneAttestationStatementSupport;
 use Webauthn\AuthenticatorAssertionResponse;
@@ -44,7 +46,7 @@ class MfaWebAuthnService
 
     public function getRpId(): string
     {
-        $url = parse_url(Config::string('app.url', 'http://localhost'));
+        $url = parse_url($this->getOrigin());
 
         return $url['host'] ?? 'localhost';
     }
@@ -54,9 +56,22 @@ class MfaWebAuthnService
         return Config::string('app.name', 'Avapeek');
     }
 
+    /**
+     * @throws RuntimeException when FRONTEND_URL is missing in production
+     */
     public function getOrigin(): string
     {
-        return rtrim(Config::string('app.url', 'http://localhost'), '/');
+        $frontendUrl = Config::get('app.frontend_url');
+
+        if (! is_string($frontendUrl) || $frontendUrl === '') {
+            if (app()->isProduction()) {
+                throw new RuntimeException('FRONTEND_URL must be set in production: passkeys are bound to the frontend origin.');
+            }
+
+            $frontendUrl = 'http://localhost:5173';
+        }
+
+        return rtrim($frontendUrl, '/');
     }
 
     public function getUserEntity(User $user): PublicKeyCredentialUserEntity
@@ -146,7 +161,7 @@ class MfaWebAuthnService
         try {
             $publicKeyCredential = $this->loadClientCredential($clientData);
         } catch (Throwable $e) {
-            throw new AuthenticatorResponseVerificationException('Invalid attestation response.', 0, $e);
+            throw AuthenticatorResponseVerificationException::create('Invalid attestation response.', $e);
         }
 
         if (! $publicKeyCredential->response instanceof AuthenticatorAttestationResponse) {
@@ -170,7 +185,7 @@ class MfaWebAuthnService
         try {
             $publicKeyCredential = $this->loadClientCredential($clientData);
         } catch (Throwable $e) {
-            throw new AuthenticatorResponseVerificationException('Invalid assertion response.', 0, $e);
+            throw AuthenticatorResponseVerificationException::create('Invalid assertion response.', $e);
         }
 
         if (! $publicKeyCredential->response instanceof AuthenticatorAssertionResponse) {

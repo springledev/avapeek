@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Images } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
+import { setPendingInviteToken, removePendingInviteToken } from '@/lib/auth-storage'
 import type { InvitePreview } from '@/types/child'
 import { apiErrorMessage } from '@/lib/util'
+import UiButton from '@/components/ui/UiButton.vue'
+import AuthCard from '@/components/AuthCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,6 +20,11 @@ const isLoading = ref(true)
 const isAccepting = ref(false)
 const error = ref<string | null>(null)
 
+const roleWithArticle = computed(() => {
+  const role = invite.value?.role ?? ''
+  return `${/^[aeiou]/i.test(role) ? 'an' : 'a'} ${role}`
+})
+
 async function loadPreview() {
   isLoading.value = true
   error.value = null
@@ -23,7 +32,7 @@ async function loadPreview() {
   try {
     const response = await api.get<{ data: InvitePreview }>(`/invites/${token}`)
     invite.value = response.data.data
-    localStorage.setItem('pending_invite_token', token)
+    setPendingInviteToken(token)
   } catch (err) {
     const data = (
       err as {
@@ -34,7 +43,7 @@ async function loadPreview() {
       router.push(`/child/${data.already_accepted.child_slug}`)
       return
     }
-    localStorage.removeItem('pending_invite_token')
+    removePendingInviteToken()
     error.value = data?.message || 'This invite is invalid or has expired.'
   } finally {
     isLoading.value = false
@@ -43,7 +52,7 @@ async function loadPreview() {
 
 async function acceptInvite() {
   if (!authStore.isAuthenticated) {
-    router.push({ name: 'login', query: { redirect: `/invite/${token}` } })
+    goToLogin()
     return
   }
 
@@ -51,9 +60,11 @@ async function acceptInvite() {
   error.value = null
 
   try {
-    await api.post<{ data: { child_id: number; child_slug: string; child_name: string } }>(`/invites/${token}/accept`)
+    await api.post<{ data: { child_id: number; child_slug: string; child_name: string } }>(
+      `/invites/${token}/accept`,
+    )
 
-    localStorage.removeItem('pending_invite_token')
+    removePendingInviteToken()
     router.push('/welcome')
   } catch (err) {
     error.value = apiErrorMessage(err, 'Failed to accept invite.')
@@ -61,85 +72,184 @@ async function acceptInvite() {
   }
 }
 
+/** After signing in, come back and accept straight away: the user already chose to join. */
 function goToLogin() {
-  router.push({ name: 'login', query: { redirect: `/invite/${token}` } })
+  router.push({ name: 'login', query: { redirect: `/invite/${token}?accept=1` } })
 }
 
 function goToRegister() {
   router.push({ name: 'register', query: { invite_token: token, redirect: `/invite/${token}` } })
 }
 
-onMounted(() => {
-  loadPreview()
+function leave() {
+  router.push(authStore.isAuthenticated ? '/' : '/login')
+}
+
+onMounted(async () => {
+  await loadPreview()
+  if (invite.value && authStore.isAuthenticated && route.query.accept === '1') {
+    await acceptInvite()
+  }
 })
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 dark:bg-slate-950">
-    <div class="auth-container">
-      <div class="auth-card">
-        <div class="text-center mb-6">
-          <div class="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center dark:bg-blue-900/50">
-            <svg class="w-8 h-8 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
+  <AuthCard>
+    <div v-if="isLoading" class="invite__loading" aria-busy="true" aria-label="Loading invite" />
 
-          <div v-if="isLoading" class="py-8">
-            <span class="spinner-large"></span>
-          </div>
-
-          <div v-else-if="error" class="py-8">
-            <div class="alert-error mb-6">{{ error }}</div>
-            <button @click="router.push('/login')" class="btn-secondary">Go to Avapeek</button>
-          </div>
-
-          <template v-else-if="invite">
-            <h2 class="auth-title mb-2">
-              You've been invited!
-            </h2>
-            <p class="auth-subtitle">
-              {{ invite.inviter_name }} has invited you to see photos of
-              <strong class="text-slate-900 dark:text-slate-100">{{ invite.child_name }}</strong>
-              on Avapeek
-              <span v-if="invite.relationship"> as their {{ invite.relationship.toLowerCase() }}</span>.
-            </p>
-
-            <div v-if="invite.role" class="mt-4 text-sm text-slate-500 dark:text-slate-400">
-              Role: <span class="font-medium text-slate-700 dark:text-slate-200">{{ invite.role.charAt(0).toUpperCase() + invite.role.slice(1) }}</span>
-            </div>
-
-            <div v-if="!authStore.isAuthenticated" class="mt-8 space-y-3">
-              <p class="text-sm text-slate-500 mb-2 dark:text-slate-400">You need an account to accept this invite.</p>
-              <button @click="goToRegister" class="btn-primary">
-                Create an account
-              </button>
-              <button @click="goToLogin" class="btn-secondary">
-                I already have an account
-              </button>
-            </div>
-
-            <div v-else class="mt-8">
-              <p class="text-sm text-slate-500 mb-4 dark:text-slate-400">
-                You're logged in as <strong class="dark:text-slate-200">{{ authStore.currentUser?.display_name }}</strong>.
-              </p>
-              <button
-                @click="acceptInvite"
-                :disabled="isAccepting"
-                class="btn-primary"
-              >
-                <span v-if="isAccepting" class="spinner mr-2"></span>
-                {{ isAccepting ? 'Accepting...' : 'Accept invite' }}
-              </button>
-
-              <p class="text-xs text-slate-400 mt-3 dark:text-slate-500">
-                By accepting, you'll be able to view encrypted photos of {{ invite.child_name }}.
-                The owner will need to grant you access to the encryption key after you accept.
-              </p>
-            </div>
-          </template>
-        </div>
+    <div v-else-if="error && !invite" class="invite__step">
+      <div class="invite__header">
+        <h1 class="invite__title">This invite can't be used</h1>
+        <p class="invite__subtitle">{{ error }} Ask a family member to send you a new link.</p>
       </div>
+      <UiButton variant="subtle" size="lg" class="invite__action" @click="leave">
+        Go to Avapeek
+      </UiButton>
     </div>
-  </div>
+
+    <div v-else-if="invite" class="invite__step">
+      <div class="invite__icon" aria-hidden="true">
+        <Images :size="28" />
+      </div>
+
+      <div class="invite__header">
+        <h1 class="invite__title">You're invited</h1>
+        <p class="invite__subtitle">
+          {{ invite.inviter_name }} invited you to see photos of
+          <strong>{{ invite.child_name }}</strong>
+          <span v-if="invite.relationship"> as their {{ invite.relationship.toLowerCase() }}</span>.
+        </p>
+      </div>
+
+      <div v-if="invite.role" class="invite__card">
+        You'll join {{ invite.child_name }}'s album as {{ roleWithArticle }}.
+      </div>
+
+      <div v-if="error" class="invite__error" role="alert">{{ error }}</div>
+
+      <template v-if="!authStore.isAuthenticated">
+        <p class="invite__hint">You need an account to accept this invite.</p>
+        <div class="invite__actions">
+          <UiButton variant="accent" size="lg" class="invite__action" @click="goToRegister">
+            Create an account
+          </UiButton>
+          <UiButton variant="subtle" size="lg" class="invite__action" @click="goToLogin">
+            I already have an account
+          </UiButton>
+        </div>
+      </template>
+
+      <template v-else>
+        <p class="invite__hint">
+          Signed in as <strong>{{ authStore.currentUser?.display_name }}</strong>.
+        </p>
+        <UiButton
+          variant="accent"
+          size="lg"
+          class="invite__action"
+          :loading="isAccepting"
+          @click="acceptInvite"
+        >
+          Accept invite
+        </UiButton>
+        <p class="invite__fineprint">
+          Photos stay encrypted. After you join, the album's key is shared with you automatically
+          the next time an album admin opens Avapeek — until then the album will look empty.
+        </p>
+      </template>
+    </div>
+  </AuthCard>
 </template>
+
+<style scoped>
+.invite__loading {
+  min-height: 16rem;
+}
+
+.invite__step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.invite__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+
+.invite__header {
+  text-align: center;
+}
+
+.invite__title {
+  margin: 0;
+  font-size: var(--text-title);
+  font-weight: 800;
+  line-height: var(--lh-title);
+  color: var(--color-ink);
+}
+
+.invite__subtitle {
+  margin: var(--space-1) 0 0;
+  color: var(--color-ink-soft);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+}
+
+.invite__subtitle strong,
+.invite__hint strong {
+  color: var(--color-ink);
+}
+
+.invite__card {
+  padding: var(--space-3);
+  border-radius: var(--radius-card);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+}
+
+.invite__error {
+  padding: var(--space-3);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-danger);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+}
+
+.invite__hint {
+  margin: 0;
+  text-align: center;
+  color: var(--color-ink-soft);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+}
+
+.invite__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.invite__action {
+  width: 100%;
+}
+
+.invite__fineprint {
+  margin: 0;
+  text-align: center;
+  color: var(--color-ink-soft);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+}
+</style>

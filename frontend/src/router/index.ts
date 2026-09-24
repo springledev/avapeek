@@ -89,12 +89,16 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to, _from) => {
+router.beforeEach(async (to, _from) => {
   const authStore = useAuthStore()
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
+
+  // The KEK is restored asynchronously after a reload; wait for it before
+  // deciding the user has to sign in again.
+  await authStore.restoreKEK()
 
   if (to.meta.requiresAuth && authStore.needsReauth) {
     return { name: 'login', query: { redirect: to.fullPath, reauth: '1' } }

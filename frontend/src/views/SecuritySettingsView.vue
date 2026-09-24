@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import {
   ShieldCheck,
   Smartphone,
@@ -23,6 +23,8 @@ import type { MfaMethodsResponse } from '@/types/auth'
 
 type TotpStep = 'setup' | 'codes' | null
 type PasswordAction =
+  | { type: 'setup-totp' }
+  | { type: 'add-passkey' }
   | { type: 'disable-totp' }
   | { type: 'remove-passkey'; id: string }
   | { type: 'regenerate-recovery' }
@@ -37,32 +39,71 @@ const confirmCode = ref('')
 const totpLoading = ref(false)
 
 const recoverySheetOpen = ref(false)
+/** 'replaced' when earlier codes were invalidated, 'new' for a first set. */
+const recoverySheetReason = ref<'new' | 'replaced'>('new')
 const recoveryCodes = ref<string[]>([])
 
 const passkeyName = ref('')
 const registeringPasskey = ref(false)
+const passkeySheetOpen = ref(false)
+const passkeyOptions = ref<PublicKeyCredentialCreationOptionsJSON | null>(null)
 
 const passwordAction = ref<PasswordAction | null>(null)
 const passwordLoading = ref(false)
+const passwordError = ref<string | null>(null)
 
 const mfaEnabled = computed(() => (methods.value?.methods.length ?? 0) > 0)
 const hasTotp = computed(() => methods.value?.methods.includes('totp') ?? false)
-const hasRecovery = computed(() => methods.value?.methods.includes('recovery') ?? false)
+const recoveryCodesRemaining = computed(() => methods.value?.recovery_codes_remaining ?? 0)
+const recoveryDescription = computed(() => {
+  if (!mfaEnabled.value) return 'Single-use codes to get back in if you lose your device.'
+  const count = recoveryCodesRemaining.value
+  if (count === 0) return 'You have no recovery codes left. Generate a new set.'
+  return `${count} single-use ${count === 1 ? 'code' : 'codes'} left to get back in.`
+})
 const passkeys = computed(() => methods.value?.passkeys ?? [])
 
 const passwordOpen = computed(() => passwordAction.value !== null)
-const passwordTitle = computed(() => {
+
+/** Wording and tone for the password prompt of each action. */
+const passwordPrompt = computed(() => {
   switch (passwordAction.value?.type) {
+    case 'setup-totp':
+      return { title: 'Set up authenticator', confirmLabel: 'Continue', destructive: false, description: '' }
+    case 'add-passkey':
+      return { title: 'Add a passkey', confirmLabel: 'Continue', destructive: false, description: '' }
     case 'disable-totp':
-      return 'Disable authenticator'
+      return {
+        title: 'Turn off authenticator',
+        confirmLabel: 'Turn off',
+        destructive: true,
+        description: 'Signing in will no longer ask for an authenticator code.',
+      }
     case 'remove-passkey':
-      return 'Remove passkey'
+      return {
+        title: 'Remove passkey',
+        confirmLabel: 'Remove',
+        destructive: true,
+        description: "You won't be able to sign in with this passkey any more.",
+      }
     case 'regenerate-recovery':
-      return 'Regenerate recovery codes'
+      return {
+        title: 'Get new recovery codes',
+        confirmLabel: 'Get new codes',
+        destructive: false,
+        description: 'Your current recovery codes will stop working.',
+      }
     default:
-      return 'Confirm password'
+      return { title: 'Confirm password', confirmLabel: 'Confirm', destructive: false, description: '' }
   }
 })
+
+/** Recovery codes are shown in groups of four so they're easier to copy by hand. */
+function formatRecoveryCode(code: string): string {
+  return code.match(/.{1,4}/g)?.join('-') ?? code
+}
+
+const formattedRecoveryCodes = computed(() => recoveryCodes.value.map(formatRecoveryCode))
 
 async function fetchMethods() {
   try {
@@ -73,40 +114,52 @@ async function fetchMethods() {
   }
 }
 
-async function setupTotp() {
+async function startTotpSetup(password: string) {
+  const { data } = await api.post<{ secret: string; otpauth_uri: string }>('/auth/mfa/totp/setup', {
+    current_password: password,
+  })
+  totpSecret.value = data.secret
+  qrDataUrl.value = await QRCode.toDataURL(data.otpauth_uri)
+  confirmCode.value = ''
+  recoveryCodes.value = []
+  totpStep.value = 'setup'
+  totpSheetOpen.value = true
+}
+
+watch(confirmCode, (value) => {
+  const digits = value.replace(/\D/g, '').slice(0, 6)
+  if (digits !== value) confirmCode.value = digits
+})
+
+async function confirmTotp() {
+  if (confirmCode.value.length !== 6) {
+    toast.error('Enter the 6-digit code from your authenticator app.')
+    return
+  }
   totpLoading.value = true
   try {
-    const { data } = await api.post<{ secret: string; otpauth_uri: string }>(
-      '/auth/mfa/totp/setup',
+    const { data } = await api.post<{ recovery_codes: string[] | null }>(
+      '/auth/mfa/totp/confirm',
+      { code: confirmCode.value },
     )
-    totpSecret.value = data.secret
-    qrDataUrl.value = await QRCode.toDataURL(data.otpauth_uri)
-    confirmCode.value = ''
-    recoveryCodes.value = []
-    totpStep.value = 'setup'
-    totpSheetOpen.value = true
+    await fetchMethods()
+    if (data.recovery_codes) {
+      recoveryCodes.value = data.recovery_codes
+      totpStep.value = 'codes'
+    } else {
+      toast.success('Authenticator turned on. Your existing recovery codes still work.')
+      closeTotpSheet()
+    }
   } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, 'Failed to start authenticator setup.'))
+    toast.error(apiErrorMessage(err, "That code didn't work. Try the newest code in your app."))
   } finally {
     totpLoading.value = false
   }
 }
 
-async function confirmTotp() {
-  if (!confirmCode.value.trim()) return
-  totpLoading.value = true
-  try {
-    const { data } = await api.post<{ recovery_codes: string[] }>('/auth/mfa/totp/confirm', {
-      code: confirmCode.value,
-    })
-    recoveryCodes.value = data.recovery_codes
-    totpStep.value = 'codes'
-    await fetchMethods()
-  } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, 'Failed to confirm authenticator code.'))
-  } finally {
-    totpLoading.value = false
-  }
+/** Closing is blocked while recovery codes are showing, so they can't be lost by a stray tap. */
+function onTotpSheetClose() {
+  if (totpStep.value !== 'codes') closeTotpSheet()
 }
 
 function closeTotpSheet() {
@@ -118,34 +171,57 @@ function closeTotpSheet() {
   recoveryCodes.value = []
 }
 
+function openSetupTotp() {
+  passwordAction.value = { type: 'setup-totp' }
+}
+
 function openDisableTotp() {
   passwordAction.value = { type: 'disable-totp' }
 }
 
-async function registerPasskey() {
+function openAddPasskey() {
+  passwordAction.value = { type: 'add-passkey' }
+}
+
+/**
+ * Runs from the "Create passkey" tap so the WebAuthn prompt keeps its user
+ * gesture; the password was already checked when the options were issued.
+ */
+async function createPasskey() {
+  if (!passkeyOptions.value) return
   registeringPasskey.value = true
   try {
-    const { data } = await api.post<{ options: PublicKeyCredentialCreationOptionsJSON }>('/auth/mfa/passkeys/register/options')
-    const response = await startRegistration({ optionsJSON: data.options })
+    const response = await startRegistration({ optionsJSON: passkeyOptions.value })
     const { data: verifyData } = await api.post<{
       passkey_id: string
-      recovery_codes?: string[]
+      recovery_codes?: string[] | null
     }>('/auth/mfa/passkeys/register/verify', {
       response,
       user_chosen_name: passkeyName.value.trim() || null,
     })
-    toast.success('Passkey registered.')
-    passkeyName.value = ''
+    toast.success('Passkey added.')
+    closePasskeySheet()
     if (verifyData.recovery_codes) {
       recoveryCodes.value = verifyData.recovery_codes
+      recoverySheetReason.value = 'new'
       recoverySheetOpen.value = true
     }
     await fetchMethods()
   } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, 'Failed to register passkey.'))
+    if (err instanceof Error && err.name === 'NotAllowedError') {
+      toast.error('Passkey setup was cancelled.')
+    } else {
+      toast.error(apiErrorMessage(err, 'Failed to add passkey.'))
+    }
   } finally {
     registeringPasskey.value = false
   }
+}
+
+function closePasskeySheet() {
+  passkeySheetOpen.value = false
+  passkeyOptions.value = null
+  passkeyName.value = ''
 }
 
 function openRemovePasskey(id: string) {
@@ -156,15 +232,40 @@ function openRegenerateRecovery() {
   passwordAction.value = { type: 'regenerate-recovery' }
 }
 
+watch(passwordAction, () => {
+  passwordError.value = null
+})
+
+/** Pulls the "current password is incorrect" message out of a 422 so it can show inline. */
+function currentPasswordError(err: unknown): string | null {
+  const errors = (err as { response?: { data?: { errors?: Record<string, string[]> } } } | null)
+    ?.response?.data?.errors
+  return errors?.current_password?.[0] ?? null
+}
+
 async function onPasswordConfirm(password: string) {
   const action = passwordAction.value
   if (!action) return
   passwordLoading.value = true
+  passwordError.value = null
   try {
     switch (action.type) {
+      case 'setup-totp':
+        await startTotpSetup(password)
+        break
+      case 'add-passkey':
+        {
+          const { data } = await api.post<{ options: PublicKeyCredentialCreationOptionsJSON }>(
+            '/auth/mfa/passkeys/register/options',
+            { current_password: password },
+          )
+          passkeyOptions.value = data.options
+          passkeySheetOpen.value = true
+        }
+        break
       case 'disable-totp':
         await api.delete('/auth/mfa/totp', { data: { current_password: password } })
-        toast.success('Authenticator disabled.')
+        toast.success('Authenticator turned off.')
         break
       case 'remove-passkey':
         await api.delete(`/auth/mfa/passkeys/${action.id}`, {
@@ -178,22 +279,27 @@ async function onPasswordConfirm(password: string) {
             current_password: password,
           })
           recoveryCodes.value = data.recovery_codes
+          recoverySheetReason.value = 'replaced'
           recoverySheetOpen.value = true
-          toast.success('Recovery codes regenerated.')
         }
         break
     }
     passwordAction.value = null
     await fetchMethods()
   } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, 'Failed to complete the action.'))
+    const inlineError = currentPasswordError(err)
+    if (inlineError) {
+      passwordError.value = inlineError
+    } else {
+      toast.error(apiErrorMessage(err, 'Something went wrong. Please try again.'))
+    }
   } finally {
     passwordLoading.value = false
   }
 }
 
 function copyCodes() {
-  const text = recoveryCodes.value.join('\n')
+  const text = formattedRecoveryCodes.value.join('\n')
   navigator.clipboard
     .writeText(text)
     .then(() => toast.success('Recovery codes copied.'))
@@ -201,7 +307,7 @@ function copyCodes() {
 }
 
 function downloadCodes() {
-  const text = recoveryCodes.value.join('\n')
+  const text = `Avapeek recovery codes\nEach code works once.\n\n${formattedRecoveryCodes.value.join('\n')}\n`
   const blob = new Blob([text], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -218,9 +324,9 @@ function closeRecoverySheet() {
   recoveryCodes.value = []
 }
 
-function formatDate(value: string | null): string {
-  if (!value) return 'Never used'
-  return new Date(value).toLocaleString()
+function lastUsedLabel(value: string | null): string {
+  if (!value) return 'Not used yet'
+  return `Last used ${new Date(value).toLocaleString()}`
 }
 
 onMounted(fetchMethods)
@@ -249,14 +355,6 @@ onMounted(fetchMethods)
         </div>
       </div>
 
-      <div v-if="!mfaEnabled" class="security__status-actions">
-        <UiButton variant="accent" :loading="totpLoading" @click="setupTotp">
-          Set up authenticator
-        </UiButton>
-        <UiButton variant="subtle" :loading="registeringPasskey" @click="registerPasskey">
-          Register a passkey
-        </UiButton>
-      </div>
     </div>
 
     <div class="security__section">
@@ -272,11 +370,9 @@ onMounted(fetchMethods)
 
       <div v-if="hasTotp" class="security__method-state">
         <span class="security__method-badge">Enabled</span>
-        <UiButton variant="ghost" size="md" @click="openDisableTotp">Disable</UiButton>
+        <UiButton variant="ghost" size="md" @click="openDisableTotp">Turn off</UiButton>
       </div>
-      <UiButton v-else variant="accent" :loading="totpLoading" @click="setupTotp">
-        Set up authenticator
-      </UiButton>
+      <UiButton v-else variant="accent" @click="openSetupTotp">Set up authenticator</UiButton>
     </div>
 
     <div class="security__section">
@@ -290,23 +386,15 @@ onMounted(fetchMethods)
         </div>
       </div>
 
-      <div class="security__passkey-form">
-        <input
-          v-model="passkeyName"
-          type="text"
-          class="security__passkey-input"
-          placeholder="Passkey name (optional)"
-        />
-        <UiButton variant="accent" :loading="registeringPasskey" @click="registerPasskey">
-          Register passkey
-        </UiButton>
-      </div>
+      <UiButton variant="accent" :loading="registeringPasskey" @click="openAddPasskey">
+        Add a passkey
+      </UiButton>
 
       <ul v-if="passkeys.length > 0" class="security__passkey-list">
         <li v-for="passkey in passkeys" :key="passkey.id" class="security__passkey-item">
           <div class="security__passkey-info">
             <p class="security__passkey-name">{{ passkey.name || 'Unnamed passkey' }}</p>
-            <p class="security__passkey-meta">Last used {{ formatDate(passkey.last_used_at) }}</p>
+            <p class="security__passkey-meta">{{ lastUsedLabel(passkey.last_used_at) }}</p>
           </div>
           <UiButton
             variant="ghost"
@@ -328,13 +416,13 @@ onMounted(fetchMethods)
         <div>
           <h3 class="security__section-title">Recovery codes</h3>
           <p class="security__section-desc">
-            {{ hasRecovery ? 'Single-use codes to get back in.' : 'Generate codes once MFA is on.' }}
+            {{ recoveryDescription }}
           </p>
         </div>
       </div>
 
       <UiButton v-if="mfaEnabled" variant="subtle" @click="openRegenerateRecovery">
-        Regenerate codes
+        Get new codes
       </UiButton>
       <p v-else class="security__hint">Enable authenticator or a passkey first.</p>
     </div>
@@ -342,7 +430,7 @@ onMounted(fetchMethods)
     <UiSheet
       :open="totpSheetOpen"
       :title="totpStep === 'codes' ? 'Save your recovery codes' : 'Set up authenticator'"
-      @close="closeTotpSheet"
+      @close="onTotpSheetClose"
     >
       <div v-if="totpStep === 'setup'" class="security__totp-setup">
         <p class="security__totp-instruction">
@@ -363,9 +451,10 @@ onMounted(fetchMethods)
             v-model="confirmCode"
             type="text"
             inputmode="numeric"
-            maxlength="6"
+            autocomplete="one-time-code"
             class="security__input"
             placeholder="000000"
+            @keydown.enter.prevent="confirmTotp"
           />
         </div>
 
@@ -380,7 +469,7 @@ onMounted(fetchMethods)
           Save these codes somewhere safe. They won't be shown again.
         </p>
         <ul class="security__codes-list">
-          <li v-for="(code, index) in recoveryCodes" :key="index" class="security__code">
+          <li v-for="(code, index) in formattedRecoveryCodes" :key="index" class="security__code">
             {{ code }}
           </li>
         </ul>
@@ -401,13 +490,18 @@ onMounted(fetchMethods)
       </div>
     </UiSheet>
 
-    <UiSheet :open="recoverySheetOpen" title="Your recovery codes" @close="closeRecoverySheet">
+    <UiSheet
+      :open="recoverySheetOpen"
+      :title="recoverySheetReason === 'replaced' ? 'Your new recovery codes' : 'Save your recovery codes'"
+    >
       <div class="security__codes">
         <p class="security__codes-desc">
-          Save these single-use codes somewhere safe. They won't be shown again.
+          <template v-if="recoverySheetReason === 'replaced'">Your old codes no longer work. </template>
+          Save these somewhere safe. If you lose your device, each code gets you in once. They
+          won't be shown again.
         </p>
         <ul class="security__codes-list">
-          <li v-for="(code, index) in recoveryCodes" :key="index" class="security__code">
+          <li v-for="(code, index) in formattedRecoveryCodes" :key="index" class="security__code">
             {{ code }}
           </li>
         </ul>
@@ -428,10 +522,40 @@ onMounted(fetchMethods)
       </div>
     </UiSheet>
 
+    <UiSheet :open="passkeySheetOpen" title="Create a passkey" @close="closePasskeySheet">
+      <form class="security__passkey-form" @submit.prevent="createPasskey">
+        <p class="security__totp-instruction">
+          Give this passkey a name so you can recognise it later, then follow your device's prompt.
+        </p>
+        <div class="security__field">
+          <label class="security__label" for="passkey-name">Name (optional)</label>
+          <input
+            id="passkey-name"
+            v-model="passkeyName"
+            type="text"
+            maxlength="100"
+            class="security__passkey-input"
+            placeholder="e.g. My phone"
+            :disabled="registeringPasskey"
+          />
+        </div>
+        <div class="security__sheet-actions">
+          <UiButton variant="ghost" type="button" @click="closePasskeySheet">Cancel</UiButton>
+          <UiButton variant="accent" type="submit" :loading="registeringPasskey">
+            Create passkey
+          </UiButton>
+        </div>
+      </form>
+    </UiSheet>
+
     <PasswordConfirmSheet
       :open="passwordOpen"
-      :title="passwordTitle"
+      :title="passwordPrompt.title"
+      :description="passwordPrompt.description"
+      :confirm-label="passwordPrompt.confirmLabel"
+      :destructive="passwordPrompt.destructive"
       :loading="passwordLoading"
+      :error="passwordError"
       @confirm="onPasswordConfirm"
       @close="passwordAction = null"
     />
@@ -498,12 +622,6 @@ onMounted(fetchMethods)
   margin: var(--space-1) 0 0;
 }
 
-.security__status-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
 .security__section-header {
   display: flex;
   align-items: flex-start;
@@ -554,13 +672,11 @@ onMounted(fetchMethods)
 
 .security__passkey-form {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .security__passkey-input {
-  flex: 1;
-  min-width: 12rem;
   padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);

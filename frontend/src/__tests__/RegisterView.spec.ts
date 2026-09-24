@@ -37,6 +37,11 @@ vi.mock('@/crypto/keychain', () => ({
   exportPublicKey: vi.fn<(key: CryptoKey) => Promise<string>>(),
   exportKEK: vi.fn<(kek: CryptoKey) => Promise<string>>(),
   importKEK: vi.fn<(jwk: string) => Promise<CryptoKey>>(),
+  wrapPrivateKey: vi.fn<(privateKey: CryptoKey, kek: CryptoKey) => Promise<string>>(
+    async () => 'wrapped-private-key',
+  ),
+  rewrapDEK: vi.fn<(wrapped: string, oldKek: CryptoKey, newKek: CryptoKey) => Promise<string>>(),
+  rewrapPrivateKey: vi.fn<(wrapped: string, oldKek: CryptoKey, newKek: CryptoKey) => Promise<string>>(),
 }))
 
 vi.mock('@/lib/cache/decrypted-cache', () => ({
@@ -101,7 +106,7 @@ describe('RegisterView', () => {
   it('renders the invite preview with the child, role, and inviter name', async () => {
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === '/auth/registration-mode') {
-        return Promise.resolve(ok({ mode: 'invite_only' }))
+        return Promise.resolve(ok({ data: { mode: 'invite_only' } }))
       }
       if (url === '/invites/invite-123') {
         return Promise.resolve(
@@ -132,7 +137,7 @@ describe('RegisterView', () => {
   it('redirects to /welcome when registration auto-accepts an invite', async () => {
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === '/auth/registration-mode') {
-        return Promise.resolve(ok({ mode: 'invite_only' }))
+        return Promise.resolve(ok({ data: { mode: 'invite_only' } }))
       }
       if (url === '/invites/invite-123') {
         return Promise.resolve(
@@ -172,10 +177,85 @@ describe('RegisterView', () => {
     await wrapper.find('#register-name').setValue('Ana')
     await wrapper.find('#register-email').setValue('ana@example.com')
     await wrapper.find('#register-password').setValue('supersecret')
+    await wrapper.find('#register-password-confirmation').setValue('supersecret')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
     expect(authStore.error).toBeNull()
     expect(router.currentRoute.value.path).toBe('/welcome')
+  })
+
+  it('shows the invite gate instead of the form when the invite has expired', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/auth/registration-mode') {
+        return Promise.resolve(ok({ data: { mode: 'invite_only' } }))
+      }
+      return Promise.reject({
+        response: { status: 410, data: { message: 'This invite has expired.' } },
+      })
+    })
+
+    const { wrapper } = await mountRegisterView('/register?invite_token=old-invite')
+
+    expect(wrapper.find('form').exists()).toBe(false)
+    expect(wrapper.text()).toContain("This invite can't be used")
+    expect(wrapper.text()).toContain('This invite has expired.')
+  })
+
+  it('describes an admin invite with the right article', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/auth/registration-mode') {
+        return Promise.resolve(ok({ data: { mode: 'invite_only' } }))
+      }
+      return Promise.resolve(
+        ok({
+          data: {
+            token: 'invite-123',
+            child_name: 'Wren',
+            inviter_name: 'Sam',
+            role: 'admin',
+            relationship: null,
+            expires_at: new Date().toISOString(),
+          },
+        }),
+      )
+    })
+
+    const { wrapper } = await mountRegisterView('/register?invite_token=invite-123')
+
+    expect(wrapper.find('.register__invite').text()).toContain('as an admin')
+  })
+
+  it('stops sign-up when the passwords do not match', async () => {
+    vi.mocked(api.get).mockResolvedValue(ok({ data: { mode: 'open' } }))
+    const { wrapper } = await mountRegisterView('/register')
+
+    await wrapper.find('#register-name').setValue('Ana')
+    await wrapper.find('#register-email').setValue('ana@example.com')
+    await wrapper.find('#register-password').setValue('supersecret')
+    await wrapper.find('#register-password-confirmation').setValue('supersecrt')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Passwords don't match")
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('never calls an accepted password weak', async () => {
+    vi.mocked(api.get).mockResolvedValue(ok({ data: { mode: 'open' } }))
+    const { wrapper } = await mountRegisterView('/register')
+
+    await wrapper.find('#register-password').setValue('short')
+    expect(wrapper.find('.register__strength-text').text()).toContain('Too short')
+
+    await wrapper.find('#register-password').setValue('abcdefgh')
+    expect(wrapper.find('.register__strength-text').text()).toBe('Fair')
+  })
+
+  it('warns that a forgotten password cannot be recovered', async () => {
+    vi.mocked(api.get).mockResolvedValue(ok({ data: { mode: 'open' } }))
+    const { wrapper } = await mountRegisterView('/register')
+
+    expect(wrapper.text()).toContain("We can't see it or reset it")
   })
 })

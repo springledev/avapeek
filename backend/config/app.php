@@ -56,6 +56,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend URL
+    |--------------------------------------------------------------------------
+    |
+    | The origin the Vue PWA is served from. WebAuthn binds passkeys to this
+    | origin, so it must match what the browser reports, not the API host.
+    | Required in production; local environments fall back to the Vite dev
+    | server.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |
