@@ -69,7 +69,7 @@ export const useAuthStore = defineStore('auth', () => {
     displayName: string,
     inviteToken?: string,
     staySignedIn: boolean = true,
-  ): Promise<void> {
+  ): Promise<{ child_id: number; child_name: string; child_slug: string } | null> {
     isLoading.value = true
     error.value = null
 
@@ -96,7 +96,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
 
       // Call API
-      const response = await api.post<AuthResponse & { accepted_child?: { child_id: number; child_name: string; child_slug: string } }>('/auth/register', registerData)
+      const response = await api.post<AuthResponse>('/auth/register', registerData)
       const { user: userData, token, accepted_child } = response.data
 
       setStaySignedIn(staySignedIn)
@@ -117,6 +117,8 @@ export const useAuthStore = defineStore('auth', () => {
       }
 
       removePendingInviteToken()
+
+      return accepted_child ?? null
     } catch (err) {
       console.error('Registration error:', err)
       error.value = apiErrorMessage(err, 'Registration failed. Please try again.')

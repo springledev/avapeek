@@ -5,6 +5,7 @@ import { Shield, Eye, EyeOff, Mail, Lock, User } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth'
 import { getPendingInviteToken, removePendingInviteToken } from '@/lib/auth-storage'
 import { api } from '@/services/api'
+import type { InvitePreview } from '@/types/child'
 import UiButton from '@/components/ui/UiButton.vue'
 import AuthCard from '@/components/AuthCard.vue'
 
@@ -13,7 +14,7 @@ const route = useRoute()
 const authStore = useAuthStore()
 
 const registrationMode = ref<'open' | 'invite_only' | null>(null)
-const invitePreview = ref<{ child_name: string; role: string; inviter_name: string } | null>(null)
+const invitePreview = ref<InvitePreview | null>(null)
 const invitePreviewError = ref(false)
 
 const inviteToken = computed(
@@ -38,12 +39,8 @@ onMounted(async () => {
 
   if (inviteToken.value) {
     try {
-      const { data } = await api.get<{
-        child_name: string
-        role: string
-        inviter_name: string
-      }>(`/invites/${inviteToken.value}`)
-      invitePreview.value = data
+      const { data } = await api.get<{ data: InvitePreview }>(`/invites/${inviteToken.value}`)
+      invitePreview.value = data.data
     } catch {
       invitePreviewError.value = true
     }
@@ -108,7 +105,7 @@ async function handleSubmit() {
   }
 
   try {
-    await authStore.register(
+    const acceptedChild = await authStore.register(
       email.value,
       password.value,
       displayName.value,
@@ -116,6 +113,10 @@ async function handleSubmit() {
       staySignedIn.value,
     )
     removePendingInviteToken()
+    if (acceptedChild) {
+      await router.push('/welcome')
+      return
+    }
     const redirect = (route.query.redirect as string) || '/'
     await router.push(redirect)
   } catch {

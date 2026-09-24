@@ -202,12 +202,23 @@ describe('auth store', () => {
     vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
 
     const store = useAuthStore()
-    await store.register('ana@example.com', 'secret', 'Ana', 'invite-123', true)
+    const result = await store.register('ana@example.com', 'secret', 'Ana', 'invite-123', true)
 
     expect(setStaySignedIn).toHaveBeenCalledWith(true)
     expect(apiService.setAuthToken).toHaveBeenCalledWith('token-123')
     expect(removePendingInviteToken).toHaveBeenCalled()
     expect(store.user?.display_name).toBe('Ana')
+    expect(result).toBeNull()
+  })
+
+  it('returns the accepted child when registration auto-accepts an invite', async () => {
+    const acceptedChild = { child_id: 7, child_name: 'Wren', child_slug: 'wren' }
+    vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse({ accepted_child: acceptedChild })))
+
+    const store = useAuthStore()
+    const result = await store.register('ana@example.com', 'secret', 'Ana', 'invite-123', true)
+
+    expect(result).toEqual(acceptedChild)
   })
 
   it('surfaces API errors on login failure', async () => {

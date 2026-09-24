@@ -45,6 +45,7 @@ export interface AuthResponse {
   user: User
   token: string
   encryption_keys?: EncryptionKey[]
+  accepted_child?: { child_id: number; child_name: string; child_slug: string } | null
 }
 
 /**
