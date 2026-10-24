@@ -256,6 +256,42 @@ describe('GET /api/photos/{photo}', function () {
     });
 });
 
+describe('GET /api/photos/{photo}/thumbnail', function () {
+    it('returns a presigned thumbnail URL for a member of the photo\'s child', function () {
+        $user = User::factory()->create();
+        $child = Child::factory()->create(['created_by' => $user->id]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => 'owner']);
+
+        $photo = Photo::factory()->create(['uploaded_by' => $user->id]);
+        createChildPivot($photo, $child);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/photos/{$photo->id}/thumbnail")
+            ->assertStatus(200)
+            ->assertJsonStructure(['data' => ['presigned_url']]);
+    });
+
+    it('prevents non-members from getting a thumbnail URL', function () {
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create();
+        $otherChild = Child::factory()->create(['created_by' => $otherUser->id]);
+        ChildUser::create(['child_id' => $otherChild->id, 'user_id' => $otherUser->id, 'role' => 'owner']);
+
+        $photo = Photo::factory()->create(['uploaded_by' => $otherUser->id]);
+        createChildPivot($photo, $otherChild);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/photos/{$photo->id}/thumbnail")
+            ->assertStatus(403)
+            ->assertJsonMissingPath('data.presigned_url');
+    });
+
+    it('requires authentication', function () {
+        $photo = Photo::factory()->create();
+        $this->getJson("/api/photos/{$photo->id}/thumbnail")->assertStatus(401);
+    });
+});
+
 describe('DELETE /api/photos/{photo}', function () {
     it('deletes a photo the user has access to', function () {
         $user = User::factory()->create();
