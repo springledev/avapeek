@@ -1,1 +1,6 @@
 .env
+# private/local agent tooling (not published)
+PLAN*.md
+opencode.json
+backend/opencode.json
+.claude/
