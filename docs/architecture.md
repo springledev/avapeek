@@ -59,6 +59,8 @@ Both GET (downloads) and PUT (uploads) use presigned URLs.
 
 Every photo, comment, tag and key route verifies that the caller belongs to a child linked to the photo (`child_photo` intersected with the user's children). Child-scoped routes use `child.member` and `child.admin` middleware.
 
+Tags are per child (`GET`/`POST /api/children/{child}/tags`). The server stores a name as ciphertext (`name_encrypted` + `iv_name`, child DEK) and an opaque id; creation is throttled and capped at 200 tags per child. Photos are filtered with `?tag_ids=` and uploads attach tags with `tag_ids[]`, which must belong to the children the photo is linked to. Attaching a tag is authorized by `PhotoPolicy::attachTag`, deleting one by `TagPolicy`.
+
 ## Source layout
 
 See [development.md](development.md#repository-layout).
