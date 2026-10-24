@@ -55,6 +55,11 @@ function installFakeIndexedDB() {
       events.push(`delete:${name}`)
       return {}
     },
+    databases: async () => [
+      { name: 'avapeek-decrypted-7' },
+      { name: 'avapeek-decrypted-8' },
+      { name: 'other-db' },
+    ],
   })
   return { events, blobs }
 }
@@ -103,5 +108,19 @@ describe('decrypted cache', () => {
 
     cache.setDecryptedCacheUser(8)
     await vi.waitFor(() => expect(fake.events).toContain('delete:avapeek-decrypted-7'))
+  })
+
+  it('never deletes the new user database after a direct A to B switch', async () => {
+    const cache = await import('@/lib/cache/decrypted-cache')
+    cache.setDecryptedCacheUser(7)
+    await cache.getThumbnail(1, async () => new Blob(['t']))
+
+    cache.setDecryptedCacheUser(8)
+    await cache.getThumbnail(2, async () => new Blob(['t']))
+    await vi.waitFor(() => expect(fake.events).toContain('delete:avapeek-decrypted-7'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(fake.events).toContain('open:avapeek-decrypted-8')
+    expect(fake.events).not.toContain('delete:avapeek-decrypted-8')
   })
 })

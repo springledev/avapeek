@@ -1,7 +1,7 @@
 // TSConfig for the service worker: webworker lib instead of DOM.
 {
   "extends": "@vue/tsconfig/tsconfig.json",
-  "include": ["src/sw.ts", "src/lib/sw-routes.ts", "src/lib/share-inbox.ts"],
+  "include": ["src/sw.ts", "src/lib/sw-routes.ts", "src/lib/share-inbox.ts", "src/lib/share-target.ts"],
   "compilerOptions": {
     "lib": ["ES2022", "WebWorker"],
     "types": [],

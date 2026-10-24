@@ -16,7 +16,6 @@
  */
 import {
   PRECACHE_PREFIX,
-  SHARE_REDIRECT_PATH,
   SHELL_URL,
   isPrecachedPathIn,
   isShareTargetRequest,
@@ -25,7 +24,8 @@ import {
   toPrecachePath,
   type PrecacheEntry,
 } from './lib/sw-routes'
-import { purgeExpiredShares, stageSharedFiles } from './lib/share-inbox'
+import { purgeExpiredShares } from './lib/share-inbox'
+import { handleShareTarget } from './lib/share-target'
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: PrecacheEntry[] }
 
@@ -47,19 +47,6 @@ async function removeOldPrecaches(): Promise<void> {
       .filter((name) => name.startsWith(PRECACHE_PREFIX) && name !== CACHE_NAME)
       .map((name) => caches.delete(name)),
   )
-}
-
-async function handleShareTarget(request: Request): Promise<Response> {
-  try {
-    const formData = await request.formData()
-    const files = formData.getAll('photos').filter((entry): entry is File => entry instanceof File)
-    if (files.length > 0) {
-      await stageSharedFiles(files)
-    }
-  } catch (error) {
-    console.warn('Share target staging failed', error)
-  }
-  return Response.redirect(new URL(SHARE_REDIRECT_PATH, self.location.origin).href, 303)
 }
 
 async function matchPrecached(path: string): Promise<Response | undefined> {
@@ -89,7 +76,7 @@ function onFetch(event: FetchEvent): void {
   }
 
   if (isShareTargetRequest(request.method, url.pathname)) {
-    event.respondWith(handleShareTarget(request))
+    event.respondWith(handleShareTarget(request, self.location.origin))
     return
   }
 
