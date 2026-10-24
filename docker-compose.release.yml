@@ -25,6 +25,9 @@ services:
   scheduler:
     image: ghcr.io/springledev/avapeek-backend:${AVAPEEK_VERSION:-latest}
 
+  queue:
+    image: ghcr.io/springledev/avapeek-backend:${AVAPEEK_VERSION:-latest}
+
   frontend:
     image: ghcr.io/springledev/avapeek-frontend:${AVAPEEK_VERSION:-latest}
 
