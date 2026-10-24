@@ -50,32 +50,30 @@ services:
     networks:
       - app-network
 
-  # Queue worker is disabled: no jobs are dispatched yet (no ShouldQueue
-  # classes or dispatch() calls in backend/app). Re-enable when one is added.
-  # # --- Queue Worker ---
-  # queue:
-  #   build:
-  #     context: .
-  #     dockerfile: docker/php/Dockerfile
-  #   container_name: avapeek_queue
-  #   restart: unless-stopped
-  #   env_file:
-  #     - backend/.env
-  #   volumes:
-  #     - storage:/app/storage
-  #   command: ["php", "artisan", "queue:work", "redis", "--sleep=3", "--tries=3", "--max-time=3600"]
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "php", "artisan", "queue:monitor", "redis:default", "--count=1"]
-  #     interval: 60s
-  #     timeout: 5s
-  #     retries: 3
-  #   networks:
-  #     - app-network
+  # --- Queue Worker (Web Push notifications; harmless when push is off) ---
+  queue:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: avapeek_queue
+    restart: unless-stopped
+    env_file:
+      - backend/.env
+    volumes:
+      - storage:/app/storage
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=3", "--tries=3", "--max-time=3600"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "queue:work"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    networks:
+      - app-network
 
   # --- Scheduler (runs sanctum:prune-expired and other routes/console.php schedules) ---
   scheduler:
