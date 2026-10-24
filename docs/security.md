@@ -44,7 +44,7 @@ Password change re-wraps the private key and every DEK under the new KEK in the 
 | `taken_at` timestamp of each photo (used for sorting and filters) | `photos.taken_at` |
 | Original size in bytes, pixel width and height, MIME type | `photos` |
 | Number and timing of comments, and who wrote them | `comments` |
-| **Tag names** (plaintext) and which photos carry them. Family-scoping of tags is being added separately (`feature/tag-scoping`); names stay unencrypted | `tags`, `photo_tags` |
+| **Tag names** (plaintext) and which photos carry them. Tags are scoped to families: a user only sees and reuses tags created by people they share a child with, or that are on photos they can access; names stay unencrypted | `tags`, `photo_tags` |
 | Invite tokens, roles, expiry | `invites` |
 | Access patterns: IP addresses and request timing in web server logs | infrastructure |
 | Total storage used | `storage_usage` |
