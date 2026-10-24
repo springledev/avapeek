@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { extractTakenAt } from '@/lib/exif/takenAt'
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { pickUpSharedFiles } from '@/lib/share-inbox'
 import { useChildStore } from '@/stores/child'
 import { useFeedStore } from '@/stores/feed'
 import { api } from '@/services/api'
@@ -17,6 +18,7 @@ import BatchReview from '@/components/upload/BatchReview.vue'
 import UiProgressOverlay from '@/components/ui/UiProgressOverlay.vue'
 
 const router = useRouter()
+const route = useRoute()
 const childStore = useChildStore()
 const feedStore = useFeedStore()
 
@@ -31,6 +33,22 @@ function onFilesSelected(files: File[]) {
   selectedFiles.value = files
   showBatchReview.value = true
 }
+
+/** Picks up files staged by the Web Share Target (`/upload?shared=1`), then empties the inbox. */
+onMounted(async () => {
+  try {
+    const isSharedVisit = route.query.shared === '1'
+    const files = await pickUpSharedFiles(isSharedVisit)
+    if (isSharedVisit) {
+      void router.replace({ name: 'upload' })
+    }
+    if (files.length > 0) {
+      onFilesSelected(files)
+    }
+  } catch (error) {
+    console.warn('Share inbox pickup failed', error)
+  }
+})
 
 function closeBatchReview() {
   showBatchReview.value = false

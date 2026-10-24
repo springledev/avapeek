@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDarkMode } from '@/composables/useDarkMode'
 import { useNetwork } from '@/composables/useNetwork'
 import AppShell from '@/components/AppShell.vue'
+import OfflineBanner from '@/components/OfflineBanner.vue'
 import { syncEncryptionKeys } from '@/services/key-sync'
 
 const authStore = useAuthStore()
@@ -45,6 +46,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <OfflineBanner />
   <AppShell />
   <Toaster
     richColors

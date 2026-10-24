@@ -46,6 +46,7 @@ vi.mock('@/crypto/keychain', () => ({
 
 vi.mock('@/lib/cache/decrypted-cache', () => ({
   clearDecryptedCache: vi.fn<() => void>(),
+  setDecryptedCacheUser: vi.fn<(userId: number | null) => void>(),
 }))
 
 import { api } from '@/services/api'
