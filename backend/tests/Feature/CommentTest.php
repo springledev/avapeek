@@ -5,6 +5,11 @@ use App\Models\ChildUser;
 use App\Models\Comment;
 use App\Models\Photo;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
+
+beforeEach(function () {
+    Storage::fake('s3');
+});
 
 /**
  * @return array{User, Child, Photo}
