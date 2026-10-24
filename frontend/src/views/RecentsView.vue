@@ -110,8 +110,12 @@ function nextPhoto() {
 
 async function deletePhoto(photoId: number) {
   try {
-    await api.delete(`/photos/${photoId}`)
-    toast.success('Photo deleted')
+    const res = await api.delete(`/photos/${photoId}`)
+    if (res.data?.remaining) {
+      toast.success('Removed from your children. Still visible to others it is shared with.')
+    } else {
+      toast.success('Photo deleted')
+    }
     selectedPhoto.value = null
     recentsStore.fetchRecents()
   } catch (err: unknown) {
