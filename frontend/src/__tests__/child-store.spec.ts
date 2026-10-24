@@ -39,6 +39,8 @@ vi.mock('@/crypto/keychain', () => ({
 import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import { useChildStore } from '@/stores/child'
+import { useFeedStore } from '@/stores/feed'
+import { useRecentsStore } from '@/stores/recents'
 import type { Child } from '@/types/child'
 
 function ok<T>(data: T): AxiosResponse<T> {
@@ -160,6 +162,15 @@ describe('child store', () => {
   })
 
   describe('updateChild', () => {
+    it('does not add an unknown child to state', async () => {
+      const { store } = setup()
+      vi.mocked(api.put).mockResolvedValue(ok({ data: makeChild({ id: 99 }) }))
+
+      await store.updateChild(99, { name: 'Emma', birthDate: null })
+
+      expect(store.children).toHaveLength(0)
+    })
+
     it('PUTs name and birth date and merges the response into state', async () => {
       const { store } = setup()
       store.children = [makeChild({ photo_count: 3 })]
@@ -189,7 +200,56 @@ describe('child store', () => {
     })
   })
 
+  describe('keyless children', () => {
+    it('only lists children with a KEK-wrapped key as uploadable', () => {
+      const { auth, store } = setup()
+      store.children = [makeChild(), makeChild({ id: 8, name: 'Noah' }), makeChild({ id: 9 })]
+      auth.setEncryptionKeys([
+        { child_id: 7, child_name: 'Emma', encrypted_dek: 'a', wrap_type: 'kek', key_version: 1 },
+        {
+          child_id: 8,
+          child_name: 'Noah',
+          encrypted_dek: 'b',
+          wrap_type: 'public_key',
+          key_version: 1,
+        },
+      ])
+
+      expect(store.uploadableChildren.map((c) => c.id)).toEqual([7])
+    })
+
+    it('finishKeySetup creates only the key for an existing child', async () => {
+      const { auth, store } = setup()
+      store.children = [makeChild()]
+      vi.mocked(api.post).mockResolvedValue(ok({}))
+
+      await store.finishKeySetup(7)
+
+      expect(api.post).toHaveBeenCalledTimes(1)
+      expect(api.post).toHaveBeenCalledWith('/encryption-keys', {
+        child_id: 7,
+        wrapped_dek: 'wrapped-dek',
+      })
+      expect(auth.encryptionKeys.map((k) => k.child_id)).toEqual([7])
+      expect(store.uploadableChildren).toHaveLength(1)
+    })
+
+    it('finishKeySetup refuses for non-owners', async () => {
+      const { store } = setup()
+      store.children = [makeChild({ role: 'member' })]
+
+      await expect(store.finishKeySetup(7)).rejects.toThrow('Only the owner')
+      expect(api.post).not.toHaveBeenCalled()
+    })
+  })
+
   describe('deleteChild', () => {
+    beforeEach(() => {
+      vi.spyOn(useFeedStore(), 'fetchPhotos').mockResolvedValue()
+      vi.spyOn(useRecentsStore(), 'fetchRecents').mockResolvedValue()
+      vi.spyOn(useRecentsStore(), 'fetchUnseenCount').mockResolvedValue()
+    })
+
     it('removes the child, its DEK and its keys locally', async () => {
       const { auth, store } = setup()
       store.children = [makeChild(), makeChild({ id: 8, name: 'Noah' })]
@@ -210,6 +270,25 @@ describe('child store', () => {
       expect(store.getDEK(8)).toBeDefined()
       expect(store.currentChildId).toBeNull()
       expect(auth.encryptionKeys.map((k) => k.child_id)).toEqual([8])
+    })
+
+    it('resets the feed and recents so the deleted child photos vanish', async () => {
+      const { store } = setup()
+      store.children = [makeChild()]
+      const feed = useFeedStore()
+      const recents = useRecentsStore()
+      feed.filters.childIds = [7, 8]
+      const feedSpy = vi.spyOn(feed, 'fetchPhotos').mockResolvedValue()
+      const recentsSpy = vi.spyOn(recents, 'fetchRecents').mockResolvedValue()
+      const unseenSpy = vi.spyOn(recents, 'fetchUnseenCount').mockResolvedValue()
+      vi.mocked(api.delete).mockResolvedValue(ok(null))
+
+      await store.deleteChild(7)
+
+      expect(feed.filters.childIds).toEqual([8])
+      expect(feedSpy).toHaveBeenCalled()
+      expect(recentsSpy).toHaveBeenCalled()
+      expect(unseenSpy).toHaveBeenCalled()
     })
 
     it('leaves local state alone when the server refuses', async () => {
