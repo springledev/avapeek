@@ -85,9 +85,10 @@ class PushEndpointGuard
             return null;
         }
 
-        $host = rtrim(strtolower($parts['host']), '.');
+        $host = strtolower($parts['host']);
 
-        if ($host === '' || $host === 'localhost' || str_ends_with($host, '.localhost')) {
+        // A trailing dot is never normalised: curl would request "host." and miss the DNS pin for "host".
+        if ($host === '' || str_ends_with($host, '.') || $host === 'localhost' || str_ends_with($host, '.localhost')) {
             return null;
         }
 
@@ -121,7 +122,7 @@ class PushEndpointGuard
         }
 
         if (strlen($packed) === 16) {
-            // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible forms inherit the IPv4 verdict.
+            // IPv4-mapped (::ffff:a.b.c.d) addresses inherit the IPv4 verdict.
             if (str_starts_with($packed, str_repeat("\0", 10)."\xff\xff")) {
                 return self::isPublicAddress((string) inet_ntop(substr($packed, 12)));
             }
@@ -146,6 +147,10 @@ class PushEndpointGuard
             $long = ip2long($address);
             // Shared address space (carrier-grade NAT) 100.64.0.0/10.
             if ($long !== false && ($long & 0xFFC00000) === 0x64400000) {
+                return false;
+            }
+            // IETF protocol assignments 192.0.0.0/24 and benchmarking 198.18.0.0/15.
+            if ($long !== false && (($long & 0xFFFFFF00) === 0xC0000000 || ($long & 0xFFFE0000) === 0xC6120000)) {
                 return false;
             }
             // Multicast and everything above (224.0.0.0/3).

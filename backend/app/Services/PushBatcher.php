@@ -17,6 +17,9 @@ class PushBatcher
 
     public const TYPE_COMMENTS = 'comments';
 
+    /** Pending events outlive a stopped or backlogged worker for an hour. */
+    public const EVENTS_TTL_SECONDS = 3600;
+
     /**
      * @param  int  $photoId  Photo that was added, or that was commented on.
      * @param  int  $actorId  User who uploaded or commented (never notified for this event).
@@ -30,7 +33,7 @@ class PushBatcher
         Cache::lock($this->lockKey($type), 5)->block(3, function () use ($type, $photoId, $actorId): void {
             $events = Cache::get($this->eventsKey($type), []);
             $events[] = [$photoId, $actorId];
-            Cache::put($this->eventsKey($type), $events, (int) config('push.batch_ttl_seconds') * 2);
+            Cache::put($this->eventsKey($type), $events, self::EVENTS_TTL_SECONDS);
 
             if (Cache::add($this->pendingKey($type), 1, (int) config('push.batch_ttl_seconds'))) {
                 SendPushNotifications::dispatch($type)
@@ -51,6 +54,22 @@ class PushBatcher
             Cache::forget($this->pendingKey($type));
 
             return $events;
+        });
+    }
+
+    /**
+     * Puts drained events back (ahead of newer ones) after a failed job so a retry still has them.
+     *
+     * @param  list<array{0: int, 1: int}>  $events
+     */
+    public function restore(string $type, array $events): void
+    {
+        if ($events === []) {
+            return;
+        }
+
+        Cache::lock($this->lockKey($type), 5)->block(3, function () use ($type, $events): void {
+            Cache::put($this->eventsKey($type), [...$events, ...Cache::get($this->eventsKey($type), [])], self::EVENTS_TTL_SECONDS);
         });
     }
 

@@ -5,10 +5,13 @@ namespace App\Services;
 use App\Models\PushSubscription;
 use Closure;
 use GuzzleHttp\Client;
+use GuzzleHttp\Handler\CurlHandler;
+use GuzzleHttp\HandlerStack;
 use Illuminate\Support\Facades\Log;
 use Minishlink\WebPush\Subscription;
 use Minishlink\WebPush\WebPush;
 use Psr\Http\Client\ClientInterface;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -70,6 +73,14 @@ class WebPushService
         }
 
         try {
+            $client = ($this->clientFactory)((string) $check['host'], $check['addresses']);
+        } catch (Throwable) {
+            $this->log('push DNS pin unavailable, send skipped', $subscription);
+
+            return false;
+        }
+
+        try {
             $webPush = new WebPush(
                 ['VAPID' => [
                     'subject' => (string) config('push.subject'),
@@ -77,7 +88,7 @@ class WebPushService
                     'privateKey' => (string) config('push.private_key'),
                 ]],
                 ['TTL' => (int) config('push.ttl_seconds'), 'urgency' => 'low'],
-                ($this->clientFactory)((string) $check['host'], $check['addresses']),
+                $client,
             );
 
             $report = $webPush->sendOneNotification(
@@ -142,21 +153,26 @@ class WebPushService
     public static function pinnedClient(string $host, array $addresses): ClientInterface
     {
         $timeout = (float) config('push.http_timeout_seconds');
+        if (! function_exists('curl_version') || ! defined('CURLOPT_RESOLVE')) {
+            throw new RuntimeException('cURL is required to pin push endpoint DNS.');
+        }
+
         $options = [
+            'handler' => HandlerStack::create(new CurlHandler),
+            // Proxy env vars (HTTPS_PROXY/NO_PROXY) must not bypass the DNS pin.
+            'proxy' => null,
             'timeout' => $timeout,
             'connect_timeout' => $timeout,
             'allow_redirects' => false,
             'http_errors' => false,
         ];
 
-        if (defined('CURLOPT_RESOLVE')) {
-            $options['curl'] = [
-                CURLOPT_RESOLVE => ["{$host}:443:".implode(',', array_map(
-                    fn (string $ip): string => str_contains($ip, ':') ? "[{$ip}]" : $ip,
-                    $addresses,
-                ))],
-            ];
-        }
+        $options['curl'] = [
+            CURLOPT_RESOLVE => ["{$host}:443:".implode(',', array_map(
+                fn (string $ip): string => str_contains($ip, ':') ? "[{$ip}]" : $ip,
+                $addresses,
+            ))],
+        ];
 
         return new Client($options);
     }

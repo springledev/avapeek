@@ -229,6 +229,7 @@ describe('POST /api/push/subscriptions', function () {
         'credentials' => 'https://user:pass@fcm.googleapis.com/send/x',
         'odd port' => 'https://fcm.googleapis.com:8443/send/x',
         'single label host' => 'https://intranet/send/x',
+        'trailing dot' => 'https://host.example.com./send/x',
         'oversized' => 'https://fcm.googleapis.com/'.str_repeat('a', 2100),
     ]);
 
@@ -518,6 +519,33 @@ describe('dispatch and batching', function () {
         Queue::assertPushed(SendPushNotifications::class, 2);
     });
 
+    it('keeps the batch when a job fails so the retry sends one notification per recipient', function () {
+        [$owner, , $photo, $other] = pushFamily();
+        pushEnable();
+        pushFakeDns();
+        pushSubscribe($other, 'https://push.example.test/other');
+        $history = [];
+        pushServiceWith([new Response(201), new Response(201)], $history);
+        $batcher = app(PushBatcher::class);
+        Queue::fake();
+        $batcher->record('photos', $photo->id, $owner->id);
+        $batcher->record('photos', $photo->id, $owner->id);
+
+        $failing = Mockery::mock(PushRecipientResolver::class);
+        $failing->shouldReceive('resolve')->once()->andThrow(new RuntimeException('db down'));
+        expect(fn () => (new SendPushNotifications('photos'))->handle($batcher, $failing, app(WebPushService::class)))
+            ->toThrow(RuntimeException::class);
+        expect($history)->toBe([]);
+
+        (new SendPushNotifications('photos'))->handle($batcher, app(PushRecipientResolver::class), app(WebPushService::class));
+
+        expect($history)->toHaveCount(1);
+
+        // A successful run restores nothing: a further run finds an empty batch.
+        (new SendPushNotifications('photos'))->handle($batcher, app(PushRecipientResolver::class), app(WebPushService::class));
+        expect($history)->toHaveCount(1);
+    });
+
     it('sends nothing when the batch has no remaining recipients', function () {
         [$owner, , $photo, $other] = pushFamily();
         pushEnable();
@@ -656,6 +684,36 @@ describe('WebPushService', function () {
         expect($client->getConfig('allow_redirects'))->toBeFalse()
             ->and($client->getConfig('timeout'))->toBe(10.0)
             ->and($client->getConfig('curl')[CURLOPT_RESOLVE])->toBe(['push.example.test:443:93.184.216.34,[2606:2800:220:1::1]']);
+    });
+
+    it('disables proxies and uses the curl handler so env proxies cannot bypass the pin', function () {
+        $client = WebPushService::pinnedClient('push.example.test', ['93.184.216.34']);
+
+        expect($client->getConfig('proxy'))->toBeNull()
+            ->and(array_key_exists('proxy', $client->getConfig()))->toBeTrue();
+    });
+
+    it('pins the exact host string used in the request URL', function (string $endpoint, string $pinHost) {
+        $guard = new PushEndpointGuard(fn () => ['93.184.216.34']);
+        $check = $guard->check($endpoint);
+        $client = WebPushService::pinnedClient($check['host'], $check['addresses']);
+
+        expect(strtolower(parse_url($endpoint, PHP_URL_HOST)))->toBe($pinHost)
+            ->and($client->getConfig('curl')[CURLOPT_RESOLVE][0])->toStartWith("{$pinHost}:443:");
+    })->with([
+        ['https://good.example.com/x', 'good.example.com'],
+        ['https://GOOD.Example.com/x', 'good.example.com'],
+        ['https://good.example.com:443/x', 'good.example.com'],
+    ]);
+
+    it('rejects a trailing-dot hostname at send time without sending and removes it', function () {
+        $subscription = pushSubscribe(User::factory()->create(), 'https://good.example.com./x');
+        $history = [];
+        $service = pushServiceWith([new Response(201)], $history);
+
+        expect($service->send($subscription, 'photos'))->toBeFalse();
+
+        expect($history)->toBe([])->and(PushSubscription::count())->toBe(0);
     });
 
     it('treats a redirect response as a non-followed result', function () {
