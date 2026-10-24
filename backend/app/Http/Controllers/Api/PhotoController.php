@@ -10,7 +10,8 @@ use App\Services\QuotaService;
 use App\Services\StorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PhotoController extends Controller
 {
@@ -84,47 +85,62 @@ class PhotoController extends Controller
         $originalPath = "photos/{$uuid}.{$ext}.enc";
         $thumbPath = "photos/{$uuid}_thumb.webp.enc";
 
-        $this->storageService->upload($originalPath, file_get_contents($fileObj->getPathname()));
-        $this->storageService->upload($thumbPath, file_get_contents($thumbObj->getPathname()));
+        $uploadedPaths = [];
 
-        $photo = Photo::create([
-            'uuid' => $uuid,
-            'uploaded_by' => $user->id,
-            'original_path' => $originalPath,
-            'thumbnail_path' => $thumbPath,
-            'lqip_encrypted' => $validated['lqip_encrypted'] ?? null,
-            'iv_lqip' => $validated['iv_lqip'] ?? null,
-            'iv_original' => $validated['iv'],
-            'iv_thumbnail' => $validated['iv_thumbnail'],
-            'original_mime' => $validated['original_mime'],
-            'size_bytes' => $validated['size_bytes'],
-            'width' => $validated['width'] ?? null,
-            'height' => $validated['height'] ?? null,
-            'exif_encrypted' => $validated['exif_encrypted'] ?? null,
-            'iv_exif' => $validated['iv_exif'] ?? null,
-            'taken_at' => $validated['taken_at'] ?? null,
-        ]);
+        try {
+            $this->storageService->upload($originalPath, file_get_contents($fileObj->getPathname()));
+            $uploadedPaths[] = $originalPath;
+            $this->storageService->upload($thumbPath, file_get_contents($thumbObj->getPathname()));
+            $uploadedPaths[] = $thumbPath;
 
-        foreach ($childrenData as $childId => $wrap) {
-            $photo->children()->attach($childId, [
-                'encrypted_pek' => $wrap['encrypted_pek'],
-                'iv_pek' => $wrap['iv_pek'],
-            ]);
+            $photo = DB::transaction(function () use ($validated, $childrenData, $user, $uuid, $originalPath, $thumbPath, $totalBytes): Photo {
+                $photo = Photo::create([
+                    'uuid' => $uuid,
+                    'uploaded_by' => $user->id,
+                    'original_path' => $originalPath,
+                    'thumbnail_path' => $thumbPath,
+                    'lqip_encrypted' => $validated['lqip_encrypted'] ?? null,
+                    'iv_lqip' => $validated['iv_lqip'] ?? null,
+                    'iv_original' => $validated['iv'],
+                    'iv_thumbnail' => $validated['iv_thumbnail'],
+                    'original_mime' => $validated['original_mime'],
+                    'size_bytes' => $validated['size_bytes'],
+                    'stored_bytes' => $totalBytes,
+                    'width' => $validated['width'] ?? null,
+                    'height' => $validated['height'] ?? null,
+                    'exif_encrypted' => $validated['exif_encrypted'] ?? null,
+                    'iv_exif' => $validated['iv_exif'] ?? null,
+                    'taken_at' => $validated['taken_at'] ?? null,
+                ]);
+
+                foreach ($childrenData as $childId => $wrap) {
+                    $photo->children()->attach($childId, [
+                        'encrypted_pek' => $wrap['encrypted_pek'],
+                        'iv_pek' => $wrap['iv_pek'],
+                    ]);
+                }
+
+                if (! empty($validated['tags'])) {
+                    $tagIds = [];
+                    foreach ($validated['tags'] as $tagName) {
+                        $tag = Tag::firstOrCreate(
+                            ['name' => $tagName],
+                            ['created_by' => $user->id],
+                        );
+                        $tagIds[] = $tag->id;
+                    }
+                    $photo->tags()->sync($tagIds);
+                }
+
+                $this->quotaService->addUsage($totalBytes);
+
+                return $photo;
+            });
+        } catch (\Throwable $e) {
+            $this->cleanupBlobs([$originalPath, $thumbPath]);
+
+            throw $e;
         }
-
-        if (! empty($validated['tags'])) {
-            $tagIds = [];
-            foreach ($validated['tags'] as $tagName) {
-                $tag = Tag::firstOrCreate(
-                    ['name' => $tagName],
-                    ['created_by' => $user->id],
-                );
-                $tagIds[] = $tag->id;
-            }
-            $photo->tags()->sync($tagIds);
-        }
-
-        $this->quotaService->addUsage($totalBytes);
 
         $photo->load(['tags', 'children' => function ($q) {
             $q->select('children.id', 'children.name', 'children.avatar_color');
@@ -250,23 +266,12 @@ class PhotoController extends Controller
 
         $paths = [$photo->original_path, $photo->thumbnail_path];
 
-        $totalBytes = 0;
-        foreach ($paths as $path) {
-            try {
-                $size = Storage::disk('s3')->size($path);
-                if ($size !== false) {
-                    $totalBytes += $size;
-                }
-            } catch (\Throwable) {
-                // File may not exist on S3; skip size calculation
-            }
-        }
+        DB::transaction(function () use ($photo): void {
+            $this->quotaService->removeUsage((int) $photo->stored_bytes);
+            $photo->delete();
+        });
 
         $this->storageService->deleteMultiple($paths);
-
-        $this->quotaService->removeUsage($totalBytes);
-
-        $photo->delete();
 
         return response()->json(null, 204);
     }
@@ -368,6 +373,20 @@ class PhotoController extends Controller
                 'last_seen_at' => now()->toISOString(),
             ],
         ]);
+    }
+
+    /**
+     * Best-effort removal of blobs uploaded for a request that failed.
+     *
+     * @param  array<int, string>  $paths
+     */
+    private function cleanupBlobs(array $paths): void
+    {
+        try {
+            $this->storageService->deleteMultiple($paths);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to clean up blobs after failed upload', ['paths' => $paths, 'error' => $e->getMessage()]);
+        }
     }
 
     private function formatPhoto(Photo $photo): array

@@ -32,6 +32,7 @@ class PhotoFactory extends Factory
             'iv_thumbnail' => bin2hex(random_bytes(16)),
             'original_mime' => $mimeType,
             'size_bytes' => fake()->numberBetween(100000, 5000000),
+            'stored_bytes' => fake()->numberBetween(100000, 5000000),
             'width' => fake()->numberBetween(800, 4000),
             'height' => fake()->numberBetween(600, 3000),
             'exif_encrypted' => null,

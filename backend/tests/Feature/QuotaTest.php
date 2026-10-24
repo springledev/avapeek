@@ -4,6 +4,11 @@ use App\Models\Child;
 use App\Models\ChildUser;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+
+beforeEach(function () {
+    Storage::fake('s3');
+});
 
 describe('GET /api/quota', function () {
     it('returns system-wide storage usage', function () {
