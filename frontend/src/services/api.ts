@@ -2,6 +2,7 @@ import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axio
 import { toast } from 'vue-sonner'
 import { getSessionItem, setSessionItem, clearSession } from '@/lib/auth-storage'
 import { clearDecryptedCache } from '@/lib/cache/decrypted-cache'
+import { clearShareInbox } from '@/lib/share-inbox'
 
 class ApiService {
   private client: AxiosInstance
@@ -39,6 +40,7 @@ class ApiService {
         if (error.response?.status === 401) {
           clearSession()
           clearDecryptedCache()
+          clearShareInbox()
           const publicPaths = ['/login', '/register', '/invite/']
           const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p))
           if (!isPublicPage) {

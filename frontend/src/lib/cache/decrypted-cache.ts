@@ -4,23 +4,44 @@
  *
  * Thumbnails are permanent in IDB (~40KB each, fits 25K in 1GB).
  * Originals are LRU-evicted at 500MB cap.
+ *
+ * The IndexedDB is namespaced per user (`avapeek-decrypted-<userId>`); the auth
+ * store tells us who is signed in via `setDecryptedCacheUser`. With no known
+ * user nothing is persisted. The cache is wiped on logout, 401 and user change.
  */
 
 const memoryCache = new Map<number, string>()
 
-const DB_NAME = 'avapeek-decrypted'
+const DB_NAME_PREFIX = 'avapeek-decrypted'
 const STORE_THUMBS = 'thumbs'
 const STORE_ORIGINALS = 'originals'
 const MAX_ORIGINAL_CACHE_BYTES = 500 * 1024 * 1024
 
 let dbPromise: Promise<IDBDatabase> | null = null
+let activeUserId: number | null = null
+const usedDbNames = new Set<string>()
 let currentOriginalBytes = 0
 const originalAccessOrder: number[] = []
 
+function dbNameFor(userId: number): string {
+  return `${DB_NAME_PREFIX}-${userId}`
+}
+
+/** Sets the signed-in user. Switching directly to a different user wipes the previous user's cache. */
+export function setDecryptedCacheUser(userId: number | null): void {
+  if (activeUserId !== null && userId !== null && userId !== activeUserId) {
+    clearDecryptedCache()
+  }
+  activeUserId = userId
+}
+
 function openDB(): Promise<IDBDatabase> {
+  if (activeUserId === null) return Promise.reject(new Error('No active cache user'))
   if (dbPromise) return dbPromise
+  const dbName = dbNameFor(activeUserId)
+  usedDbNames.add(dbName)
   dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1)
+    const req = indexedDB.open(dbName, 1)
     req.onupgradeneeded = () => {
       const db = req.result
       if (!db.objectStoreNames.contains(STORE_THUMBS)) {
@@ -37,7 +58,19 @@ function openDB(): Promise<IDBDatabase> {
     }
     req.onerror = () => reject(req.error)
   })
+  dbPromise.catch(() => {
+    dbPromise = null
+  })
   return dbPromise
+}
+
+/** Opens the per-user DB, or null when no user is known (memory-only mode). */
+async function tryOpenDB(): Promise<IDBDatabase | null> {
+  try {
+    return await openDB()
+  } catch {
+    return null
+  }
 }
 
 async function scanOriginalsStore(db: IDBDatabase): Promise<void> {
@@ -100,7 +133,13 @@ export async function getThumbnail(
   const memHit = memoryCache.get(photoId)
   if (memHit) return memHit
 
-  const db = await openDB()
+  const db = await tryOpenDB()
+  if (!db) {
+    const decrypted = await fetchAndDecrypt()
+    const url = URL.createObjectURL(decrypted)
+    memoryCache.set(photoId, url)
+    return url
+  }
   const idbBlob: Blob | undefined = await new Promise((resolve) => {
     const tx = db.transaction(STORE_THUMBS, 'readonly')
     const req = tx.objectStore(STORE_THUMBS).get(photoId)
@@ -135,7 +174,13 @@ export async function getOriginal(
     return memHit
   }
 
-  const db = await openDB()
+  const db = await tryOpenDB()
+  if (!db) {
+    const decrypted = await fetchAndDecrypt()
+    const url = URL.createObjectURL(decrypted)
+    memoryCache.set(photoId, url)
+    return url
+  }
   const idbBlob: Blob | undefined = await new Promise((resolve) => {
     const tx = db.transaction(STORE_ORIGINALS, 'readonly')
     const req = tx.objectStore(STORE_ORIGINALS).get(photoId)
@@ -182,14 +227,47 @@ export async function warmCache(
   await Promise.all(workers)
 }
 
+/** Deletes every decrypted-cache database (this user's, plus any legacy or other user's). */
+function deleteAllDecryptedDatabases(): void {
+  const names = new Set<string>([DB_NAME_PREFIX, ...usedDbNames])
+  if (activeUserId !== null) names.add(dbNameFor(activeUserId))
+  usedDbNames.clear()
+  const remove = (name: string) => {
+    const req = indexedDB.deleteDatabase(name)
+    req.onerror = () => console.warn('Failed to delete decrypted cache database')
+  }
+  names.forEach(remove)
+  if (typeof indexedDB.databases === 'function') {
+    indexedDB
+      .databases()
+      .then((all) => {
+        for (const { name } of all) {
+          if (name && name.startsWith(DB_NAME_PREFIX) && !names.has(name)) remove(name)
+        }
+      })
+      .catch(() => {})
+  }
+}
+
+/**
+ * Wipes all decrypted data. Closes the open connection first, otherwise
+ * `deleteDatabase` stays blocked until the page unloads.
+ */
 export function clearDecryptedCache(): void {
   for (const url of memoryCache.values()) URL.revokeObjectURL(url)
   memoryCache.clear()
   originalAccessOrder.length = 0
   currentOriginalBytes = 0
+  const pending = dbPromise
   dbPromise = null
-  const req = indexedDB.deleteDatabase(DB_NAME)
-  req.onerror = () => console.warn('Failed to delete decrypted cache database')
+  if (pending) {
+    pending
+      .then((db) => db.close())
+      .catch(() => {})
+      .finally(deleteAllDecryptedDatabases)
+  } else {
+    deleteAllDecryptedDatabases()
+  }
 }
 
 export function removeUrlFromCache(url: string): void {

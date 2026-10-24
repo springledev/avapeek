@@ -43,9 +43,16 @@ vi.mock('@/crypto/keychain', () => ({
 
 vi.mock('@/lib/cache/decrypted-cache', () => ({
   clearDecryptedCache: vi.fn<() => void>(),
+  setDecryptedCacheUser: vi.fn<(userId: number | null) => void>(),
+}))
+
+vi.mock('@/lib/share-inbox', () => ({
+  clearShareInbox: vi.fn<() => void>(),
 }))
 
 import { api } from '@/services/api'
+import { clearDecryptedCache } from '@/lib/cache/decrypted-cache'
+import { clearShareInbox } from '@/lib/share-inbox'
 import {
   setStaySignedIn,
   setSessionItem,
@@ -290,6 +297,15 @@ describe('auth store', () => {
     expect(store.user?.email).toBe('stored@example.com')
   })
 
+  it('purges the decrypted cache and share inbox when no token is stored', () => {
+    vi.mocked(getSessionItem).mockReturnValue(null)
+
+    useAuthStore().initializeAuth()
+
+    expect(clearDecryptedCache).toHaveBeenCalled()
+    expect(clearShareInbox).toHaveBeenCalled()
+  })
+
   it('sends the stay-signed-in choice so the server can expire the token', async () => {
     vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
 
@@ -430,5 +446,7 @@ describe('auth store', () => {
     expect(apiService.clearAuthToken).toHaveBeenCalled()
     expect(store.user).toBeNull()
     expect(store.kek).toBeNull()
+    expect(clearDecryptedCache).toHaveBeenCalled()
+    expect(clearShareInbox).toHaveBeenCalled()
   })
 })
