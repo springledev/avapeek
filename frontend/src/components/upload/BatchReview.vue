@@ -21,17 +21,17 @@ const emit = defineEmits<{
 const childStore = useChildStore()
 
 const selectedChildIds = ref<number[]>(
-  childStore.children.length === 1 ? [childStore.children[0]!.id] : [],
+  childStore.uploadableChildren.length === 1 ? [childStore.uploadableChildren[0]!.id] : [],
 )
 const showCreateChild = ref(false)
 
 const needsChildChoice = computed(
-  () => childStore.children.length > 1 && selectedChildIds.value.length === 0,
+  () => childStore.uploadableChildren.length > 1 && selectedChildIds.value.length === 0,
 )
 
 // Children can load (or be created) after mount: drop stale ids and preselect a lone child.
 watch(
-  () => childStore.children.map((c) => c.id),
+  () => childStore.uploadableChildren.map((c) => c.id),
   (ids) => {
     selectedChildIds.value = selectedChildIds.value.filter((id) => ids.includes(id))
     if (ids.length === 1 && selectedChildIds.value.length === 0) {
@@ -73,7 +73,7 @@ function formatBytes(bytes: number): string {
 <template>
   <UiSheet :open="open" title="Review photos" @close="emit('close')">
     <div class="batch">
-      <div v-if="childStore.children.length === 0" class="batch__no-kids">
+      <div v-if="childStore.uploadableChildren.length === 0" class="batch__no-kids">
         <p class="batch__hint">
           Photos live in a kid's album. Add a kid first, then choose who is in these photos.
         </p>
@@ -82,9 +82,9 @@ function formatBytes(bytes: number): string {
 
       <p v-else-if="needsChildChoice" class="batch__hint">Choose who's in these photos</p>
 
-      <div v-if="childStore.children.length > 0" class="batch__kids">
+      <div v-if="childStore.uploadableChildren.length > 0" class="batch__kids">
         <UiChip
-          v-for="child in childStore.children"
+          v-for="child in childStore.uploadableChildren"
           :key="child.id"
           :label="child.name"
           tone="kid"

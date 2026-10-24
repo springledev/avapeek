@@ -26,6 +26,7 @@ vi.mock('@/lib/auth-storage', () => ({
 import BatchReview from '@/components/upload/BatchReview.vue'
 import CreateChildSheet from '@/components/CreateChildSheet.vue'
 import { useChildStore } from '@/stores/child'
+import { useAuthStore } from '@/stores/auth'
 import type { Child } from '@/types/child'
 
 let wrapper: VueWrapper | null = null
@@ -47,10 +48,30 @@ function makeChild(id: number, name: string): Child {
   }
 }
 
-function mountReview(children: Child[]) {
+/** Sets children and gives each one a KEK-wrapped key unless listed in `keyless`. */
+function setChildren(
+  store: ReturnType<typeof useChildStore>,
+  children: Child[],
+  keyless: number[] = [],
+) {
+  store.children = children
+  useAuthStore().setEncryptionKeys(
+    children
+      .filter((c) => !keyless.includes(c.id))
+      .map((c) => ({
+        child_id: c.id,
+        child_name: c.name,
+        encrypted_dek: 'dek',
+        wrap_type: 'kek' as const,
+        key_version: 1,
+      })),
+  )
+}
+
+function mountReview(children: Child[], keyless: number[] = []) {
   setActivePinia(createPinia())
   const store = useChildStore()
-  store.children = children
+  setChildren(store, children, keyless)
   const file = new File(['x'], 'a.jpg', { type: 'image/jpeg' })
   wrapper = mount(BatchReview, { props: { open: true, files: [file] }, attachTo: document.body })
   return store
@@ -91,7 +112,7 @@ describe('BatchReview', () => {
     const store = mountReview([])
     const child = makeChild(5, 'Emma')
 
-    store.children.push(child)
+    setChildren(store, [child])
     wrapper!.findComponent(CreateChildSheet).vm.$emit('created', child)
     await flushPromises()
 
@@ -116,7 +137,7 @@ describe('BatchReview', () => {
     const store = mountReview([])
     expect(uploadButton().disabled).toBe(true)
 
-    store.children = [makeChild(1, 'Emma')]
+    setChildren(store, [makeChild(1, 'Emma')])
     await flushPromises()
 
     expect(uploadButton().disabled).toBe(false)
@@ -124,11 +145,27 @@ describe('BatchReview', () => {
 
   it('does not preselect when a second child appears', async () => {
     const store = mountReview([makeChild(1, 'Emma')])
-    store.children = [makeChild(1, 'Emma'), makeChild(2, 'Noah')]
+    setChildren(store, [makeChild(1, 'Emma'), makeChild(2, 'Noah')])
     await flushPromises()
 
     // Emma stays selected; only the empty-selection case shows the hint.
     expect(uploadButton().disabled).toBe(false)
     expect(document.body.textContent).not.toContain("Choose who's in these photos")
+  })
+
+  it('treats keyless children as unavailable', () => {
+    mountReview([makeChild(1, 'Emma')], [1])
+
+    expect(document.body.textContent).toContain('Add a kid first')
+    expect(document.body.textContent).not.toContain('Emma')
+    expect(uploadButton().disabled).toBe(true)
+  })
+
+  it('preselects the only child that has a key', () => {
+    mountReview([makeChild(1, 'Emma'), makeChild(2, 'Noah')], [1])
+
+    expect(document.body.textContent).not.toContain('Emma')
+    expect(document.body.textContent).not.toContain("Choose who's in these photos")
+    expect(uploadButton().disabled).toBe(false)
   })
 })

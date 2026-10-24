@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { api } from '@/services/api'
 import { apiErrorMessage } from '@/lib/util'
 import { useAuthStore } from '@/stores/auth'
+import { useFeedStore } from '@/stores/feed'
+import { useRecentsStore } from '@/stores/recents'
 import {
   generateDEK,
   wrapDEK,
@@ -48,6 +50,16 @@ export const useChildStore = defineStore('child', () => {
       (k) => k.child_id === childId && (k.wrap_type ?? 'kek') === 'kek',
     )
   }
+
+  function hasOwnKey(childId: number): boolean {
+    return findOwnKey(childId) !== undefined
+  }
+
+  /**
+   * Children the user can actually upload to: those with a KEK-wrapped key.
+   * Keyless children (key setup failed or abandoned) are excluded.
+   */
+  const uploadableChildren = computed(() => children.value.filter((c) => hasOwnKey(c.id)))
 
   async function ensureDEK(childId: number): Promise<CryptoKey> {
     const existing = deks.value.get(childId)
@@ -231,6 +243,31 @@ export const useChildStore = defineStore('child', () => {
     }
   }
 
+  /**
+   * Finishes key setup for an existing child that has no key (e.g. after a reload).
+   * Only the owner may create the album key; no child is created.
+   */
+  async function finishKeySetup(childId: number): Promise<Child> {
+    const child = children.value.find((c) => c.id === childId)
+    if (!child) throw new Error('Child not found.')
+    if (child.role !== 'owner') throw new Error('Only the owner can set up this key.')
+
+    isLoading.value = true
+    error.value = null
+
+    try {
+      await createKeyForChild(child)
+      if (keyPendingChild.value?.id === childId) keyPendingChild.value = null
+      return child
+    } catch (err) {
+      console.error('Failed to create encryption key for child:', err)
+      error.value = apiErrorMessage(err, 'Failed to finish setting up this kid. Please retry.')
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   async function updateChild(
     childId: number,
     payload: { name: string; birthDate: string | null },
@@ -245,7 +282,8 @@ export const useChildStore = defineStore('child', () => {
       })
 
       const idx = children.value.findIndex((c) => c.id === childId)
-      const updated: Child = { ...children.value[idx], ...response.data.data }
+      const existing = idx >= 0 ? children.value[idx] : undefined
+      const updated: Child = existing ? { ...existing, ...response.data.data } : response.data.data
       if (idx >= 0) children.value[idx] = updated
 
       return updated
@@ -272,6 +310,14 @@ export const useChildStore = defineStore('child', () => {
       if (currentChildId.value === childId) currentChildId.value = null
       if (currentChildDetail.value?.id === childId) currentChildDetail.value = null
       if (keyPendingChild.value?.id === childId) keyPendingChild.value = null
+
+      // Drop the deleted child's photos from the visible lists right away.
+      const feedStore = useFeedStore()
+      const recentsStore = useRecentsStore()
+      feedStore.filters.childIds = feedStore.filters.childIds.filter((id) => id !== childId)
+      feedStore.fetchPhotos().catch(() => {})
+      recentsStore.fetchRecents().catch(() => {})
+      recentsStore.fetchUnseenCount().catch(() => {})
     } catch (err) {
       console.error('Failed to delete child:', err)
       error.value = apiErrorMessage(err, 'Failed to delete child.')
@@ -365,6 +411,9 @@ export const useChildStore = defineStore('child', () => {
     fetchChildDetail,
     createChild,
     retryKeySetup,
+    finishKeySetup,
+    hasOwnKey,
+    uploadableChildren,
     updateChild,
     deleteChild,
     createInvite,

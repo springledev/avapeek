@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Plus, ChevronRight } from '@lucide/vue'
 import { ref, onMounted } from 'vue'
+import { toast } from 'vue-sonner'
 import { useChildStore } from '@/stores/child'
 import CreateChildSheet from '@/components/CreateChildSheet.vue'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
@@ -10,6 +11,23 @@ import UiEmptyState from '@/components/ui/UiEmptyState.vue'
 const childStore = useChildStore()
 
 const showAddSheet = ref(false)
+const finishingId = ref<number | null>(null)
+
+function needsKeySetup(child: { id: number; role: string }): boolean {
+  return child.role === 'owner' && !childStore.hasOwnKey(child.id)
+}
+
+async function finishSetup(childId: number) {
+  finishingId.value = childId
+  try {
+    await childStore.finishKeySetup(childId)
+    toast.success('All set. You can now add photos.')
+  } catch {
+    toast.error(childStore.error || 'Could not finish setting up. Please try again.')
+  } finally {
+    finishingId.value = null
+  }
+}
 
 onMounted(async () => {
   if (childStore.children.length === 0) {
@@ -39,27 +57,36 @@ onMounted(async () => {
     </UiEmptyState>
 
     <div v-else class="kids__list">
-      <router-link
-        v-for="child in childStore.children"
-        :key="child.id"
-        :to="`/settings/children/${child.id}`"
-        class="kids__row"
-      >
-        <UiAvatar :id="child.id" :name="child.name" :color-hex="child.avatar_color" :size="40" />
-        <div class="kids__info">
-          <p class="kids__name">{{ child.name }}</p>
-          <p class="kids__meta">
-            {{ child.age }}
-            <span v-if="child.member_count">
-              · {{ child.member_count }} {{ child.member_count === 1 ? 'member' : 'members' }}</span
-            >
-            <span v-if="child.photo_count !== undefined">
-              · {{ child.photo_count }} {{ child.photo_count === 1 ? 'photo' : 'photos' }}</span
-            >
-          </p>
+      <div v-for="child in childStore.children" :key="child.id" class="kids__item">
+        <router-link :to="`/settings/children/${child.id}`" class="kids__row">
+          <UiAvatar :id="child.id" :name="child.name" :color-hex="child.avatar_color" :size="40" />
+          <div class="kids__info">
+            <p class="kids__name">{{ child.name }}</p>
+            <p class="kids__meta">
+              {{ child.age }}
+              <span v-if="child.member_count">
+                · {{ child.member_count }}
+                {{ child.member_count === 1 ? 'member' : 'members' }}</span
+              >
+              <span v-if="child.photo_count !== undefined">
+                · {{ child.photo_count }} {{ child.photo_count === 1 ? 'photo' : 'photos' }}</span
+              >
+            </p>
+          </div>
+          <ChevronRight :size="20" class="kids__chevron" />
+        </router-link>
+        <div v-if="needsKeySetup(child)" class="kids__setup">
+          <p class="kids__setup-text">Setup isn't finished, so photos can't be added yet.</p>
+          <UiButton
+            variant="accent"
+            size="md"
+            :loading="finishingId === child.id"
+            @click="finishSetup(child.id)"
+          >
+            Finish setting up
+          </UiButton>
         </div>
-        <ChevronRight :size="20" class="kids__chevron" />
-      </router-link>
+      </div>
     </div>
   </div>
 
@@ -90,6 +117,28 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.kids__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.kids__setup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+.kids__setup-text {
+  margin: 0;
+  font-size: var(--text-meta);
+  color: var(--color-ink-soft);
 }
 
 .kids__row {
