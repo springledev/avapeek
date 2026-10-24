@@ -215,8 +215,16 @@ class PhotoController extends Controller
         ]);
     }
 
-    public function thumbnail(Photo $photo): JsonResponse
+    public function thumbnail(Request $request, Photo $photo): JsonResponse
     {
+        $user = $request->user();
+        $accessibleChildIds = $user->children()->pluck('children.id');
+
+        $photoChildIds = $photo->children()->pluck('children.id');
+        if ($photoChildIds->intersect($accessibleChildIds)->isEmpty()) {
+            abort(403, 'You do not have access to this photo.');
+        }
+
         $url = $this->storageService->presignedUrl($photo->thumbnail_path, 10);
 
         return response()->json([
