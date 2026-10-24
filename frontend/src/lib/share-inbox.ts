@@ -91,7 +91,7 @@ export async function stageSharedFiles(files: File[], now: number = Date.now()):
     await purgeExpiredIn(db, now)
     const tx = db.transaction(STORE, 'readwrite')
     const store = tx.objectStore(STORE)
-    for (const file of files) {
+    for (const file of files.filter((candidate) => candidate.type.startsWith('image/'))) {
       const record: InboxRecord = {
         blob: file,
         name: file.name,

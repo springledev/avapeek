@@ -227,11 +227,20 @@ export async function warmCache(
   await Promise.all(workers)
 }
 
-/** Deletes every decrypted-cache database (this user's, plus any legacy or other user's). */
-function deleteAllDecryptedDatabases(): void {
+/** Names to delete, captured synchronously so a later user switch cannot change the target. */
+function snapshotDatabaseNames(): Set<string> {
   const names = new Set<string>([DB_NAME_PREFIX, ...usedDbNames])
   if (activeUserId !== null) names.add(dbNameFor(activeUserId))
   usedDbNames.clear()
+  return names
+}
+
+/**
+ * Deletes the snapshotted databases, plus any other prefixed ones the browser lists.
+ * The enumeration is async, so it re-checks the live active user and never touches
+ * that user's (possibly freshly opened) database.
+ */
+function deleteDatabases(names: Set<string>): void {
   const remove = (name: string) => {
     const req = indexedDB.deleteDatabase(name)
     req.onerror = () => console.warn('Failed to delete decrypted cache database')
@@ -241,8 +250,11 @@ function deleteAllDecryptedDatabases(): void {
     indexedDB
       .databases()
       .then((all) => {
+        const keep = activeUserId !== null ? dbNameFor(activeUserId) : null
         for (const { name } of all) {
-          if (name && name.startsWith(DB_NAME_PREFIX) && !names.has(name)) remove(name)
+          if (name && name.startsWith(DB_NAME_PREFIX) && !names.has(name) && name !== keep) {
+            remove(name)
+          }
         }
       })
       .catch(() => {})
@@ -258,15 +270,16 @@ export function clearDecryptedCache(): void {
   memoryCache.clear()
   originalAccessOrder.length = 0
   currentOriginalBytes = 0
+  const names = snapshotDatabaseNames()
   const pending = dbPromise
   dbPromise = null
   if (pending) {
     pending
       .then((db) => db.close())
       .catch(() => {})
-      .finally(deleteAllDecryptedDatabases)
+      .finally(() => deleteDatabases(names))
   } else {
-    deleteAllDecryptedDatabases()
+    deleteDatabases(names)
   }
 }
 

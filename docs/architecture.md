@@ -62,6 +62,7 @@ Every photo, comment, tag and key route verifies that the caller belongs to a ch
 The frontend is an installable PWA (`vite-plugin-pwa`, `injectManifest`, source `frontend/src/sw.ts`, registered from `src/lib/pwa-register.ts`). The build emits `sw.js` and `manifest.webmanifest` at the site root (`start_url` `/feed`, `scope` `/`).
 
 - **Precache only.** The worker precaches static build assets (JS, CSS, fonts, icons, `index.html`) and answers navigations with the cached shell, except `/api/`, `/photos/` and `/share-target`. There is **no runtime caching**: API and storage requests always go to the network.
+- The lazy `heic-to` decoder chunk (about 3 MB) is excluded from the precache, so HEIC decoding is not available offline.
 - **Offline mode** is deliberately small: the app shell, an "Offline" banner, and thumbnails already in the decrypted cache. Feed metadata is not persisted.
 - **Updates.** A new build installs in the background and shows an "Update available" toast; Reload activates it and removes the old precache.
 - **Share target.** `POST /share-target` is intercepted by the worker, which stages the shared images in an IndexedDB inbox and redirects (303) to `/upload?shared=1`. See [security.md](security.md) for what this stores.

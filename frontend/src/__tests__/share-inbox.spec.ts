@@ -95,6 +95,15 @@ describe('share inbox', () => {
     expect(await takeSharedFiles(2000)).toEqual([])
   })
 
+  it('only stages image files', async () => {
+    await stageSharedFiles([
+      file('a.jpg'),
+      new File(['x'], 'notes.pdf', { type: 'application/pdf' }),
+      new File(['x'], 'untyped', { type: '' }),
+    ])
+    expect([...fake.rows.values()].map((r) => r.name)).toEqual(['a.jpg'])
+  })
+
   it('drops entries older than one hour on pickup and on purge', async () => {
     await stageSharedFiles([file('old.jpg')], 0)
     const now = SHARE_INBOX_MAX_AGE_MS + 1
