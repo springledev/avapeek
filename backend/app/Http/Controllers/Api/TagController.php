@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Photo;
 use App\Models\Tag;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -14,7 +15,7 @@ class TagController extends Controller
     {
         $accessibleChildIds = $request->user()->children()->pluck('children.id');
 
-        $tags = Tag::withCount(['photos' => function ($q) use ($accessibleChildIds) {
+        $tags = Tag::visibleTo($request->user())->withCount(['photos' => function ($q) use ($accessibleChildIds) {
             $q->whereHas('children', function ($q2) use ($accessibleChildIds) {
                 $q2->whereIn('child_photo.child_id', $accessibleChildIds);
             });
@@ -39,7 +40,11 @@ class TagController extends Controller
                 'string',
                 'max:100',
                 'regex:/^[\pL\pN\s\-#&.,]+$/u',
-                'unique:tags,name',
+                function (string $attribute, mixed $value, Closure $fail) use ($request) {
+                    if (Tag::visibleTo($request->user())->where('name', $value)->exists()) {
+                        $fail('The name has already been taken.');
+                    }
+                },
             ],
         ]);
 
@@ -58,8 +63,12 @@ class TagController extends Controller
         ], 201);
     }
 
-    public function destroy(Tag $tag): JsonResponse
+    public function destroy(Request $request, Tag $tag): JsonResponse
     {
+        $user = $request->user();
+        abort_unless(Tag::visibleTo($user)->whereKey($tag->id)->exists(), 404);
+        abort_unless($tag->isDeletableBy($user), 403);
+
         $tag->delete();
 
         return response()->json(null, 204);
@@ -78,7 +87,13 @@ class TagController extends Controller
             'tag_ids.*' => ['required', 'integer', 'exists:tags,id'],
         ]);
 
-        $photo->tags()->syncWithoutDetaching($validated['tag_ids']);
+        $tagIds = array_values(array_unique($validated['tag_ids']));
+        $visibleCount = Tag::visibleTo($request->user())->whereIn('tags.id', $tagIds)->count();
+        if ($visibleCount !== count($tagIds)) {
+            abort(422, 'One or more tags are invalid.');
+        }
+
+        $photo->tags()->syncWithoutDetaching($tagIds);
 
         $photo->load('tags');
 
