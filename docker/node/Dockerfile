@@ -1,5 +1,5 @@
 # Build stage
-FROM node:24-alpine AS build
+FROM node:24.22.1-alpine AS build
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY frontend/ .
 RUN npm run build
 
 # Production stage
-FROM nginx:1.30-alpine
+FROM nginx:1.30.6-alpine
 
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY docker/nginx/frontend.conf /etc/nginx/conf.d/default.conf
