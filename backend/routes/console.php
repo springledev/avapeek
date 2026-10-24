@@ -16,7 +16,7 @@ Schedule::command('backup:database')
     ->onOneServer()
     ->withoutOverlapping();
 
-Schedule::command('backup:verify')
+Schedule::command('backup:verify --quick --allow-empty')
     ->weeklyOn(0, '03:30')
     ->timezone('UTC')
     ->onOneServer()

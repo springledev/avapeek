@@ -5,6 +5,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 
@@ -109,10 +110,14 @@ describe('backup:database', function () {
         }
         $state = fakeBackupProcesses(1, 'pg_dump: error: password '.BACKUP_TEST_PASSWORD.' rejected');
 
+        Log::spy();
+
         $this->artisan('backup:database')
             ->doesntExpectOutputToContain(BACKUP_TEST_PASSWORD)
             ->expectsOutputToContain('pg_dump failed')
             ->assertFailed();
+        Log::shouldHaveReceived('error')->once();
+        Log::shouldNotHaveReceived('error', fn ($message) => str_contains((string) $message, BACKUP_TEST_PASSWORD));
         expect($disk->allFiles())->toEqualCanonicalizing($old);
         expect(file_exists($state->files[0]))->toBeFalse();
     });
@@ -315,7 +320,8 @@ describe('backup schedule', function () {
             ->and($backup->onOneServer)->toBeTrue()
             ->and($backup->withoutOverlapping)->toBeTrue()
             ->and($verify)->not->toBeNull()
-            ->and($verify->command)->not->toContain('--restore');
+            ->and($verify->command)->not->toContain('--restore')
+            ->and($verify->command)->toContain('--quick --allow-empty');
     });
 });
 
@@ -327,6 +333,31 @@ describe('backup:verify', function () {
         $this->artisan('backup:verify')
             ->expectsOutputToContain('No backups found')
             ->assertFailed();
+    });
+
+    it('succeeds with a logged warning on an empty prefix with --allow-empty', function () {
+        Storage::fake('backup');
+        Process::fake();
+        Log::spy();
+
+        $this->artisan('backup:verify', ['--allow-empty' => true])->assertSuccessful();
+
+        Log::shouldHaveReceived('warning')->once();
+        Log::shouldNotHaveReceived('error');
+    });
+
+    it('quick mode checks the header without downloading or running pg_restore', function () {
+        $disk = Storage::fake('backup');
+        $disk->put(backupKey(1), 'PGDMP-fake');
+        Process::fake();
+
+        $this->artisan('backup:verify', ['--quick' => true])
+            ->expectsOutputToContain('PGDMP header present')
+            ->assertSuccessful();
+        Process::assertNothingRan();
+
+        $disk->put(backupKey(0), 'not a dump');
+        $this->artisan('backup:verify', ['--quick' => true])->assertFailed();
     });
 
     it('lists the newest dump with pg_restore --list', function () {
