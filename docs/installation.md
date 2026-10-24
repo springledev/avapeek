@@ -177,7 +177,7 @@ What to back up:
    External S3: enable the provider's versioning/replication, or sync the bucket with `rclone`.
 3. **Configuration:** `.env` and `backend/.env` (they contain `APP_KEY` and the S3 credentials). Store them separately from the data backups.
 
-Keep database and bucket backups from around the same time. `php artisan storage:reconcile` (added in v0.2) can report objects not referenced by the database.
+Keep database and bucket backups from around the same time. `php artisan storage:reconcile` recomputes storage usage from the database and lists (optionally deletes) objects not referenced by it.
 
 ## Uninstall
 
