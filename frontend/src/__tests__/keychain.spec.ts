@@ -95,3 +95,80 @@ describe('keychain key re-wrapping', () => {
     expect(await sameKey(dek, await unwrapDEK(memberWrappedDek, memberKEK))).toBe(true)
   })
 })
+
+function decodeBase64(value: string): Uint8Array {
+  return Uint8Array.from(atob(value), (c) => c.charCodeAt(0))
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+}
+
+describe('keychain KEK-wrapped DEK format', () => {
+  it('uses a fresh random IV for every wrap', async () => {
+    const kek = await deriveKEK('password', generateSalt())
+    const dek = await generateDEK()
+
+    const first = await wrapDEK(dek, kek)
+    const second = await wrapDEK(dek, kek)
+
+    expect(first).not.toBe(second)
+    expect(decodeBase64(first).slice(0, 12)).not.toEqual(decodeBase64(second).slice(0, 12))
+  })
+
+  it('produces base64(iv || ciphertext) of exactly 60 bytes', async () => {
+    const kek = await deriveKEK('password', generateSalt())
+    const wrapped = await wrapDEK(await generateDEK(), kek)
+
+    expect(decodeBase64(wrapped)).toHaveLength(60)
+  })
+
+  it('round-trips a DEK through wrap and unwrap', async () => {
+    const kek = await deriveKEK('password', generateSalt())
+    const dek = await generateDEK()
+
+    expect(await sameKey(dek, await unwrapDEK(await wrapDEK(dek, kek), kek))).toBe(true)
+  })
+
+  it('rejects a wrapped DEK with a tampered IV byte', async () => {
+    const kek = await deriveKEK('password', generateSalt())
+    const bytes = decodeBase64(await wrapDEK(await generateDEK(), kek))
+    bytes[0] = bytes[0]! ^ 0x01
+
+    await expect(unwrapDEK(encodeBase64(bytes), kek)).rejects.toBeDefined()
+  })
+
+  it('rejects a wrapped DEK with a tampered ciphertext byte', async () => {
+    const kek = await deriveKEK('password', generateSalt())
+    const bytes = decodeBase64(await wrapDEK(await generateDEK(), kek))
+    bytes[20] = bytes[20]! ^ 0x01
+
+    await expect(unwrapDEK(encodeBase64(bytes), kek)).rejects.toBeDefined()
+  })
+
+  it('rejects unwrapping with the wrong KEK', async () => {
+    const salt = generateSalt()
+    const wrapped = await wrapDEK(await generateDEK(), await deriveKEK('right', salt))
+
+    await expect(unwrapDEK(wrapped, await deriveKEK('wrong', salt))).rejects.toBeDefined()
+  })
+
+  it('rejects a legacy 48-byte zero-IV wrapped DEK with a clear error', async () => {
+    const kek = await deriveKEK('password', generateSalt())
+    const legacy = new Uint8Array(
+      await crypto.subtle.wrapKey('raw', await generateDEK(), kek, {
+        name: 'AES-GCM',
+        iv: new Uint8Array(12),
+      }),
+    )
+    const legacyWrapped = encodeBase64(legacy)
+    const { publicKey } = await generateKeyPair()
+
+    expect(legacy).toHaveLength(48)
+    await expect(unwrapDEK(legacyWrapped, kek)).rejects.toThrow(/Invalid wrapped DEK/)
+    await expect(rewrapDEK(legacyWrapped, kek, kek)).rejects.toThrow(/Invalid wrapped DEK/)
+    await expect(rewrapDEKForPublicKey(legacyWrapped, kek, publicKey)).rejects.toThrow(
+      /Invalid wrapped DEK/,
+    )
+  })
+})
