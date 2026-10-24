@@ -1,0 +1,29 @@
+# Avapeek - prebuilt images from GHCR.
+#
+# This is an OVERRIDE file, not a standalone stack. Use it together with
+# docker-compose.prod.yml (up.sh does this for you):
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.release.yml pull
+#   docker compose -f docker-compose.prod.yml -f docker-compose.release.yml up -d --no-build
+#
+# docker-compose.prod.yml stays the single source of truth for services,
+# volumes, healthchecks and networks. This file only adds an `image:` to every
+# service that prod builds from source. Because `build:` is still present in the
+# merged config, ALWAYS pass --no-build to `up` so Compose uses these images.
+#
+# Pick a release with AVAPEEK_VERSION in the root .env (default: latest), e.g.
+# AVAPEEK_VERSION=0.2.0. Images are published by .github/workflows/release.yml.
+#
+# MAINTAINERS: whenever docker-compose.prod.yml gains a service that has a
+# `build:` section (e.g. scheduler or queue), add a matching entry here using
+# the avapeek-backend image.
+
+services:
+  backend:
+    image: ghcr.io/springledev/avapeek-backend:${AVAPEEK_VERSION:-latest}
+
+  frontend:
+    image: ghcr.io/springledev/avapeek-frontend:${AVAPEEK_VERSION:-latest}
+
+  garage-init:
+    image: ghcr.io/springledev/avapeek-garage-init:${AVAPEEK_VERSION:-latest}
