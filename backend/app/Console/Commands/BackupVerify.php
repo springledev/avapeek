@@ -17,7 +17,7 @@ class BackupVerify extends Command
     /**
      * @var string
      */
-    protected $signature = 'backup:verify {--restore : Restore into a throwaway database and print row counts} {--identity= : age identity file, needed to verify encrypted dumps}';
+    protected $signature = 'backup:verify {--restore : Restore into a throwaway database and print row counts} {--identity= : age identity file, needed to verify encrypted dumps} {--allow-empty : Succeed with a warning when no backups exist yet (used by the schedule)} {--quick : Header and size check only, no download or pg_restore (used by the weekly schedule)}';
 
     /**
      * @var string
@@ -31,6 +31,12 @@ class BackupVerify extends Command
 
         try {
             $all = $backups->listBackups();
+            if ($all === [] && $this->option('allow-empty')) {
+                Log::warning('backup:verify found no backups yet under "'.$backups->prefix().'/".');
+                $this->warn('No backups found yet; nothing to verify.');
+
+                return self::SUCCESS;
+            }
             if ($all === []) {
                 throw new RuntimeException('No backups found under "'.$backups->prefix().'/" on the backup disk.');
             }
@@ -41,8 +47,8 @@ class BackupVerify extends Command
             $encrypted = str_ends_with($key, '.age');
             $identity = $this->option('identity');
 
-            if ($encrypted && ! filled($identity)) {
-                return $this->verifyEncryptedHeaderOnly($backups, $key);
+            if ($this->option('quick') || ($encrypted && ! filled($identity))) {
+                return $this->verifyHeaderOnly($backups, $key, $encrypted);
             }
 
             $file = $temps[] = $backups->tempFile();
@@ -82,26 +88,30 @@ class BackupVerify extends Command
         }
     }
 
-    protected function verifyEncryptedHeaderOnly(BackupService $backups, string $key): int
+    protected function verifyHeaderOnly(BackupService $backups, string $key, bool $encrypted): int
     {
         $disk = $backups->disk();
         $stream = $disk->readStream($key);
-        $header = is_resource($stream) ? (string) fgets($stream, 64) : '';
+        $header = is_resource($stream) ? (string) fread($stream, 32) : '';
         if (is_resource($stream)) {
             fclose($stream);
         }
 
-        if (trim($header) !== 'age-encryption.org/v1') {
-            Log::error('backup:verify failed: '.$key.' has no age header');
-            $this->error('[fail] '.$key.' does not start with an age header.');
+        $valid = $encrypted ? str_starts_with($header, 'age-encryption.org/v1') : str_starts_with($header, 'PGDMP');
+        $size = $disk->size($key);
+
+        if (! $valid || $size <= 0) {
+            Log::error('backup:verify failed: '.$key.' has no valid '.($encrypted ? 'age' : 'pg_dump').' header or is empty');
+            $this->error('[fail] '.$key.' does not look like a '.($encrypted ? 'age-encrypted' : 'pg_dump custom').' file.');
 
             return self::FAILURE;
         }
 
-        $size = $disk->size($key);
-        Log::info('backup:verify checked age header only for '.$key);
-        $this->info('[ok] age header present, '.$size.' bytes');
-        $this->warn('NOTICE: the dump is encrypted; pass --identity=<file> to verify its contents (keep the identity off the server, copy it in only temporarily).');
+        Log::info('backup:verify checked header only for '.$key);
+        $this->info('[ok] '.($encrypted ? 'age' : 'PGDMP').' header present, '.$size.' bytes');
+        if ($encrypted && ! $this->option('quick')) {
+            $this->warn('NOTICE: the dump is encrypted; pass --identity=<file> to verify its contents (keep the identity off the server, copy it in only temporarily).');
+        }
 
         return self::SUCCESS;
     }
