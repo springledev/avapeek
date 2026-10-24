@@ -27,11 +27,9 @@ class ChildController extends Controller
         $quota = $this->quotaService->getUsage();
 
         $children = $request->user()->children()
-            ->withCount(['users as member_count'])
+            ->withCount(['users as member_count', 'photos as photo_count'])
             ->get()
-            ->map(function (Child $child) use ($request, $quota) {
-                $pivot = $child->users->firstWhere('id', $request->user()->id)?->pivot;
-
+            ->map(function (Child $child) use ($quota) {
                 return [
                     'id' => $child->id,
                     'slug' => $child->slug,
@@ -40,9 +38,9 @@ class ChildController extends Controller
                     'avatar_color' => $child->avatar_color,
                     'age' => $child->ageAt(),
                     'member_count' => $child->member_count,
-                    'photo_count' => $child->photos()->count(),
-                    'role' => $pivot?->role,
-                    'relationship' => $pivot?->relationship,
+                    'photo_count' => $child->photo_count,
+                    'role' => $child->pivot?->role,
+                    'relationship' => $child->pivot?->relationship,
                     'storage_used' => $quota['used_bytes'],
                     'storage_limit_bytes' => $quota['limit_bytes'],
                     'storage_percentage' => $quota['percentage'],
@@ -108,6 +106,8 @@ class ChildController extends Controller
             ->where('child_id', $child->id)
             ->first()?->pivot->role;
 
+        $child->loadCount('photos');
+
         $members = collect();
 
         if (in_array($userRole, ['owner', 'admin'], true)) {
@@ -140,7 +140,7 @@ class ChildController extends Controller
                 'avatar_color' => $child->avatar_color,
                 'age' => $child->ageAt(),
                 'created_by' => $child->created_by,
-                'photo_count' => $child->photos()->count(),
+                'photo_count' => $child->photos_count,
                 'storage_used' => $quota['used_bytes'],
                 'storage_limit_bytes' => $quota['limit_bytes'],
                 'storage_percentage' => $quota['percentage'],
