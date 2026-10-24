@@ -4,7 +4,6 @@ use App\Models\Child;
 use App\Models\ChildUser;
 use App\Models\Photo;
 use App\Models\StorageUsage;
-use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -27,7 +26,6 @@ function atomicUploadPayload(Child $child): array
         'iv_thumbnail' => bin2hex(random_bytes(16)),
         'original_mime' => 'image/heic',
         'size_bytes' => 1024,
-        'tags' => ['boom'],
         'children' => json_encode([$child->id => [
             'encrypted_pek' => bin2hex(random_bytes(32)),
             'iv_pek' => bin2hex(random_bytes(16)),
@@ -52,7 +50,7 @@ describe('atomic upload', function () {
         Storage::fake('s3');
         [$user, $child] = atomicUploadSetup();
 
-        Tag::creating(function () {
+        Photo::created(function () {
             throw new RuntimeException('forced failure');
         });
 

@@ -43,8 +43,9 @@ class PhotoMetadataRequest extends FormRequest
             'taken_at' => ['nullable', 'date'],
             'lqip_encrypted' => ['nullable', 'string'],
             'iv_lqip' => ['nullable', 'string', 'size:32'],
-            'tags' => ['nullable', 'array'],
-            'tags.*' => ['string', 'max:100'],
+            'tags' => ['prohibited'],
+            'tag_ids' => ['nullable', 'array', 'max:50'],
+            'tag_ids.*' => ['integer'],
             'children' => ['required', 'json', new PekWrap],
         ];
     }
