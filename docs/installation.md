@@ -157,14 +157,22 @@ Using a pinned `AVAPEEK_VERSION`? Change it in `.env` first. Secrets and setting
 
 What to back up:
 
-1. **Database** (nightly at least):
+1. **Database: automatic.** The `scheduler` container runs `php artisan backup:database` every night at 02:30 UTC. It runs `pg_dump --format=custom`, uploads the dump to `backups/db/avapeek-<UTC timestamp>.dump` on the backup disk, then deletes dumps older than `BACKUP_RETENTION_DAYS` (default 14; the newest 3 are always kept). Nothing extra to start: it uses the existing scheduler. Settings are in [configuration](configuration.md#database-backups).
 
-   ```sh
-   docker compose -f docker-compose.prod.yml exec -T postgres \
-     sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > avapeek-db-$(date +%F).sql.gz
-   ```
+   - **Use a separate destination.** By default dumps go into the photo bucket, so one incident loses both. Set `BACKUP_AWS_BUCKET` (and the other `BACKUP_AWS_*` values) to a different bucket or provider. The command prints a WARNING while backups share the photo bucket.
+   - **The dump is sensitive.** It contains wrapped keys (password guessing against a leaked dump is possible, see [security](security.md)) and **plaintext** emails, child names and invite data. Protect the destination, or set `BACKUP_AGE_RECIPIENT=age1...` to encrypt each dump with [age](https://github.com/FiloSottile/age). Generate the key pair on your own machine (`age-keygen -o key.txt`), put only the public recipient on the server and keep `key.txt` offline. Without that key encrypted dumps are unrecoverable.
+   - **Run and check it by hand:**
 
-   Restore into an empty database with `gunzip -c file.sql.gz | docker compose -f docker-compose.prod.yml exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'`.
+     ```sh
+     docker compose -f docker-compose.prod.yml exec scheduler php artisan storage:check --backup
+     docker compose -f docker-compose.prod.yml exec scheduler php artisan backup:database
+     docker compose -f docker-compose.prod.yml exec scheduler php artisan backup:verify            # pg_restore --list on the newest dump
+     docker compose -f docker-compose.prod.yml exec scheduler php artisan backup:verify --restore  # full test restore into a throwaway database
+     ```
+
+     `backup:verify` also runs weekly (Sunday 03:30 UTC) and logs the result. For encrypted dumps, `--identity=<file>` is needed to look inside; without it only the age header is checked. Do not leave the identity on the server.
+   - **Monitor it.** If the scheduler is down, no backups run. Alert when the newest object under `backups/db/` is older than about 26 hours.
+
 2. **Photo storage.** Garage: stop it for a consistent copy and archive its volumes (`docker volume ls` shows `<project>_garage_meta` and `<project>_garage_data`):
 
    ```sh
@@ -177,7 +185,26 @@ What to back up:
    External S3: enable the provider's versioning/replication, or sync the bucket with `rclone`.
 3. **Configuration:** `.env` and `backend/.env` (they contain `APP_KEY` and the S3 credentials). Store them separately from the data backups.
 
-Keep database and bucket backups from around the same time. `php artisan storage:reconcile` recomputes storage usage from the database and lists (optionally deletes) objects not referenced by it.
+Keep database and bucket backups from around the same time. `.env` and `backend/.env` are not part of the automatic backup.
+
+### Restore
+
+You need the **same `APP_KEY` and `backend/.env`** as before, and users still need their passwords: the password is the only way to unwrap the keys in the restored database.
+
+1. Start an empty PostgreSQL: `docker compose -f docker-compose.prod.yml up -d postgres` (for a fresh database, remove the old `postgres_data` volume first).
+2. Download the newest dump from `backups/db/` with any S3 tool (for example `aws s3 cp s3://<backup-bucket>/backups/db/avapeek-<timestamp>.dump . --endpoint-url <endpoint>`).
+3. If it ends in `.age`, decrypt it: `age -d -i key.txt avapeek-<timestamp>.dump.age > avapeek-<timestamp>.dump`.
+4. Restore:
+
+   ```sh
+   docker compose -f docker-compose.prod.yml exec -T postgres sh -c \
+     'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner' < avapeek-<timestamp>.dump
+   ```
+5. Bring the stack up and apply migrations newer than the dump: `docker compose -f docker-compose.prod.yml exec backend php artisan migrate --force`.
+6. Reconcile usage and list orphaned photo objects: `docker compose -f docker-compose.prod.yml exec backend php artisan storage:reconcile`.
+7. Log in and open a photo to confirm it decrypts.
+
+`php artisan storage:reconcile` recomputes storage usage from the database and lists (optionally deletes) objects not referenced by it.
 
 ## Uninstall
 

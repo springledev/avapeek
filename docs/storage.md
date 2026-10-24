@@ -150,6 +150,12 @@ CORS (Bucket > Settings > CORS policy):
 
 Set `STORAGE_LIMIT_BYTES` for a fixed limit. If it is unset and `STORAGE_VOLUME_PATH` points at an existing directory, the limit is 90% of the free space there (for Garage, use `STORAGE_VOLUME_PATH=/garage-data`, which compose mounts read-only into the backend). With neither set the limit is **unknown**: uploads are not capped by Avapeek and the UI shows usage without a limit. That is intended only for external providers, which enforce their own quota. If you self-host Garage, always set `STORAGE_VOLUME_PATH` or `STORAGE_LIMIT_BYTES`, otherwise uploads are uncapped and can fill the disk.
 
+## Database backups
+
+The scheduler uploads nightly database dumps under `backups/db/` (the photos live under `photos/`; `storage:reconcile` never touches `backups/`). By default they go into the **same bucket** as the photos, so one incident (bucket deleted, provider account lost, host disk failed) loses photos and backups together. Point `BACKUP_AWS_*` at a different bucket, ideally at a different provider (see [configuration](configuration.md#database-backups)). If you prefer provider-side expiry, give the backup key write/list-only permissions, add a lifecycle rule on `backups/db/`, and set `BACKUP_RETENTION_DAYS=0`, so a compromised app cannot erase the history.
+
+With the bundled Garage, backups consume the same disk that `STORAGE_VOLUME_PATH` measures (they shrink the derived quota). They are not counted in the usage shown in the app. Check the backup destination with `php artisan storage:check --backup`.
+
 ## Verify your setup
 
 ```sh
