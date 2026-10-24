@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\EncryptionKeysController;
 use App\Http\Controllers\Api\InviteController;
 use App\Http\Controllers\Api\MfaController;
 use App\Http\Controllers\Api\PhotoController;
+use App\Http\Controllers\Api\PushController;
 use App\Http\Controllers\Api\QuotaController;
 use App\Http\Controllers\Api\StorageInfoController;
 use App\Http\Controllers\Api\TagController;
@@ -53,6 +54,12 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/children', [ChildController::class, 'index']);
     Route::post('/children', [ChildController::class, 'store']);
 
+    // Web Push (generic notifications; endpoint/keys are never returned)
+    Route::get('/push/config', [PushController::class, 'config']);
+    Route::post('/push/subscriptions', [PushController::class, 'subscribe'])->middleware('throttle:10,1');
+    Route::delete('/push/subscriptions', [PushController::class, 'unsubscribe'])->middleware('throttle:10,1');
+    Route::get('/push/preferences', [PushController::class, 'preferences']);
+
     // Storage info
     Route::get('/storage/disk-info', [StorageInfoController::class, 'diskInfo']);
 
@@ -96,6 +103,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/children/{child}', [ChildController::class, 'show']);
         Route::put('/children/{child}', [ChildController::class, 'update']);
         Route::delete('/children/{child}', [ChildController::class, 'destroy']);
+        Route::put('/push/preferences/{child}', [PushController::class, 'updatePreferences']);
 
         // Invites (admin only)
         Route::middleware('child.admin')->group(function () {
