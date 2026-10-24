@@ -140,6 +140,27 @@ describe('storage:reconcile', function () {
     });
 });
 
+describe('storage:reconcile and backups', function () {
+    it('never deletes database backups, even with --delete-orphans --grace=0', function () {
+        $disk = Storage::fake('s3');
+        $keys = [
+            'backups/db/avapeek-20260101T023000Z.dump',
+            'backups/db/avapeek-20260102T023000Z.dump.age',
+            'backups/db/notes.txt',
+        ];
+        foreach ($keys as $key) {
+            $disk->put($key, 'x');
+            touch($disk->path($key), time() - 86400);
+        }
+
+        $this->artisan('storage:reconcile --delete-orphans --grace=0')->assertSuccessful();
+
+        foreach ($keys as $key) {
+            $disk->assertExists($key);
+        }
+    });
+});
+
 describe('failed blob writes', function () {
     it('rolls back and cleans the original when the thumbnail put fails', function () {
         $real = Storage::fake('s3');
