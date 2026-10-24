@@ -78,7 +78,7 @@ const router = createRouter({
     {
       path: '/child/create',
       name: 'child-create',
-      component: () => import('@/views/CreateChildView.vue'),
+      redirect: '/settings/children',
       meta: { requiresAuth: true },
     },
     {
