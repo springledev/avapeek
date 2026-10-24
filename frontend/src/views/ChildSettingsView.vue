@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useChildStore } from '@/stores/child'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
@@ -8,9 +8,11 @@ import { toast } from 'vue-sonner'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiSheet from '@/components/ui/UiSheet.vue'
+import { apiErrorMessage, firstValidationError } from '@/lib/util'
 import type { ChildMember, InviteResponse } from '@/types/child'
 
 const route = useRoute()
+const router = useRouter()
 const childStore = useChildStore()
 const authStore = useAuthStore()
 
@@ -37,6 +39,76 @@ const currentUserRole = computed(() => {
 const canManageMembers = computed(() => {
   return currentUserRole.value === 'owner' || currentUserRole.value === 'admin'
 })
+
+const canEdit = computed(() => canManageMembers.value)
+const canDelete = computed(() => currentUserRole.value === 'owner')
+
+const showEditSheet = ref(false)
+const editName = ref('')
+const editBirthDate = ref('')
+const editError = ref('')
+const isSaving = ref(false)
+const today = new Date().toISOString().split('T')[0]
+
+const showDeleteSheet = ref(false)
+const deleteConfirmName = ref('')
+const deleteError = ref('')
+const isDeleting = ref(false)
+
+const deleteNameMatches = computed(
+  () => !!child.value && deleteConfirmName.value.trim() === child.value.name,
+)
+
+function openEditSheet() {
+  if (!child.value) return
+  editName.value = child.value.name
+  editBirthDate.value = child.value.birth_date ?? ''
+  editError.value = ''
+  showEditSheet.value = true
+}
+
+async function saveEdit() {
+  if (!editName.value.trim()) {
+    editError.value = 'Name is required'
+    return
+  }
+  isSaving.value = true
+  editError.value = ''
+  try {
+    await childStore.updateChild(childId.value, {
+      name: editName.value.trim(),
+      birthDate: editBirthDate.value || null,
+    })
+    showEditSheet.value = false
+    toast.success('Profile updated.')
+  } catch (err: unknown) {
+    editError.value = firstValidationError(err) || apiErrorMessage(err, 'Failed to update profile.')
+  } finally {
+    isSaving.value = false
+  }
+}
+
+function openDeleteSheet() {
+  deleteConfirmName.value = ''
+  deleteError.value = ''
+  showDeleteSheet.value = true
+}
+
+async function confirmDelete() {
+  if (!deleteNameMatches.value) return
+  isDeleting.value = true
+  deleteError.value = ''
+  try {
+    await childStore.deleteChild(childId.value)
+    showDeleteSheet.value = false
+    toast.success('Kid deleted.')
+    router.push('/settings/children')
+  } catch (err: unknown) {
+    deleteError.value = apiErrorMessage(err, 'Failed to delete kid.')
+  } finally {
+    isDeleting.value = false
+  }
+}
 
 onMounted(async () => {
   if (!child.value) {
@@ -164,6 +236,11 @@ function formatLastActive(dateStr: string | null): string {
     </div>
 
     <div class="child-settings__sections">
+      <div v-if="canEdit" class="child-settings__section">
+        <h3 class="child-settings__section-title">Profile</h3>
+        <UiButton variant="subtle" @click="openEditSheet">Edit name and birth date</UiButton>
+      </div>
+
       <div class="child-settings__section">
         <h3 class="child-settings__section-title">Family</h3>
         <div v-if="members.length > 0" class="child-settings__members">
@@ -202,6 +279,11 @@ function formatLastActive(dateStr: string | null): string {
         <UiButton variant="accent" @click="showInviteSheet = true"> Generate invite link </UiButton>
       </div>
 
+      <div v-if="canDelete" class="child-settings__section">
+        <h3 class="child-settings__section-title">Danger zone</h3>
+        <UiButton variant="danger" @click="openDeleteSheet">Delete this kid</UiButton>
+      </div>
+
       <div v-if="pendingChildInvites.length > 0" class="child-settings__section">
         <h3 class="child-settings__section-title">Pending invites</h3>
         <div class="child-settings__pending">
@@ -224,6 +306,61 @@ function formatLastActive(dateStr: string | null): string {
   </div>
 
   <div v-else class="child-settings__not-found">Child not found.</div>
+
+  <UiSheet :open="showEditSheet" title="Edit profile" @close="showEditSheet = false">
+    <div v-if="editError" class="invite-sheet__error" role="alert">{{ editError }}</div>
+    <form class="invite-sheet__form" @submit.prevent="saveEdit">
+      <div class="invite-sheet__field">
+        <label class="invite-sheet__label" for="edit-name">Name</label>
+        <input
+          id="edit-name"
+          v-model="editName"
+          type="text"
+          autocomplete="off"
+          class="invite-sheet__input"
+          :disabled="isSaving"
+        />
+      </div>
+      <div class="invite-sheet__field">
+        <label class="invite-sheet__label" for="edit-birthdate">Birth date (optional)</label>
+        <input
+          id="edit-birthdate"
+          v-model="editBirthDate"
+          type="date"
+          class="invite-sheet__input"
+          :disabled="isSaving"
+          :max="today"
+        />
+      </div>
+      <UiButton type="submit" variant="accent" :loading="isSaving">Save</UiButton>
+    </form>
+  </UiSheet>
+
+  <UiSheet :open="showDeleteSheet" title="Delete this kid?" @close="showDeleteSheet = false">
+    <div v-if="deleteError" class="invite-sheet__error" role="alert">{{ deleteError }}</div>
+    <form class="invite-sheet__form" @submit.prevent="confirmDelete">
+      <p class="invite-sheet__hint">
+        This removes {{ child?.name }}'s album for everyone. Photos that are only in this album are
+        permanently deleted. Photos shared with other kids are kept for them. This cannot be undone.
+      </p>
+      <div class="invite-sheet__field">
+        <label class="invite-sheet__label" for="delete-confirm">
+          Type <strong>{{ child?.name }}</strong> to confirm
+        </label>
+        <input
+          id="delete-confirm"
+          v-model="deleteConfirmName"
+          type="text"
+          autocomplete="off"
+          class="invite-sheet__input"
+          :disabled="isDeleting"
+        />
+      </div>
+      <UiButton type="submit" variant="danger" :disabled="!deleteNameMatches" :loading="isDeleting">
+        Delete permanently
+      </UiButton>
+    </form>
+  </UiSheet>
 
   <UiSheet :open="showInviteSheet" title="Create invite" @close="closeInviteSheet">
     <div class="invite-sheet">
@@ -504,6 +641,15 @@ function formatLastActive(dateStr: string | null): string {
   color: var(--color-ink);
   font-family: inherit;
   font-size: var(--text-body);
+}
+
+.invite-sheet__error {
+  padding: var(--space-3);
+  border-radius: var(--radius-card);
+  background: var(--color-danger);
+  color: var(--color-on-danger);
+  font-size: var(--text-body);
+  margin-bottom: var(--space-4);
 }
 
 .invite-sheet__hint {

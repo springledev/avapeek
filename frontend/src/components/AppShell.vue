@@ -12,7 +12,7 @@ const recentsStore = useRecentsStore()
 const feedStore = useFeedStore()
 
 const showShell = computed(() => {
-  const authPaths = ['/login', '/register', '/invite/', '/child/create']
+  const authPaths = ['/login', '/register', '/invite/']
   return !authPaths.some((p) => route.path.startsWith(p))
 })
 
