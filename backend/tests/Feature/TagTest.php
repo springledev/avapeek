@@ -453,6 +453,27 @@ describe('photo payloads only carry the viewer tags', function () {
     });
 });
 
+describe('viewer tag isolation across requests', function () {
+    it('never filters one user with another user children through a reused controller', function () {
+        Storage::fake('s3');
+        [$alice, $childA] = tagFamily();
+        [$bob, $childB] = tagFamily();
+        $photo = photoIn($alice, $childA, $childB);
+        $tagA = Tag::factory()->create(['child_id' => $childA->id]);
+        $tagB = Tag::factory()->create(['child_id' => $childB->id]);
+        $photo->tags()->attach([$tagA->id, $tagB->id]);
+
+        $tagIdsOf = fn ($response, string $path) => collect($response->json($path))->pluck('id')->all();
+
+        foreach ([[$alice, $tagA], [$bob, $tagB], [$alice, $tagA], [$bob, $tagB]] as [$viewer, $own]) {
+            $this->actingAs($viewer, 'sanctum');
+            expect($tagIdsOf($this->getJson("/api/photos/{$photo->id}")->assertOk(), 'data.tags'))->toBe([$own->id])
+                ->and($tagIdsOf($this->getJson('/api/photos')->assertOk(), 'data.0.tags'))->toBe([$own->id])
+                ->and($tagIdsOf($this->getJson('/api/recents')->assertOk(), 'data.0.tags'))->toBe([$own->id]);
+        }
+    });
+});
+
 describe('tag_ids on upload', function () {
     function tagUploadPayload(Child $child, array $extra = []): array
     {
@@ -525,6 +546,17 @@ describe('tag_ids on upload', function () {
 });
 
 describe('tag_ids feed filter', function () {
+    it('ignores an array tag_ids value instead of failing', function () {
+        Storage::fake('s3');
+        [$alice, $child] = tagFamily();
+        photoIn($alice, $child);
+
+        $this->actingAs($alice, 'sanctum')
+            ->getJson('/api/photos?tag_ids[]=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1);
+    });
+
     it('respects access and does not leak photos through another child tag', function () {
         [$alice, $child] = tagFamily();
         [$bob, $bobChild] = tagFamily();
