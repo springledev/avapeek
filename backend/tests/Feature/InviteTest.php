@@ -309,9 +309,12 @@ describe('POST /api/invites/{token}/accept', function () {
 });
 
 describe('GET /api/users/{user}/public-key', function () {
-    it('returns the public key for a user', function () {
+    it('returns the public key of a user who shares a child with the requester', function () {
         $requester = User::factory()->create();
         $target = User::factory()->create(['public_key' => 'my-public-key-abc']);
+        $child = Child::factory()->create(['created_by' => $requester->id]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $requester->id, 'role' => 'owner']);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $target->id, 'role' => 'member']);
 
         $response = $this->actingAs($requester, 'sanctum')
             ->getJson("/api/users/{$target->id}/public-key");
@@ -319,6 +322,58 @@ describe('GET /api/users/{user}/public-key', function () {
         $response->assertStatus(200)
             ->assertJsonPath('data.id', $target->id)
             ->assertJsonPath('data.public_key', 'my-public-key-abc');
+    });
+
+    it('returns the requester own public key', function () {
+        $requester = User::factory()->create(['public_key' => 'own-public-key']);
+
+        $response = $this->actingAs($requester, 'sanctum')
+            ->getJson("/api/users/{$requester->id}/public-key");
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.public_key', 'own-public-key');
+    });
+
+    it('returns 404 for an unrelated user without leaking their key', function () {
+        $requester = User::factory()->create();
+        $target = User::factory()->create(['public_key' => 'secret-public-key']);
+        $otherChild = Child::factory()->create(['created_by' => $target->id]);
+        ChildUser::create(['child_id' => $otherChild->id, 'user_id' => $target->id, 'role' => 'owner']);
+
+        $response = $this->actingAs($requester, 'sanctum')
+            ->getJson("/api/users/{$target->id}/public-key");
+
+        $response->assertStatus(404)
+            ->assertJsonPath('message', 'User not found.')
+            ->assertJsonMissing(['public_key' => 'secret-public-key']);
+    });
+
+    it('returns the same 404 body for unrelated and nonexistent users', function () {
+        $requester = User::factory()->create();
+        $target = User::factory()->create();
+
+        $unrelated = $this->actingAs($requester, 'sanctum')
+            ->getJson("/api/users/{$target->id}/public-key");
+        $nonexistent = $this->actingAs($requester, 'sanctum')
+            ->getJson('/api/users/99999/public-key');
+
+        $unrelated->assertStatus(404);
+        $nonexistent->assertStatus(404);
+        expect($unrelated->json())->toBe($nonexistent->json());
+    });
+
+    it('returns 404 once the target has left every shared child', function () {
+        $requester = User::factory()->create();
+        $target = User::factory()->create(['public_key' => 'departed-public-key']);
+        $child = Child::factory()->create(['created_by' => $requester->id]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $requester->id, 'role' => 'owner']);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $target->id, 'role' => 'member']);
+        ChildUser::where('user_id', $target->id)->delete();
+
+        $response = $this->actingAs($requester, 'sanctum')
+            ->getJson("/api/users/{$target->id}/public-key");
+
+        $response->assertStatus(404);
     });
 
     it('requires authentication', function () {

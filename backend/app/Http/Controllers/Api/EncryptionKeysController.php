@@ -82,6 +82,46 @@ class EncryptionKeysController extends Controller
     }
 
     /**
+     * Return another user's public key.
+     *
+     * Only the requester themselves or users who share at least one child with
+     * the requester are visible. Unrelated and nonexistent users get the same
+     * 404 response so the endpoint can't be used to enumerate accounts.
+     */
+    public function publicKey(Request $request, int $user): JsonResponse
+    {
+        $requester = $request->user();
+        $target = User::find($user);
+
+        if ($target === null || ! $this->sharesChildWith($requester, $target)) {
+            return response()->json([
+                'message' => 'User not found.',
+            ], 404);
+        }
+
+        return response()->json([
+            'data' => [
+                'id' => $target->id,
+                'public_key' => $target->public_key,
+            ],
+        ]);
+    }
+
+    /**
+     * Whether the two users are the same person or share at least one child.
+     */
+    private function sharesChildWith(User $requester, User $target): bool
+    {
+        if ($requester->id === $target->id) {
+            return true;
+        }
+
+        return $requester->children()
+            ->whereHas('users', fn ($query) => $query->where('users.id', $target->id))
+            ->exists();
+    }
+
+    /**
      * Members who joined a child the requester administers but can't see its
      * photos yet because nobody has shared the child's DEK with them.
      */
