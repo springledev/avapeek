@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Observers\CommentPushObserver;
 use Database\Factories\CommentFactory;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @method static CommentFactory factory(...$parameters)
  */
+#[ObservedBy(CommentPushObserver::class)]
 class Comment extends Model
 {
     /** @use HasFactory<CommentFactory> */
