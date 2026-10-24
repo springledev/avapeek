@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { extractTakenAt } from '@/lib/exif/takenAt'
 import { useChildStore } from '@/stores/child'
 import { useFeedStore } from '@/stores/feed'
+import { useTagsStore } from '@/stores/tags'
 import { api } from '@/services/api'
 import { completeUpload, uploadEncryptedBlobs } from '@/services/storage'
 import { generatePEK, wrapPEKWithDEK } from '@/crypto/keychain'
@@ -75,6 +76,7 @@ const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 export function useUploadPhotos() {
   const childStore = useChildStore()
   const feedStore = useFeedStore()
+  const tagsStore = useTagsStore()
 
   const isUploading = ref(false)
   const current = ref(0)
@@ -84,7 +86,7 @@ export function useUploadPhotos() {
   /** Upload progress of the file currently being sent, 0..1. */
   const fileProgress = ref(0)
 
-  async function uploadOne(f: File, childIds: number[]): Promise<void> {
+  async function uploadOne(f: File, childIds: number[], tagNames: string[]): Promise<void> {
     const bitmap: ImageBitmap = isHeic(f) ? await decodeHeic(f) : await createImageBitmap(f)
 
     try {
@@ -126,6 +128,10 @@ export function useUploadPhotos() {
       formData.append('width', String(bitmap.width))
       formData.append('height', String(bitmap.height))
       formData.append('children', JSON.stringify(children))
+      // Tags are per child: ensure each exists in every chosen child's list, then send opaque ids only.
+      for (const tagId of await tagsStore.idsForUpload(childIds, tagNames)) {
+        formData.append('tag_ids[]', String(tagId))
+      }
       const takenAt = await extractTakenAt(f)
       if (takenAt) {
         formData.append('taken_at', takenAt)
@@ -148,7 +154,11 @@ export function useUploadPhotos() {
     }
   }
 
-  async function upload(files: File[], childIds: number[]): Promise<UploadResult> {
+  async function upload(
+    files: File[],
+    childIds: number[],
+    tagNames: string[] = [],
+  ): Promise<UploadResult> {
     errors.value = []
     if (files.length === 0 || childIds.length === 0) {
       return { succeeded: 0, failed: 0 }
@@ -168,7 +178,7 @@ export function useUploadPhotos() {
         await yieldToUi()
 
         try {
-          await uploadOne(f, childIds)
+          await uploadOne(f, childIds, tagNames)
           succeeded++
         } catch (error: unknown) {
           console.error('Upload error:', error)

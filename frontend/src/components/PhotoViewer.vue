@@ -28,7 +28,9 @@ import UiEmptyState from '@/components/ui/UiEmptyState.vue'
 import UiSheet from '@/components/ui/UiSheet.vue'
 import { MSG } from '@/lib/messages'
 import type { Photo, DecryptedComment } from '@/types/photo'
-import type { TagItem } from '@/components/TagSidebar.vue'
+import TagChip from '@/components/TagChip.vue'
+import TagInput from '@/components/TagInput.vue'
+import { dedupeTagsByName } from '@/lib/tags'
 
 const props = defineProps<{
   photo: Photo
@@ -37,7 +39,6 @@ const props = defineProps<{
   canDelete: boolean
   canEdit: boolean
   childBirthDate: string | null
-  allTags: TagItem[]
   prevPhoto?: Photo | null
   nextPhoto?: Photo | null
 }>()
@@ -131,6 +132,7 @@ const isAdmin = computed(() =>
   childStore.children.some((c) => c.role === 'owner' || c.role === 'admin'),
 )
 
+const displayTags = computed(() => dedupeTagsByName(props.photo.tags ?? []))
 const visibleChildren = computed(() => props.photo.children.slice(0, 3))
 
 const neighborPhotos = computed(() =>
@@ -961,6 +963,20 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-if="showInfo" class="viewer__info">
+        <div class="viewer__info-tags">
+          <TagChip
+            v-for="tag in displayTags"
+            :key="tag.id"
+            :name="tag.name"
+            removable
+            @remove="emit('tagRemoved', props.photo.id, tag.id)"
+          />
+          <TagInput
+            :child-ids="props.photo.children.map((c) => c.id)"
+            :exclude="displayTags.map((t) => t.name)"
+            @add="(name: string) => emit('tagAdded', props.photo.id, name)"
+          />
+        </div>
         <div class="viewer__info-kids">
           <UiAvatar
             v-for="child in visibleChildren"
@@ -1544,6 +1560,17 @@ onBeforeUnmount(() => {
 
 .viewer__menu-item--danger {
   color: #ff9d94;
+}
+
+.viewer__info-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  width: min(320px, calc(100vw - 2 * var(--space-4)));
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-card);
+  background: rgb(0 0 0 / 0.6);
 }
 
 .viewer__info {

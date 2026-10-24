@@ -3,6 +3,7 @@ import { extractTakenAt } from '@/lib/exif/takenAt'
 import { X, Upload } from '@lucide/vue'
 import { ref } from 'vue'
 import { api } from '@/services/api'
+import { useTagsStore } from '@/stores/tags'
 import { useChildStore } from '@/stores/child'
 import { generatePEK, wrapPEKWithDEK } from '@/crypto/keychain'
 import { generateThumbnail, generateLQIP } from '@/crypto/thumbnails'
@@ -17,6 +18,7 @@ const emit = defineEmits<{
 }>()
 
 const childStore = useChildStore()
+const tagsStore = useTagsStore()
 
 const selectedChildIds = ref<number[]>(
   childStore.children.length === 1 ? [childStore.children[0]!.id] : [],
@@ -165,10 +167,8 @@ async function startUpload() {
       if (takenAt) {
         formData.append('taken_at', takenAt)
       }
-      if (tags.value.length > 0) {
-        for (const tag of tags.value) {
-          formData.append('tags[]', tag)
-        }
+      for (const tagId of await tagsStore.idsForUpload(selectedChildIds.value, tags.value)) {
+        formData.append('tag_ids[]', String(tagId))
       }
 
       await api.post('/photos/upload', formData, {

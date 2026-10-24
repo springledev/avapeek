@@ -6,6 +6,7 @@ import { encryptBuffer, encryptString } from '@/crypto/encrypt'
 import { isHeic, decodeHeic } from '@/crypto/heic'
 import { api } from '@/services/api'
 import { useChildStore } from '@/stores/child'
+import { useTagsStore } from '@/stores/tags'
 import type { Photo } from '@/types/photo'
 
 interface SelectedFile {
@@ -33,6 +34,7 @@ const emit = defineEmits<{
 }>()
 
 const childStore = useChildStore()
+const tagsStore = useTagsStore()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const selectedFiles = ref<SelectedFile[]>([])
@@ -191,8 +193,8 @@ async function processSingleFile(
     formData.append('taken_at', takenAt)
   }
 
-  for (const tag of tags.value) {
-    formData.append('tags[]', tag)
+  for (const tagId of await tagsStore.idsForUpload([props.childId], tags.value)) {
+    formData.append('tag_ids[]', String(tagId))
   }
 
   const response = await api.post(

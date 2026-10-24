@@ -4,6 +4,8 @@ import { ref, computed, onMounted } from 'vue'
 import { api } from '@/services/api'
 import { preloadOriginal } from '@/services/storage'
 import { useRecentsStore } from '@/stores/recents'
+import { useTagsStore } from '@/stores/tags'
+import { apiErrorMessage } from '@/lib/util'
 import RecentUploadGroup from '@/components/RecentUploadGroup.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
@@ -128,15 +130,23 @@ async function deletePhoto(photoId: number) {
 }
 
 async function addTag(photoId: number, tagName: string) {
-  void tagName
-  void photoId
-  toast.success('Tag added')
+  const photo = recentsStore.photos.find((p) => p.id === photoId)
+  if (!photo) return
+  try {
+    await useTagsStore().attach(photo, tagName)
+  } catch (err: unknown) {
+    toast.error(apiErrorMessage(err, 'Failed to add tag'))
+  }
 }
 
 async function removeTag(photoId: number, tagId: number) {
-  void tagId
-  void photoId
-  toast.success('Tag removed')
+  const photo = recentsStore.photos.find((p) => p.id === photoId)
+  if (!photo) return
+  try {
+    await useTagsStore().detach(photo, tagId)
+  } catch (err: unknown) {
+    toast.error(apiErrorMessage(err, 'Failed to remove tag'))
+  }
 }
 
 async function updateDate(photoId: number, takenAt: string) {
@@ -205,7 +215,6 @@ onMounted(async () => {
       :can-delete="true"
       :can-edit="true"
       :child-birth-date="null"
-      :all-tags="[]"
       :prev-photo="prevPhotoObj"
       :next-photo="nextPhotoObj"
       @close="closePhoto"
