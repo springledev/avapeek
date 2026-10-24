@@ -3,72 +3,71 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreTagRequest;
+use App\Models\Child;
 use App\Models\Photo;
 use App\Models\Tag;
-use Closure;
+use App\Policies\PhotoPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
+/**
+ * Tag names are client-side encrypted with the child's DEK; this controller only
+ * stores, lists and links ciphertext and never sees or filters on a name.
+ */
 class TagController extends Controller
 {
-    public function globalIndex(Request $request): JsonResponse
+    public function index(Request $request, Child $child): JsonResponse
     {
-        $accessibleChildIds = $request->user()->children()->pluck('children.id');
-
-        $tags = Tag::visibleTo($request->user())->withCount(['photos' => function ($q) use ($accessibleChildIds) {
-            $q->whereHas('children', function ($q2) use ($accessibleChildIds) {
-                $q2->whereIn('child_photo.child_id', $accessibleChildIds);
-            });
-        }])
-            ->orderBy('name')
+        $tags = Tag::where('child_id', $child->id)
+            ->withCount(['photos' => function ($q) use ($child) {
+                $q->whereHas('children', fn ($q2) => $q2->where('child_photo.child_id', $child->id));
+            }])
+            ->orderBy('id')
             ->get()
-            ->map(fn (Tag $tag) => [
-                'id' => $tag->id,
-                'name' => $tag->name,
-                'photo_count' => $tag->photos_count,
-                'created_at' => $tag->created_at?->toISOString(),
-            ]);
+            ->map(fn (Tag $tag) => $this->formatTag($tag, $tag->photos_count));
 
         return response()->json(['data' => $tags]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreTagRequest $request, Child $child): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => [
-                'required',
-                'string',
-                'max:100',
-                'regex:/^[\pL\pN\s\-#&.,]+$/u',
-                function (string $attribute, mixed $value, Closure $fail) use ($request) {
-                    if (Tag::visibleTo($request->user())->where('name', $value)->exists()) {
-                        $fail('The name has already been taken.');
-                    }
-                },
-            ],
-        ]);
+        $validated = $request->validated();
 
-        $tag = Tag::create([
-            'name' => $validated['name'],
-            'created_by' => $request->user()->id,
-        ]);
+        // The child row lock serializes concurrent creates, so the cap is exact.
+        $tag = DB::transaction(function () use ($request, $child, $validated): ?Tag {
+            Child::whereKey($child->id)->lockForUpdate()->first();
 
-        return response()->json([
-            'data' => [
-                'id' => $tag->id,
-                'name' => $tag->name,
-                'photo_count' => 0,
-                'created_at' => $tag->created_at?->toISOString(),
-            ],
-        ], 201);
+            if (Tag::where('child_id', $child->id)->count() >= Tag::MAX_PER_CHILD) {
+                return null;
+            }
+
+            return Tag::create([
+                'child_id' => $child->id,
+                'created_by' => $request->user()->id,
+                'name_encrypted' => $validated['name_encrypted'],
+                'iv_name' => $validated['iv_name'],
+            ]);
+        });
+
+        if ($tag === null) {
+            return response()->json([
+                'message' => 'This child has reached the maximum of '.Tag::MAX_PER_CHILD.' tags.',
+            ], 422);
+        }
+
+        return response()->json(['data' => $this->formatTag($tag, 0)], 201);
     }
 
     public function destroy(Request $request, Tag $tag): JsonResponse
     {
         $user = $request->user();
-        abort_unless(Tag::visibleTo($user)->whereKey($tag->id)->exists(), 404);
-        abort_unless($tag->isDeletableBy($user), 403);
+
+        // Unknown and foreign tags are indistinguishable.
+        abort_if(Gate::forUser($user)->denies('view', $tag), 404);
+        Gate::authorize('delete', $tag);
 
         $tag->delete();
 
@@ -81,26 +80,27 @@ class TagController extends Controller
 
         $validated = $request->validate([
             'tag_ids' => ['required', 'array'],
-            'tag_ids.*' => ['required', 'integer', 'exists:tags,id'],
+            'tag_ids.*' => ['required', 'integer'],
         ]);
 
         $tagIds = array_values(array_unique($validated['tag_ids']));
-        $visibleCount = Tag::visibleTo($request->user())->whereIn('tags.id', $tagIds)->count();
-        if ($visibleCount !== count($tagIds)) {
+        $tags = Tag::whereIn('id', $tagIds)->get();
+        $policy = app(PhotoPolicy::class);
+        $user = $request->user();
+
+        if ($tags->count() !== count($tagIds)
+            || $tags->contains(fn (Tag $tag) => $policy->attachTag($user, $photo, $tag)->denied())) {
             abort(422, 'One or more tags are invalid.');
         }
 
         $photo->tags()->syncWithoutDetaching($tagIds);
 
-        $photo->load('tags');
-
         return response()->json([
             'data' => [
                 'photo_id' => $photo->id,
-                'tags' => $photo->tags->map(fn (Tag $tag) => [
-                    'id' => $tag->id,
-                    'name' => $tag->name,
-                ]),
+                'tags' => $photo->tags()->forUserChildren($user)->get()
+                    ->map(fn (Tag $tag) => $this->formatPhotoTag($tag))
+                    ->values(),
             ],
         ]);
     }
@@ -109,8 +109,38 @@ class TagController extends Controller
     {
         Gate::authorize('view', $photo);
 
-        $photo->tags()->detach($tag->id);
+        // A tag of a child the user cannot access is left untouched (no-op).
+        if (Gate::forUser($request->user())->allows('view', $tag)) {
+            $photo->tags()->detach($tag->id);
+        }
 
         return response()->json(null, 204);
+    }
+
+    /**
+     * @return array{id: int, name_encrypted: string, iv_name: string, photo_count: int, created_at: ?string}
+     */
+    private function formatTag(Tag $tag, int $photoCount): array
+    {
+        return [
+            'id' => $tag->id,
+            'name_encrypted' => $tag->name_encrypted,
+            'iv_name' => $tag->iv_name,
+            'photo_count' => $photoCount,
+            'created_at' => $tag->created_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @return array{id: int, child_id: int, name_encrypted: string, iv_name: string}
+     */
+    private function formatPhotoTag(Tag $tag): array
+    {
+        return [
+            'id' => $tag->id,
+            'child_id' => $tag->child_id,
+            'name_encrypted' => $tag->name_encrypted,
+            'iv_name' => $tag->iv_name,
+        ];
     }
 }

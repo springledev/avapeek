@@ -44,7 +44,6 @@ function completePayload(Child $child, array $overrides = []): array
         'iv_thumbnail' => bin2hex(random_bytes(16)),
         'original_mime' => 'image/jpeg',
         'size_bytes' => 900,
-        'tags' => ['beach'],
         'children' => json_encode([$child->id => [
             'encrypted_pek' => bin2hex(random_bytes(32)),
             'iv_pek' => bin2hex(random_bytes(16)),
@@ -166,9 +165,10 @@ describe('complete upload', function () {
     it('creates the photo, wraps, tags and usage, and deletes the intent', function () {
         [$user, $child, $disk] = directUploadSetup();
         $intent = openIntent($this, $user, $disk);
+        $tag = Tag::factory()->create(['child_id' => $child->id, 'created_by' => $user->id]);
 
         $response = $this->actingAs($user, 'sanctum')
-            ->postJson("/api/photos/{$intent->uuid}/complete", $payload = completePayload($child))
+            ->postJson("/api/photos/{$intent->uuid}/complete", $payload = completePayload($child, ['tag_ids' => [$tag->id]]))
             ->assertCreated();
 
         $photo = Photo::firstOrFail();
@@ -176,7 +176,7 @@ describe('complete upload', function () {
             ->and((int) $photo->stored_bytes)->toBe(1100)
             ->and($photo->iv_original)->toBe($payload['iv'])
             ->and($photo->children()->count())->toBe(1)
-            ->and($photo->tags()->pluck('name')->all())->toBe(['beach'])
+            ->and($photo->tags()->pluck('tags.id')->all())->toBe([$tag->id])
             ->and((int) StorageUsage::global()->used_bytes)->toBe(1100)
             ->and(UploadIntent::count())->toBe(0);
         $disk->assertExists($intent->original_path);
@@ -321,7 +321,7 @@ describe('complete upload', function () {
         [$user, $child, $disk] = directUploadSetup();
         $intent = openIntent($this, $user, $disk);
 
-        Tag::creating(function () {
+        Photo::created(function () {
             throw new RuntimeException('forced failure');
         });
         $this->withoutExceptionHandling();
@@ -478,12 +478,42 @@ describe('pending intent cap', function () {
     });
 });
 
+describe('complete upload tags', function () {
+    it('rejects an unknown tag, a foreign tag and a tag of an unlinked child with the same 422', function () {
+        [$user, $child, $disk] = directUploadSetup();
+        $otherChild = Child::factory()->create(['created_by' => $user->id]);
+        ChildUser::create(['child_id' => $otherChild->id, 'user_id' => $user->id, 'role' => 'owner']);
+        $foreign = Tag::factory()->create();
+        $unlinked = Tag::factory()->create(['child_id' => $otherChild->id]);
+
+        foreach ([99999, $foreign->id, $unlinked->id] as $tagId) {
+            $intent = openIntent($this, $user, $disk);
+            $this->actingAs($user, 'sanctum')
+                ->postJson("/api/photos/{$intent->uuid}/complete", completePayload($child, ['tag_ids' => [$tagId]]))
+                ->assertStatus(422)
+                ->assertJsonPath('message', 'One or more tags are invalid.');
+        }
+
+        expect(Photo::count())->toBe(0);
+    });
+
+    it('rejects the old plaintext tags field', function () {
+        [$user, $child, $disk] = directUploadSetup();
+        $intent = openIntent($this, $user, $disk);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/photos/{$intent->uuid}/complete", completePayload($child, ['tags' => ['beach']]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['tags']);
+    });
+});
+
 describe('locked failure cleanup and pruning', function () {
     it('keeps blobs when a parallel complete commits a photo between the failure and its cleanup', function () {
         [$user, $child, $disk] = directUploadSetup();
         $intent = openIntent($this, $user, $disk);
 
-        Tag::creating(function () {
+        Photo::created(function () {
             throw new RuntimeException('forced failure');
         });
         // Interleaving: right after our transaction rolls back, a parallel request commits a photo.

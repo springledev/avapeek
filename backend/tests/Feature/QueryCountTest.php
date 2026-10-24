@@ -4,6 +4,7 @@ use App\Models\Child;
 use App\Models\ChildUser;
 use App\Models\Comment;
 use App\Models\Photo;
+use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -127,5 +128,23 @@ describe('query count regressions', function () {
             ->patchJson("/api/photos/{$photo->id}", ['taken_at' => '2024-05-01'])
             ->assertOk()
             ->assertJsonPath('data.comment_count', 2);
+    });
+
+    it('keeps GET /api/photos query count independent of the number of tags', function () {
+        [$user, [$child]] = childrenFixture(1);
+        $photo = $child->photos()->firstOrFail();
+        $photo->tags()->attach(Tag::factory()->create(['child_id' => $child->id])->id);
+
+        $this->actingAs($user, 'sanctum')->getJson('/api/photos')->assertOk();
+        $withOneTag = countQueries(fn () => $this->actingAs($user, 'sanctum')->getJson('/api/photos')->assertOk());
+
+        $photo->tags()->attach(Tag::factory()->count(5)->create(['child_id' => $child->id])->pluck('id')->all());
+        $extra = Photo::factory()->create(['uploaded_by' => $user->id]);
+        $extra->children()->attach($child->id, ['encrypted_pek' => 'a', 'iv_pek' => 'b']);
+        $extra->tags()->attach($photo->tags()->pluck('tags.id')->all());
+
+        $withManyTags = countQueries(fn () => $this->actingAs($user, 'sanctum')->getJson('/api/photos')->assertOk());
+
+        expect($withManyTags)->toBe($withOneTag);
     });
 });

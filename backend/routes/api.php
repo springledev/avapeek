@@ -79,9 +79,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/recents', [PhotoController::class, 'recents']);
     Route::get('/recents/unseen-count', [PhotoController::class, 'unseenCount']);
 
-    // Global tags
-    Route::get('/tags', [TagController::class, 'globalIndex']);
-    Route::post('/tags', [TagController::class, 'store']);
+    // Tags (per child, names are client-encrypted)
     Route::delete('/tags/{tag}', [TagController::class, 'destroy']);
 
     // Photo-Tag management
@@ -98,6 +96,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/children/{child}', [ChildController::class, 'show']);
         Route::put('/children/{child}', [ChildController::class, 'update']);
         Route::delete('/children/{child}', [ChildController::class, 'destroy']);
+
+        // Tags (ciphertext names only)
+        Route::get('/children/{child}/tags', [TagController::class, 'index']);
+        Route::post('/children/{child}/tags', [TagController::class, 'store'])->middleware('throttle:tags');
 
         // Invites (admin only)
         Route::middleware('child.admin')->group(function () {
