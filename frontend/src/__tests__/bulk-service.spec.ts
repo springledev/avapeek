@@ -220,6 +220,26 @@ describe('tags', () => {
     expect(p2.tags).toEqual([])
   })
 
+  it('reports photos needing more than 20 tags as skipped instead of truncating', async () => {
+    dekFor.set(1, 'dek1')
+    let next = 0
+    findOrCreate.mockImplementation(async (childId) => ({
+      id: ++next,
+      child_id: childId,
+      name: 'n',
+      name_encrypted: 'e',
+      iv_name: 'i',
+      photo_count: 0,
+    }))
+    const names = Array.from({ length: 21 }, (_, i) => `tag${i}`)
+
+    // 21 names for a single kid is 21 tag ids on one photo, over the server limit.
+    const summary = await tagPhotos([photo(1, [1])], names)
+    expect(post).not.toHaveBeenCalled()
+    expect(summary.skipped).toEqual([1])
+    expect(summary.updated).toEqual([])
+  })
+
   it('surfaces a tag cap failure before attaching anything', async () => {
     dekFor.set(1, 'dek1')
     findOrCreate.mockRejectedValue(Object.assign(new Error('cap'), { response: { status: 422 } }))

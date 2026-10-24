@@ -7,9 +7,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 
 /**
  * Strict standard-base64 string that decodes to exactly the given number of bytes
- * and is in canonical form (no whitespace, no stray padding bits). A string made only of hex
- * digits is rejected: a hex wrap of the right length is also valid base64 but is never what
- * the client produces (the odds of a random wrap being all-hex are negligible).
+ * and is in canonical form (no whitespace, no stray padding bits).
  */
 class Base64Bytes implements ValidationRule
 {
@@ -21,7 +19,6 @@ class Base64Bytes implements ValidationRule
 
         if (! is_string($value)
             || strlen($value) !== $expectedLength
-            || ctype_xdigit($value)
             || preg_match('/^[A-Za-z0-9+\/]*={0,2}$/', $value) !== 1) {
             $fail('The :attribute field is malformed.');
 

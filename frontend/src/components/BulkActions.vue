@@ -115,7 +115,9 @@ async function confirmRemove() {
       )
     }
     reportStopped(done, summary.notProcessed, summary.cancelled, summary.error)
-    emit('removed', summary.deleted, summary.detached.length)
+    // A cancelled or failed batch may already be committed server-side: count it as
+    // "unknown" so the parent refetches instead of trusting the local list.
+    emit('removed', summary.deleted, summary.detached.length + summary.notProcessed)
     emit('clear')
   } finally {
     endProgress()
@@ -200,9 +202,13 @@ async function shareTo(childId: number) {
         { id: target.id, name: target.name, avatar_color: target.avatar_color, ...wrap },
       ]
     }
-    toast.success(
-      MSG.bulkShared(summary.shared.length, summary.skipped.length, summary.unwrappable.length),
+    const sharedMessage = MSG.bulkShared(
+      summary.shared.length,
+      summary.skipped.length,
+      summary.unwrappable.length,
     )
+    if (summary.shared.length > 0) toast.success(sharedMessage)
+    else toast.warning(sharedMessage)
     reportStopped(
       summary.shared.length + summary.skipped.length + summary.unwrappable.length,
       summary.notProcessed,
