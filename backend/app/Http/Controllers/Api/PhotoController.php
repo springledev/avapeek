@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Child;
 use App\Models\Photo;
 use App\Models\Tag;
+use App\Policies\PhotoPolicy;
 use App\Services\QuotaService;
 use App\Services\StorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 
 class PhotoController extends Controller
@@ -193,13 +196,7 @@ class PhotoController extends Controller
 
     public function show(Request $request, Photo $photo): JsonResponse
     {
-        $user = $request->user();
-        $accessibleChildIds = $user->children()->pluck('children.id');
-
-        $photoChildIds = $photo->children()->pluck('children.id');
-        if ($photoChildIds->intersect($accessibleChildIds)->isEmpty()) {
-            abort(403, 'You do not have access to this photo.');
-        }
+        Gate::authorize('view', $photo);
 
         $photo->load(['tags', 'children' => function ($q) {
             $q->select('children.id', 'children.name', 'children.avatar_color');
@@ -219,13 +216,7 @@ class PhotoController extends Controller
 
     public function thumbnail(Request $request, Photo $photo): JsonResponse
     {
-        $user = $request->user();
-        $accessibleChildIds = $user->children()->pluck('children.id');
-
-        $photoChildIds = $photo->children()->pluck('children.id');
-        if ($photoChildIds->intersect($accessibleChildIds)->isEmpty()) {
-            abort(403, 'You do not have access to this photo.');
-        }
+        Gate::authorize('view', $photo);
 
         $url = $this->storageService->presignedUrl($photo->thumbnail_path, 10);
 
@@ -238,70 +229,55 @@ class PhotoController extends Controller
 
     public function destroy(Request $request, Photo $photo): JsonResponse
     {
-        $user = $request->user();
-        $accessibleChildIds = $user->children()->pluck('children.id');
+        $paths = null;
 
-        $photoChildIds = $photo->children()->pluck('children.id');
-        if ($photoChildIds->intersect($accessibleChildIds)->isEmpty()) {
-            abort(403, 'You do not have access to this photo.');
-        }
+        DB::transaction(function () use ($request, $photo, &$paths) {
+            $photo = Photo::whereKey($photo->id)->lockForUpdate()->firstOrFail();
 
-        $role = null;
-        $childWithAccess = $user->children()
-            ->whereIn('children.id', $photoChildIds)
-            ->first();
-        if ($childWithAccess) {
-            $role = $childWithAccess->pivot->role;
-        }
+            Gate::authorize('delete', $photo);
 
-        if (! in_array($role, ['owner', 'admin'], true) && $photo->uploaded_by !== $user->id) {
-            return response()->json(['message' => 'You do not have permission to delete this photo.'], 403);
-        }
+            $photo->children()->detach(
+                app(PhotoPolicy::class)->administrableChildIds($request->user(), $photo)->all()
+            );
 
-        $paths = [$photo->original_path, $photo->thumbnail_path];
-
-        $totalBytes = 0;
-        foreach ($paths as $path) {
-            try {
-                $size = Storage::disk('s3')->size($path);
-                if ($size !== false) {
-                    $totalBytes += $size;
-                }
-            } catch (\Throwable) {
-                // File may not exist on S3; skip size calculation
+            if ($photo->children()->exists()) {
+                return;
             }
+
+            $paths = [$photo->original_path, $photo->thumbnail_path];
+
+            $totalBytes = 0;
+            foreach ($paths as $path) {
+                try {
+                    $size = Storage::disk('s3')->size($path);
+                    if ($size !== false) {
+                        $totalBytes += $size;
+                    }
+                } catch (\Throwable) {
+                    // File may not exist on S3; skip size calculation
+                }
+            }
+
+            $this->quotaService->removeUsage($totalBytes);
+
+            $photo->delete();
+        });
+
+        if ($paths === null) {
+            return response()->json([
+                'message' => 'Removed from your children.',
+                'remaining' => true,
+            ]);
         }
 
         $this->storageService->deleteMultiple($paths);
-
-        $this->quotaService->removeUsage($totalBytes);
-
-        $photo->delete();
 
         return response()->json(null, 204);
     }
 
     public function update(Request $request, Photo $photo): JsonResponse
     {
-        $user = $request->user();
-        $accessibleChildIds = $user->children()->pluck('children.id');
-
-        $photoChildIds = $photo->children()->pluck('children.id');
-        if ($photoChildIds->intersect($accessibleChildIds)->isEmpty()) {
-            abort(403, 'You do not have access to this photo.');
-        }
-
-        $role = null;
-        $childWithAccess = $user->children()
-            ->whereIn('children.id', $photoChildIds)
-            ->first();
-        if ($childWithAccess) {
-            $role = $childWithAccess->pivot->role;
-        }
-
-        if (! in_array($role, ['owner', 'admin'], true) && $photo->uploaded_by !== $user->id) {
-            return response()->json(['message' => 'You do not have permission to edit this photo.'], 403);
-        }
+        Gate::authorize('update', $photo);
 
         $validated = $request->validate([
             'taken_at' => ['nullable', 'date'],
