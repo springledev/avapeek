@@ -129,6 +129,7 @@ class PhotoController extends Controller
         $photo->load(['tags', 'children' => function ($q) {
             $q->select('children.id', 'children.name', 'children.avatar_color');
         }]);
+        $photo->loadCount('comments');
 
         return response()->json([
             'data' => $this->formatPhoto($photo),
@@ -205,6 +206,7 @@ class PhotoController extends Controller
         }, 'uploader' => function ($q) {
             $q->select('id', 'display_name');
         }]);
+        $photo->loadCount('comments');
 
         $presignedUrl = $this->storageService->presignedUrl($photo->original_path, 10);
 
@@ -312,6 +314,7 @@ class PhotoController extends Controller
         }, 'uploader' => function ($q) {
             $q->select('id', 'display_name');
         }]);
+        $photo->loadCount('comments');
 
         return response()->json([
             'data' => $this->formatPhoto($photo),
