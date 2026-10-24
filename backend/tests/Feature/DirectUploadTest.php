@@ -7,10 +7,12 @@ use App\Models\StorageUsage;
 use App\Models\Tag;
 use App\Models\UploadIntent;
 use App\Models\User;
+use App\Services\QuotaService;
 use App\Services\StorageService;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use League\Flysystem\FilesystemOperator;
@@ -317,18 +319,21 @@ describe('complete upload', function () {
             ->assertJsonValidationErrors(['iv', 'children']);
     });
 
-    it('removes blobs and the intent and leaves usage untouched when a db step fails', function () {
+    it('rolls back photo, child_photo, photo_tags and usage, removes blobs and the intent when the last db step fails', function () {
         [$user, $child, $disk] = directUploadSetup();
         $intent = openIntent($this, $user, $disk);
+        $tag = Tag::factory()->create(['child_id' => $child->id, 'created_by' => $user->id]);
+        $reservedUsage = (int) StorageUsage::global()->used_bytes;
 
-        Photo::created(function () {
-            throw new RuntimeException('forced failure');
+        // Fires after the photo insert, the child attach and the tag sync.
+        $this->partialMock(QuotaService::class, function ($mock) {
+            $mock->shouldReceive('addUsage')->once()->andThrow(new RuntimeException('forced failure'));
         });
         $this->withoutExceptionHandling();
 
         try {
             $this->actingAs($user, 'sanctum')
-                ->postJson("/api/photos/{$intent->uuid}/complete", completePayload($child));
+                ->postJson("/api/photos/{$intent->uuid}/complete", completePayload($child, ['tag_ids' => [$tag->id]]));
             $this->fail('Expected exception');
         } catch (RuntimeException $e) {
             expect($e->getMessage())->toBe('forced failure');
@@ -336,8 +341,31 @@ describe('complete upload', function () {
 
         expect($disk->allFiles())->toBe([])
             ->and(Photo::count())->toBe(0)
+            ->and(DB::table('child_photo')->count())->toBe(0)
+            ->and(DB::table('photo_tags')->count())->toBe(0)
             ->and(UploadIntent::count())->toBe(0)
-            ->and((int) StorageUsage::global()->used_bytes)->toBe(0);
+            ->and((int) StorageUsage::global()->used_bytes)->toBe($reservedUsage);
+    });
+
+    it('answers 422, cleans blobs and the intent and persists nothing when a tag is deleted between validation and sync', function () {
+        [$user, $child, $disk] = directUploadSetup();
+        $intent = openIntent($this, $user, $disk);
+        $tag = Tag::factory()->create(['child_id' => $child->id, 'created_by' => $user->id]);
+
+        Photo::created(function () use ($tag) {
+            $tag->delete();
+        });
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/photos/{$intent->uuid}/complete", completePayload($child, ['tag_ids' => [$tag->id]]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['tag_ids']);
+
+        expect($disk->allFiles())->toBe([])
+            ->and(Photo::count())->toBe(0)
+            ->and(DB::table('child_photo')->count())->toBe(0)
+            ->and(DB::table('photo_tags')->count())->toBe(0)
+            ->and(UploadIntent::count())->toBe(0);
     });
 });
 

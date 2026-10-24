@@ -20,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class PhotoController extends Controller
@@ -30,9 +31,6 @@ class PhotoController extends Controller
     ) {}
 
     private const INTENT_MINUTES = 15;
-
-    /** @var array<int, int>|null */
-    private ?array $viewerChildIds = null;
 
     public function upload(PhotoMetadataRequest $request): JsonResponse
     {
@@ -80,7 +78,7 @@ class PhotoController extends Controller
             throw $e;
         }
 
-        return $this->createdPhotoResponse($photo);
+        return $this->createdPhotoResponse($photo, $user);
     }
 
     /**
@@ -203,7 +201,7 @@ class PhotoController extends Controller
             // Retry after a lost 201: the photo exists and is this user's, so answer idempotently.
             $existing = Photo::where('uuid', $uuid)->where('uploaded_by', $user->id)->first();
             if ($existing !== null) {
-                return $this->createdPhotoResponse($existing, 200);
+                return $this->createdPhotoResponse($existing, $user, 200);
             }
 
             abort(404);
@@ -251,7 +249,7 @@ class PhotoController extends Controller
             fn () => $intent->delete(),
         );
 
-        return $this->createdPhotoResponse($photo);
+        return $this->createdPhotoResponse($photo, $user);
     }
 
     /**
@@ -369,7 +367,18 @@ class PhotoController extends Controller
             }
 
             if (! empty($validated['tag_ids'])) {
-                $photo->tags()->sync(array_values(array_unique($validated['tag_ids'])));
+                $tagIds = array_values(array_unique($validated['tag_ids']));
+
+                // Re-check under a share lock so a tag deleted since validation gives a 422, not an FK 500.
+                $stillValid = Tag::whereIn('id', $tagIds)
+                    ->whereIn('child_id', array_map('intval', array_keys($childrenData)))
+                    ->sharedLock()
+                    ->count();
+                if ($stillValid !== count($tagIds)) {
+                    throw ValidationException::withMessages(['tag_ids' => 'One or more tags are invalid.']);
+                }
+
+                $photo->tags()->sync($tagIds);
             }
 
             $this->quotaService->addUsage($totalBytes);
@@ -382,7 +391,7 @@ class PhotoController extends Controller
         });
     }
 
-    private function createdPhotoResponse(Photo $photo, int $status = 201): JsonResponse
+    private function createdPhotoResponse(Photo $photo, User $user, int $status = 201): JsonResponse
     {
         $photo->load(['tags', 'children' => function ($q) {
             $q->select('children.id', 'children.name', 'children.avatar_color');
@@ -390,7 +399,7 @@ class PhotoController extends Controller
         $photo->loadCount('comments');
 
         return response()->json([
-            'data' => $this->formatPhoto($photo),
+            'data' => $this->formatPhoto($photo, $user->children()->pluck('children.id')->all()),
         ], $status);
     }
 
@@ -417,8 +426,9 @@ class PhotoController extends Controller
             }
         }
 
-        if ($tagIdsFilter = $request->query('tag_ids')) {
-            $tagIds = array_values(array_filter(array_map('intval', explode(',', (string) $tagIdsFilter))));
+        // An array value (?tag_ids[]=1) is ignored rather than coerced.
+        if (is_string($tagIdsFilter = $request->query('tag_ids')) && $tagIdsFilter !== '') {
+            $tagIds = array_values(array_filter(array_map('intval', explode(',', $tagIdsFilter))));
             $query->whereHas('tags', function ($q) use ($tagIds, $accessibleChildIds) {
                 $q->whereIn('tags.id', $tagIds)->whereIn('tags.child_id', $accessibleChildIds);
             });
@@ -437,7 +447,7 @@ class PhotoController extends Controller
             ->paginate(48);
 
         return response()->json([
-            'data' => $photos->getCollection()->map(fn (Photo $photo) => array_merge($this->formatPhoto($photo), [
+            'data' => $photos->getCollection()->map(fn (Photo $photo) => array_merge($this->formatPhoto($photo, $accessibleChildIds->all()), [
                 'thumbnail_url' => $this->storageService->presignedUrl($photo->thumbnail_path, 30),
             ])),
             'meta' => [
@@ -463,7 +473,7 @@ class PhotoController extends Controller
         $presignedUrl = $this->storageService->presignedUrl($photo->original_path, 10);
 
         return response()->json([
-            'data' => array_merge($this->formatPhoto($photo), [
+            'data' => array_merge($this->formatPhoto($photo, $request->user()->children()->pluck('children.id')->all()), [
                 'presigned_url' => $presignedUrl,
             ]),
         ]);
@@ -536,7 +546,7 @@ class PhotoController extends Controller
         $photo->loadCount('comments');
 
         return response()->json([
-            'data' => $this->formatPhoto($photo),
+            'data' => $this->formatPhoto($photo, $request->user()->children()->pluck('children.id')->all()),
         ]);
     }
 
@@ -557,7 +567,7 @@ class PhotoController extends Controller
             ->paginate(30);
 
         return response()->json([
-            'data' => $photos->getCollection()->map(fn (Photo $photo) => array_merge($this->formatPhoto($photo), [
+            'data' => $photos->getCollection()->map(fn (Photo $photo) => array_merge($this->formatPhoto($photo, $accessibleChildIds->all()), [
                 'thumbnail_url' => $this->storageService->presignedUrl($photo->thumbnail_path, 30),
             ])),
             'meta' => [
@@ -615,17 +625,12 @@ class PhotoController extends Controller
     }
 
     /**
-     * Ids of the requesting user's children: only their tags may be returned,
-     * as the user cannot decrypt the names of any other child's tags.
-     *
-     * @return array<int, int>
+     * @param  array<int, int>  $viewerChildIds  the requesting user's child ids; only their tags are
+     *                                           returned, as other children's tag names are undecryptable
+     *                                           for the viewer. Passed per request: no controller state.
+     * @return array<string, mixed>
      */
-    private function viewerChildIds(): array
-    {
-        return $this->viewerChildIds ??= request()->user()->children()->pluck('children.id')->all();
-    }
-
-    private function formatPhoto(Photo $photo): array
+    private function formatPhoto(Photo $photo, array $viewerChildIds): array
     {
         return [
             'id' => $photo->id,
@@ -648,7 +653,7 @@ class PhotoController extends Controller
             'created_at' => $photo->created_at?->toISOString(),
             'comment_count' => $photo->comments_count ?? $photo->comments()->count(),
             'tags' => $photo->tags
-                ?->whereIn('child_id', $this->viewerChildIds())
+                ?->whereIn('child_id', $viewerChildIds)
                 ->map(fn (Tag $tag) => [
                     'id' => $tag->id,
                     'child_id' => $tag->child_id,
