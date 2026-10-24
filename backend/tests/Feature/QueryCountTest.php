@@ -6,6 +6,11 @@ use App\Models\Comment;
 use App\Models\Photo;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+
+beforeEach(function () {
+    Storage::fake('s3');
+});
 
 /**
  * Creates a user who owns the given number of children, each with one photo and one extra member.
