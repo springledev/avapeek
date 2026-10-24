@@ -40,6 +40,8 @@ class PhotoMetadataRequest extends FormRequest
             'height' => ['nullable', 'integer', 'min:1'],
             'exif_encrypted' => ['nullable', 'string'],
             'iv_exif' => ['nullable', 'string', 'size:32'],
+            'name_encrypted' => ['nullable', 'string', 'max:1024'],
+            'iv_name' => ['nullable', 'string', 'size:32', 'required_with:name_encrypted'],
             'taken_at' => ['nullable', 'date'],
             'lqip_encrypted' => ['nullable', 'string'],
             'iv_lqip' => ['nullable', 'string', 'size:32'],

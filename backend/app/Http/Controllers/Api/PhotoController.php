@@ -356,6 +356,8 @@ class PhotoController extends Controller
                 'height' => $validated['height'] ?? null,
                 'exif_encrypted' => $validated['exif_encrypted'] ?? null,
                 'iv_exif' => $validated['iv_exif'] ?? null,
+                'name_encrypted' => $validated['name_encrypted'] ?? null,
+                'iv_name' => $validated['iv_name'] ?? null,
                 'taken_at' => $validated['taken_at'] ?? null,
             ]);
 
@@ -646,6 +648,8 @@ class PhotoController extends Controller
             'height' => $photo->height,
             'exif_encrypted' => $photo->exif_encrypted,
             'iv_exif' => $photo->iv_exif,
+            'name_encrypted' => $photo->name_encrypted,
+            'iv_name' => $photo->iv_name,
             'taken_at' => $photo->taken_at?->toISOString(),
             'created_at' => $photo->created_at?->toISOString(),
             'comment_count' => $photo->comments_count ?? $photo->comments()->count(),
