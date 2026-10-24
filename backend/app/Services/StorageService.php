@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Storage;
+use League\Flysystem\UnableToRetrieveMetadata;
 
 class StorageService
 {
@@ -91,16 +92,22 @@ class StorageService
 
     /**
      * Size in bytes of a stored object (HEAD), or null when it does not exist.
+     * Any other storage failure (timeouts, 5xx, auth) is rethrown, never reported as missing.
      */
     public function objectSize(string $path): ?int
     {
-        try {
-            $size = Storage::disk('s3')->size($path);
-        } catch (\Throwable) {
-            return null;
-        }
+        $driver = Storage::disk('s3')->getDriver();
 
-        return $size === false ? null : (int) $size;
+        try {
+            return (int) $driver->fileSize($path);
+        } catch (UnableToRetrieveMetadata $e) {
+            // fileExists() throws on real errors and returns false only for not-found.
+            if (! $driver->fileExists($path)) {
+                return null;
+            }
+
+            throw $e;
+        }
     }
 
     /**

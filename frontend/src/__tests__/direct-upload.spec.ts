@@ -39,6 +39,7 @@ class FakeXhr {
   onload: (() => void) | null = null
   onerror: (() => void) | null = null
   onabort: (() => void) | null = null
+  aborted = false
 
   constructor() {
     FakeXhr.instances.push(this)
@@ -54,6 +55,10 @@ class FakeXhr {
     this.body = body
     const responder = FakeXhr.responders.shift() ?? ((x: FakeXhr) => x.respond(200))
     queueMicrotask(() => responder(this))
+  }
+  abort() {
+    this.aborted = true
+    this.onabort?.()
   }
   respond(status: number) {
     this.status = status
@@ -253,12 +258,26 @@ describe('direct upload transport', () => {
       expect(FakeXhr.instances).toHaveLength(2)
     })
 
-    it('requests a new intent when the PUT answers 403 (expired) and re-PUTs the same blobs', async () => {
-      vi.mocked(api.post).mockResolvedValueOnce(intent('old')).mockResolvedValueOnce(intent('new'))
+    it('renews the intent on a 403 only after it expired, and re-PUTs the same blobs', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.mocked(api.post)
+        .mockResolvedValueOnce(intent('old', 120_000))
+        .mockResolvedValueOnce(intent('new'))
       const origSend = FakeXhr.prototype.send
+      let jumped = false
       FakeXhr.prototype.send = function (this: FakeXhr, body: unknown) {
         this.body = body
-        queueMicrotask(() => this.respond(this.url.includes('/old') ? 403 : 200))
+        queueMicrotask(() => {
+          if (this.url.includes('/old')) {
+            if (!jumped) {
+              jumped = true
+              vi.setSystemTime(Date.now() + 10 * 60_000) // the intent runs out while PUTting
+            }
+            this.respond(403)
+          } else {
+            this.respond(200)
+          }
+        })
       }
       const original = blob(10)
 
@@ -268,6 +287,38 @@ describe('direct upload transport', () => {
         expect(api.post).toHaveBeenCalledTimes(2)
         const newOriginalPut = FakeXhr.instances.find((x) => x.url === 'https://s3.test/new.jpg.enc')
         expect(newOriginalPut?.body).toBe(original)
+      } finally {
+        FakeXhr.prototype.send = origSend
+        vi.useRealTimers()
+      }
+    })
+
+    it('fails immediately on a 403 while the intent is still valid (no renewal)', async () => {
+      vi.mocked(api.post).mockResolvedValue(intent('valid'))
+      FakeXhr.responders.push((x) => x.respond(403), (x) => x.respond(403))
+
+      await expect(
+        uploadEncryptedBlobs('image/jpeg', blob(10), blob(5), { backoffMs: 0 }),
+      ).rejects.toMatchObject({ status: 403 })
+      expect(api.post).toHaveBeenCalledTimes(1)
+    })
+
+    it('aborts the other in-flight PUT when one blob fails', async () => {
+      vi.mocked(api.post).mockResolvedValueOnce(intent('u1'))
+      const origSend = FakeXhr.prototype.send
+      FakeXhr.prototype.send = function (this: FakeXhr, body: unknown) {
+        this.body = body
+        // thumbnail never answers; original fails hard
+        if (!this.url.includes('_thumb')) queueMicrotask(() => this.respond(400))
+      }
+
+      try {
+        await expect(
+          uploadEncryptedBlobs('image/jpeg', blob(10), blob(5), { backoffMs: 0 }),
+        ).rejects.toMatchObject({ status: 400 })
+        const thumb = FakeXhr.instances.find((x) => x.url.includes('_thumb'))!
+        expect(thumb.aborted).toBe(true)
+        expect(FakeXhr.instances).toHaveLength(2)
       } finally {
         FakeXhr.prototype.send = origSend
       }
@@ -292,6 +343,33 @@ describe('direct upload transport', () => {
 
       expect(api.post).toHaveBeenCalledTimes(1)
       expect(FakeXhr.instances).toHaveLength(0)
+    })
+  })
+
+  describe('completeUpload retries', () => {
+    it('retries 5xx and network errors, then succeeds', async () => {
+      vi.mocked(api.post)
+        .mockRejectedValueOnce({ response: { status: 503 } })
+        .mockRejectedValueOnce(new Error('Network Error'))
+        .mockResolvedValueOnce({ data: {} })
+
+      await completeUpload('u1', new FormData(), { backoffMs: 0 })
+
+      expect(api.post).toHaveBeenCalledTimes(3)
+    })
+
+    it('gives up after 3 attempts', async () => {
+      vi.mocked(api.post).mockRejectedValue({ response: { status: 500 } })
+
+      await expect(completeUpload('u1', new FormData(), { backoffMs: 0 })).rejects.toBeDefined()
+      expect(api.post).toHaveBeenCalledTimes(3)
+    })
+
+    it('does not retry a 422 or 404', async () => {
+      vi.mocked(api.post).mockRejectedValue({ response: { status: 422 } })
+
+      await expect(completeUpload('u1', new FormData(), { backoffMs: 0 })).rejects.toBeDefined()
+      expect(api.post).toHaveBeenCalledTimes(1)
     })
   })
 
