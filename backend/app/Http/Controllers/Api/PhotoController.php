@@ -370,11 +370,8 @@ class PhotoController extends Controller
                 $tagIds = array_values(array_unique($validated['tag_ids']));
 
                 // Re-check under a share lock so a tag deleted since validation gives a 422, not an FK 500.
-                $stillValid = Tag::whereIn('id', $tagIds)
-                    ->whereIn('child_id', array_map('intval', array_keys($childrenData)))
-                    ->sharedLock()
-                    ->count();
-                if ($stillValid !== count($tagIds)) {
+                $lockedIds = Tag::lockedLinkableIdsQuery($tagIds, array_map('intval', array_keys($childrenData)))->pluck('id');
+                if ($lockedIds->unique()->count() !== count($tagIds)) {
                     throw ValidationException::withMessages(['tag_ids' => 'One or more tags are invalid.']);
                 }
 

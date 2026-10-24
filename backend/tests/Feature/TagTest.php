@@ -5,6 +5,7 @@ use App\Models\ChildUser;
 use App\Models\Photo;
 use App\Models\Tag;
 use App\Models\User;
+use Illuminate\Database\Query\Grammars\PostgresGrammar;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -45,6 +46,15 @@ function tagEnvelope(array $overrides = []): array
 }
 
 describe('tag storage', function () {
+    it('compiles the locked tag recheck for PostgreSQL as a row select with for share and no aggregate', function () {
+        $query = Tag::lockedLinkableIdsQuery([1, 2], [3])->getQuery();
+        $query->grammar = new PostgresGrammar($query->getConnection());
+
+        $sql = strtolower($query->toSql());
+
+        expect($sql)->toContain('for share')->and($sql)->not->toContain('count(');
+    });
+
     it('has no plaintext name column', function () {
         expect(Schema::hasColumn('tags', 'name'))->toBeFalse()
             ->and(Schema::hasColumns('tags', ['child_id', 'created_by', 'name_encrypted', 'iv_name']))->toBeTrue();
