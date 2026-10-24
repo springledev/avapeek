@@ -118,6 +118,16 @@ describe('services/push', () => {
     expect(isPushEnabledOnDevice()).toBe(false)
   })
 
+  it('still unsubscribes in the browser when the server DELETE fails', async () => {
+    const existing = fakeSubscription()
+    installBrowser(existing)
+    mocked.delete.mockRejectedValueOnce({ response: { status: 500 } })
+
+    await expect(unsubscribe()).rejects.toBeDefined()
+
+    expect(existing.unsubscribe).toHaveBeenCalled()
+  })
+
   it('treats a 404 on server unsubscribe as already removed', async () => {
     const existing = fakeSubscription()
     installBrowser(existing)

@@ -124,8 +124,10 @@ export async function unsubscribe(): Promise<void> {
   } catch (err) {
     const status = (err as { response?: { status?: number } }).response?.status
     if (status !== 404) throw err
+  } finally {
+    // Always drop the browser subscription, even when the server call failed.
+    await subscription.unsubscribe().catch(() => false)
   }
-  await subscription.unsubscribe()
 }
 
 /** True when this browser already holds a push subscription. */
