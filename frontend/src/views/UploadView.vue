@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { extractTakenAt } from '@/lib/exif/takenAt'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChildStore } from '@/stores/child'
@@ -113,6 +114,10 @@ async function startUpload(files: File[], childIds: number[]) {
       formData.append('width', String(bitmap.width))
       formData.append('height', String(bitmap.height))
       formData.append('children', JSON.stringify(children))
+      const takenAt = await extractTakenAt(f)
+      if (takenAt) {
+        formData.append('taken_at', takenAt)
+      }
 
       await api.post('/photos/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
