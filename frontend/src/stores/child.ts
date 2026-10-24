@@ -3,7 +3,13 @@ import { ref, computed } from 'vue'
 import { api } from '@/services/api'
 import { apiErrorMessage } from '@/lib/util'
 import { useAuthStore } from '@/stores/auth'
-import { generateDEK, wrapDEK, unwrapDEK, importPublicKey, rewrapDEKForPublicKey } from '@/crypto/keychain'
+import {
+  generateDEK,
+  wrapDEK,
+  unwrapDEK,
+  importPublicKey,
+  rewrapDEKForPublicKey,
+} from '@/crypto/keychain'
 import type { Child, ChildDetail, InviteResponse } from '@/types/child'
 import type { EncryptionKey } from '@/types/auth'
 
@@ -14,6 +20,9 @@ export const useChildStore = defineStore('child', () => {
   const deks = ref<Map<number, CryptoKey>>(new Map())
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  const childrenLoaded = ref(false)
+  /** A child created on the server whose encryption key POST failed. */
+  const keyPendingChild = ref<Child | null>(null)
 
   const currentChild = computed(() => {
     if (!currentChildId.value) return null
@@ -85,6 +94,7 @@ export const useChildStore = defineStore('child', () => {
     try {
       const response = await api.get<{ data: Child[] }>('/children')
       children.value = response.data.data
+      childrenLoaded.value = true
     } catch (err) {
       console.error('Failed to fetch children:', err)
       error.value = apiErrorMessage(err, 'Failed to load children.')
@@ -111,6 +121,38 @@ export const useChildStore = defineStore('child', () => {
     }
   }
 
+  /**
+   * Creates and registers the DEK for a child that already exists on the server.
+   * Kept separate so a failed key POST can be retried without creating a second child.
+   */
+  async function createKeyForChild(child: Child): Promise<void> {
+    const authStore = useAuthStore()
+    if (!authStore.kek) {
+      throw new Error('KEK not available. Please log in again.')
+    }
+
+    const dek = await generateDEK()
+    const wrappedDek = await wrapDEK(dek, authStore.kek)
+
+    await api.post('/encryption-keys', {
+      child_id: child.id,
+      wrapped_dek: wrappedDek,
+    })
+
+    authStore.setEncryptionKeys([
+      ...authStore.encryptionKeys,
+      {
+        child_id: child.id,
+        child_name: child.name,
+        encrypted_dek: wrappedDek,
+        wrap_type: 'kek',
+        key_version: 1,
+      },
+    ])
+
+    deks.value.set(child.id, dek)
+  }
+
   async function createChild(name: string, birthDate: string | null): Promise<Child> {
     const authStore = useAuthStore()
     if (!authStore.kek) {
@@ -119,6 +161,7 @@ export const useChildStore = defineStore('child', () => {
 
     isLoading.value = true
     error.value = null
+    keyPendingChild.value = null
 
     try {
       const response = await api.post<{ data: Child }>('/children', {
@@ -132,39 +175,117 @@ export const useChildStore = defineStore('child', () => {
         relationship: response.data.data.relationship || 'parent',
       }
 
-      const dek = await generateDEK()
-      const wrappedDek = await wrapDEK(dek, authStore.kek)
-
-      await api.post('/encryption-keys', {
-        child_id: child.id,
-        wrapped_dek: wrappedDek,
-      })
-
-      authStore.setEncryptionKeys([
-        ...authStore.encryptionKeys,
-        {
-          child_id: child.id,
-          child_name: child.name,
-          encrypted_dek: wrappedDek,
-          wrap_type: 'kek',
-          key_version: 1,
-        },
-      ])
-
-      deks.value.set(child.id, dek)
       children.value.push(child)
+
+      try {
+        await createKeyForChild(child)
+      } catch (keyErr) {
+        // The child exists server-side without a key; remember it so the caller can
+        // retry only the key step instead of creating a duplicate child.
+        keyPendingChild.value = child
+        console.error('Failed to create encryption key for child:', keyErr)
+        error.value = apiErrorMessage(
+          keyErr,
+          'The profile was created but its encryption key could not be saved. Please retry.',
+        )
+        throw keyErr
+      }
 
       return child
     } catch (err) {
-      console.error('Failed to create child:', err)
-      error.value = apiErrorMessage(err, 'Failed to create child profile.')
+      if (!keyPendingChild.value) {
+        console.error('Failed to create child:', err)
+        error.value = apiErrorMessage(err, 'Failed to create child profile.')
+      }
       throw err
     } finally {
       isLoading.value = false
     }
   }
 
-  async function createInvite(childId: number, role: string, relationship: string | null): Promise<InviteResponse> {
+  /**
+   * Re-runs only the key creation for a child whose key POST failed.
+   */
+  async function retryKeySetup(): Promise<Child> {
+    const child = keyPendingChild.value
+    if (!child) {
+      throw new Error('No child is waiting for key setup.')
+    }
+
+    isLoading.value = true
+    error.value = null
+
+    try {
+      await createKeyForChild(child)
+      keyPendingChild.value = null
+      return child
+    } catch (err) {
+      console.error('Failed to create encryption key for child:', err)
+      error.value = apiErrorMessage(
+        err,
+        'The profile was created but its encryption key could not be saved. Please retry.',
+      )
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function updateChild(
+    childId: number,
+    payload: { name: string; birthDate: string | null },
+  ): Promise<Child> {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const response = await api.put<{ data: Child }>(`/children/${childId}`, {
+        name: payload.name,
+        birth_date: payload.birthDate,
+      })
+
+      const idx = children.value.findIndex((c) => c.id === childId)
+      const updated: Child = { ...children.value[idx], ...response.data.data }
+      if (idx >= 0) children.value[idx] = updated
+
+      return updated
+    } catch (err) {
+      console.error('Failed to update child:', err)
+      error.value = apiErrorMessage(err, 'Failed to update child profile.')
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function deleteChild(childId: number): Promise<void> {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      await api.delete(`/children/${childId}`)
+
+      const authStore = useAuthStore()
+      authStore.setEncryptionKeys(authStore.encryptionKeys.filter((k) => k.child_id !== childId))
+      deks.value.delete(childId)
+      children.value = children.value.filter((c) => c.id !== childId)
+      if (currentChildId.value === childId) currentChildId.value = null
+      if (currentChildDetail.value?.id === childId) currentChildDetail.value = null
+      if (keyPendingChild.value?.id === childId) keyPendingChild.value = null
+    } catch (err) {
+      console.error('Failed to delete child:', err)
+      error.value = apiErrorMessage(err, 'Failed to delete child.')
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function createInvite(
+    childId: number,
+    role: string,
+    relationship: string | null,
+  ): Promise<InviteResponse> {
     isLoading.value = true
     error.value = null
 
@@ -188,7 +309,11 @@ export const useChildStore = defineStore('child', () => {
    * Shares a child's DEK with a member by wrapping it with their public key.
    * They re-wrap it with their own KEK the next time they open the app.
    */
-  async function grantAccess(childId: number, inviteeUserId: number, publicKeyJwk: string): Promise<void> {
+  async function grantAccess(
+    childId: number,
+    inviteeUserId: number,
+    publicKeyJwk: string,
+  ): Promise<void> {
     const authStore = useAuthStore()
     if (!authStore.kek) {
       throw new Error('KEK not available. Please log in again.')
@@ -228,6 +353,8 @@ export const useChildStore = defineStore('child', () => {
     deks,
     isLoading,
     error,
+    keyPendingChild,
+    childrenLoaded,
     currentChild,
     hasChildren,
     getDEK,
@@ -237,6 +364,9 @@ export const useChildStore = defineStore('child', () => {
     fetchChildren,
     fetchChildDetail,
     createChild,
+    retryKeySetup,
+    updateChild,
+    deleteChild,
     createInvite,
     grantAccess,
     setCurrentChild,
