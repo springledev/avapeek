@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\ChildController;
 use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\EncryptionKeysController;
 use App\Http\Controllers\Api\InviteController;
+use App\Http\Controllers\Api\MemoryController;
 use App\Http\Controllers\Api\MfaController;
 use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\Api\QuotaController;
@@ -76,6 +77,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Recents feed
     Route::get('/recents', [PhotoController::class, 'recents']);
     Route::get('/recents/unseen-count', [PhotoController::class, 'unseenCount']);
+
+    // Memories ("on this day")
+    Route::get('/memories', [MemoryController::class, 'index']);
 
     // Global tags
     Route::get('/tags', [TagController::class, 'globalIndex']);
