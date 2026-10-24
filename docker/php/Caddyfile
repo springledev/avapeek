@@ -7,11 +7,11 @@
 	root * /app/public
 	encode zstd br gzip
 
-	# Proxy MinIO bucket requests — used for presigned URLs.
-	# Override the Host header so MinIO's signature validation matches.
+	# Proxy Garage bucket requests — used for presigned URLs.
+	# Override the Host header so Garage's signature validation matches.
 	handle /photos/* {
-		reverse_proxy minio:9000 {
-			header_up Host minio:9000
+		reverse_proxy garage:3900 {
+			header_up Host garage:3900
 		}
 	}
 

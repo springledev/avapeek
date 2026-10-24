@@ -32,38 +32,42 @@ services:
       timeout: 5s
       retries: 5
 
-  # --- MinIO (S3-compatible object storage) ---
-  minio:
-    image: minio/minio:latest
-    container_name: avapeek-minio
-    command: server /data --console-address ":9001"
+  # --- Garage (self-hosted S3-compatible object storage) ---
+  garage:
+    image: dxflrs/garage:v2.4.1
+    container_name: avapeek-garage
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "3900:3900"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-${GARAGE_RPC_SECRET}}
     volumes:
-      - minio_data:/data
+      - ./docker/garage/garage.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "/garage", "status"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  # --- MinIO bucket provisioning ---
-  minio-init:
-    image: minio/mc:latest
-    container_name: avapeek-minio-init
+  # --- Garage provisioning (layout, key, bucket) — idempotent ---
+  garage-init:
+    build:
+      context: .
+      dockerfile: docker/garage/Dockerfile
+    container_name: avapeek-garage-init
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_BUCKET: photos
+    volumes:
+      - ./docker/garage/garage.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
     depends_on:
-      minio:
+      garage:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
-      mc mb --ignore-existing local/photos;
-      echo 'Bucket created';
-      "
 
   # --- Mailpit (local email catcher) ---
   mailpit:
@@ -88,7 +92,9 @@ services:
     environment:
       DB_HOST: postgres
       REDIS_HOST: redis
-      AWS_ENDPOINT: http://minio:9000
+      AWS_ENDPOINT: http://garage:3900
+      AWS_DEFAULT_REGION: garage
+      AWS_USE_PATH_STYLE_ENDPOINT: "true"
       AWS_URL: http://localhost:8000
     volumes:
       - ./backend:/app
@@ -103,12 +109,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
-        condition: service_healthy
+      garage-init:
+        condition: service_completed_successfully
 
 volumes:
   pg_data:
   redis_data:
-  minio_data:
+  garage_meta:
+  garage_data:
   storage:
   bootstrap_cache:
