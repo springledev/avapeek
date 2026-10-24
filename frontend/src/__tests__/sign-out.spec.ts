@@ -5,9 +5,10 @@ const logout = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ logout }) }))
 vi.mock('@/services/push', () => ({
   teardownPushForSignOut: vi.fn<() => Promise<void>>(),
+  setPushEnabledOnDevice: vi.fn<(enabled: boolean) => void>(),
 }))
 
-import { teardownPushForSignOut } from '@/services/push'
+import { setPushEnabledOnDevice, teardownPushForSignOut } from '@/services/push'
 import { PUSH_TEARDOWN_TIMEOUT_MS, signOut } from '@/lib/sign-out'
 
 describe('signOut', () => {
@@ -45,5 +46,23 @@ describe('signOut', () => {
 
     expect(logout).toHaveBeenCalled()
     expect(assign).toHaveBeenCalledWith('/login')
+  })
+
+  it('clears the device opt-in flag even when teardown hangs', async () => {
+    vi.mocked(teardownPushForSignOut).mockReturnValue(new Promise<void>(() => {}))
+
+    const pending = signOut()
+    await vi.advanceTimersByTimeAsync(PUSH_TEARDOWN_TIMEOUT_MS)
+    await pending
+
+    expect(setPushEnabledOnDevice).toHaveBeenCalledWith(false)
+  })
+
+  it('clears the timeout timer when teardown finishes first', async () => {
+    vi.mocked(teardownPushForSignOut).mockResolvedValue(undefined)
+
+    await signOut()
+
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

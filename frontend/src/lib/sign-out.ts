@@ -1,5 +1,5 @@
 import { useAuthStore } from '@/stores/auth'
-import { teardownPushForSignOut } from '@/services/push'
+import { setPushEnabledOnDevice, teardownPushForSignOut } from '@/services/push'
 
 /**
  * Signs out and reloads the app on the sign-in page.
@@ -13,10 +13,19 @@ export const PUSH_TEARDOWN_TIMEOUT_MS = 3000
 export async function signOut(): Promise<void> {
   // Needs the bearer token, so it must run before the session is cleared.
   // Raced against a timeout so a stalled request can never block logout.
-  await Promise.race([
-    teardownPushForSignOut(),
-    new Promise<void>((resolve) => setTimeout(resolve, PUSH_TEARDOWN_TIMEOUT_MS)),
-  ])
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      teardownPushForSignOut(),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, PUSH_TEARDOWN_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+    // Even if teardown hung, the next user on this browser must not inherit the opt-in.
+    setPushEnabledOnDevice(false)
+  }
   await useAuthStore().logout()
   window.location.assign('/login')
 }
