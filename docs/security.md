@@ -24,6 +24,7 @@ password + master_key_salt
 - **User key pair** (RSA-OAEP 2048, SHA-256). The public key is stored in the clear (`users.public_key`); the private key is stored wrapped by the KEK. It is used to hand a child's DEK to another member.
 - **DEK (Data Encryption Key)** is a random AES-256 key per child ("family"). Each member holds a copy wrapped under their own KEK (`wrap_type = kek`). While an invite is being completed, the DEK can briefly be stored wrapped with the invitee's RSA public key (`wrap_type` other than `kek`); the invitee's browser re-wraps it under its own KEK on first login.
 - **PEK (Photo Encryption Key)** is a random AES-256 key per photo. It is wrapped by the child's DEK and stored per child in the `child_photo` pivot (so a photo can be shared with several children, each wrapping the same PEK with its own DEK).
+- **Wrap format.** Every AES-GCM key wrap (private key, DEK, PEK) uses a fresh random 12-byte IV per wrap. KEK-wrapped private keys and DEKs are stored as `base64(iv || ciphertext)`; a wrapped DEK is 60 bytes (12-byte IV + 32-byte key + 16-byte tag). Older fixed-IV (48-byte) DEK wraps are not accepted. PEKs are stored as ciphertext with a separate `iv_pek` column.
 - Content (photo bytes, thumbnail, LQIP, EXIF JSON, comment text) is encrypted with AES-GCM using the PEK and a fresh random IV per object, stored alongside as `iv_*` columns.
 
 Password change re-wraps the private key and every DEK under the new KEK in the browser; the DEKs and PEKs themselves do not change, so photos stay readable.
@@ -71,7 +72,6 @@ Does **not** protect against:
 ## Known limitations
 
 - **Invites trust a server-supplied public key.** When you invite someone, your browser wraps the child's DEK with the invitee's RSA public key as returned by the server. There is no fingerprint or out-of-band verification, so a malicious server can substitute its own key and receive the DEK without modifying any JavaScript.
-- **Fixed IV for key wrapping.** DEK wrapping (`wrapDEK`, `unwrapDEK` and the rewrap helpers) uses a fixed all-zero AES-GCM IV under the same KEK, i.e. nonce reuse across a user's wrapped DEKs. This is a known issue pending a key-format version bump. (Content encryption, PEK wrapping and private-key wrapping use random IVs.)
 - **No binding of ciphertext to its photo.** AES-GCM is used without additional authenticated data (AAD) tying a ciphertext to its photo id, so the server could swap blobs between photos and the client would not detect it.
 - **No key rotation when a member is removed.** Removing a member deletes their wrapped key copies from the server, but the DEK does not change. Anyone who already downloaded ciphertext and had decrypted or cached the keys keeps the ability to read those photos, and the DEK still protects future uploads they could theoretically obtain ciphertext of. A forward-secrecy design (new DEK, re-wrap remaining PEKs client-side) is planned but not implemented. Treat removal as revoking access to the app, not as cryptographic erasure.
 - Tag names and several metadata fields are plaintext (see above). Encrypting tags is on the roadmap.
