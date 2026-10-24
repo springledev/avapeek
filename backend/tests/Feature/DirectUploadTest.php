@@ -7,9 +7,13 @@ use App\Models\StorageUsage;
 use App\Models\Tag;
 use App\Models\UploadIntent;
 use App\Models\User;
+use App\Services\StorageService;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use League\Flysystem\FilesystemOperator;
+use League\Flysystem\UnableToCheckFileExistence;
+use League\Flysystem\UnableToRetrieveMetadata;
 
 function directUploadSetup(): array
 {
@@ -356,5 +360,98 @@ describe('storage:reconcile with intents', function () {
         $disk->assertExists($intent->original_path);
         $disk->assertExists($intent->thumbnail_path);
         $disk->assertMissing($orphan);
+    });
+});
+
+describe('complete under concurrency and storage errors', function () {
+    it('never deletes blobs of a photo that a parallel complete already committed', function () {
+        [$user, $child, $disk] = directUploadSetup();
+        $intent = openIntent($this, $user, $disk);
+
+        // State a losing request sees: the winner's photo row exists for this uuid
+        // while the loser still holds the intent (it read it before the winner committed).
+        $photo = Photo::factory()->create([
+            'uuid' => $intent->uuid,
+            'uploaded_by' => $user->id,
+            'original_path' => $intent->original_path,
+            'thumbnail_path' => $intent->thumbnail_path,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/photos/{$intent->uuid}/complete", completePayload($child))
+            ->assertStatus(409);
+
+        $disk->assertExists($photo->original_path);
+        $disk->assertExists($photo->thumbnail_path);
+        expect(Photo::count())->toBe(1);
+    });
+
+    it('does not delete live blobs when discarding an intent that has a photo', function () {
+        [$user, $child, $disk] = directUploadSetup();
+        $intent = openIntent($this, $user, $disk);
+        Photo::factory()->create([
+            'uuid' => $intent->uuid,
+            'uploaded_by' => $user->id,
+            'original_path' => $intent->original_path,
+            'thumbnail_path' => $intent->thumbnail_path,
+        ]);
+        $disk->put($intent->original_path, 'tampered-size');
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/photos/{$intent->uuid}/complete", completePayload($child))
+            ->assertUnprocessable();
+
+        $disk->assertExists($intent->original_path);
+        $disk->assertExists($intent->thumbnail_path);
+    });
+
+    it('keeps blobs and intent and answers 503 on a transient storage error', function () {
+        [$user, $child, $disk] = directUploadSetup();
+        $intent = openIntent($this, $user, $disk);
+        $this->partialMock(StorageService::class, function ($mock) {
+            $mock->shouldReceive('objectSize')->andThrow(new RuntimeException('timeout'));
+        });
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/photos/{$intent->uuid}/complete", completePayload($child))
+            ->assertStatus(503);
+
+        $disk->assertExists($intent->original_path);
+        $disk->assertExists($intent->thumbnail_path);
+        expect(UploadIntent::count())->toBe(1)->and(Photo::count())->toBe(0);
+    });
+
+    it('objectSize returns null only for not-found and rethrows other errors', function () {
+        $disk = Storage::fake('s3');
+        $disk->put('photos/a', 'abc');
+        $service = app(StorageService::class);
+
+        expect($service->objectSize('photos/a'))->toBe(3)
+            ->and($service->objectSize('photos/missing'))->toBeNull();
+
+        $operator = Mockery::mock(FilesystemOperator::class);
+        $operator->shouldReceive('fileSize')->andThrow(UnableToRetrieveMetadata::fileSize('photos/a'));
+        $operator->shouldReceive('fileExists')->andThrow(UnableToCheckFileExistence::forLocation('photos/a'));
+        $mock = Mockery::mock($disk)->makePartial();
+        $mock->shouldReceive('getDriver')->andReturn($operator);
+        Storage::set('s3', $mock);
+
+        expect(fn () => $service->objectSize('photos/a'))->toThrow(UnableToCheckFileExistence::class);
+    });
+});
+
+describe('pending intent cap', function () {
+    it('returns 429 when a user has too many live intents and ignores expired ones', function () {
+        [$user] = directUploadSetup();
+        config(['avapeek.uploads.max_pending_intents' => 2]);
+        UploadIntent::factory()->expired()->create(['user_id' => $user->id]);
+        UploadIntent::factory()->count(2)->create(['user_id' => $user->id]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/photos/upload-intent', intentPayload())
+            ->assertStatus(429);
+
+        $other = User::factory()->create();
+        $this->actingAs($other, 'sanctum')->postJson('/api/photos/upload-intent', intentPayload())
+            ->assertCreated();
     });
 });

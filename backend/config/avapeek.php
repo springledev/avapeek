@@ -35,6 +35,8 @@ return [
 
     'uploads' => [
         'direct' => filter_var(env('UPLOADS_DIRECT', true), FILTER_VALIDATE_BOOLEAN),
+        // Live (unexpired) upload intents per user; stops one user reserving the whole quota.
+        'max_pending_intents' => 20,
     ],
 
 ];

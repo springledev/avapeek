@@ -151,7 +151,9 @@ export interface DirectUploadOptions {
 
 const PUT_ATTEMPTS = 3
 const MAX_INTENT_RENEWALS = 2
-const EXPIRY_MARGIN_MS = 5000
+// Treat an intent as expired this long before expires_at (client clock skew, transit).
+const EXPIRY_MARGIN_MS = 30_000
+const COMPLETE_ATTEMPTS = 3
 
 // Headers a browser refuses to set; Authorization must never reach storage.
 const FORBIDDEN_PUT_HEADERS = new Set(['host', 'content-length', 'authorization'])
@@ -196,9 +198,15 @@ export function putEncryptedBlob(
   headers: Record<string, string>,
   blob: Blob,
   onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new StoragePutError(0, 'Upload aborted'))
+      return
+    }
     const xhr = new XMLHttpRequest()
+    signal?.addEventListener('abort', () => xhr.abort(), { once: true })
     xhr.open('PUT', url)
     for (const [name, value] of Object.entries(headers)) {
       if (!FORBIDDEN_PUT_HEADERS.has(name.toLowerCase())) {
@@ -228,7 +236,7 @@ function isRetryable(error: unknown): boolean {
   return error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500
 }
 
-/** An expired (or otherwise rejected) presigned URL answers 403. */
+/** An expired presigned URL answers 403 (so can a genuine rejection; see caller). */
 function isExpiredIntent(error: unknown): boolean {
   return error instanceof StoragePutError && error.status === 403
 }
@@ -238,18 +246,43 @@ async function putWithRetry(
   blob: Blob,
   backoffMs: number,
   onProgress: (loaded: number) => void,
+  signal: AbortSignal,
 ): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
       onProgress(0)
-      await putEncryptedBlob(target.url, target.headers, blob, (loaded) => onProgress(loaded))
+      await putEncryptedBlob(
+        target.url,
+        target.headers,
+        blob,
+        (loaded) => onProgress(loaded),
+        signal,
+      )
       onProgress(blob.size)
       return
     } catch (error: unknown) {
-      if (attempt + 1 >= PUT_ATTEMPTS || !isRetryable(error)) throw error
+      if (signal.aborted || attempt + 1 >= PUT_ATTEMPTS || !isRetryable(error)) throw error
       await sleep(backoffMs * 2 ** attempt)
+      if (signal.aborted) throw error
     }
   }
+}
+
+/** Runs one blob PUT; a failure aborts the sibling request so nothing dangles. */
+async function putOrAbortSibling(
+  controller: AbortController,
+  run: () => Promise<void>,
+): Promise<void> {
+  try {
+    await run()
+  } catch (error: unknown) {
+    controller.abort()
+    throw error
+  }
+}
+
+function isIntentExpired(intent: UploadIntent): boolean {
+  return Date.parse(intent.expires_at) <= Date.now() + EXPIRY_MARGIN_MS
 }
 
 /**
@@ -285,25 +318,55 @@ export async function uploadEncryptedBlobs(
       options.onProgress?.(Math.min(1, (loaded[0]! + loaded[1]!) / totalBytes))
     }
 
+    const controller = new AbortController()
     try {
-      if (Date.parse(intent.expires_at) <= Date.now() + EXPIRY_MARGIN_MS) {
+      if (isIntentExpired(intent)) {
         throw new StoragePutError(403, 'Upload intent expired')
       }
       await Promise.all([
-        putWithRetry(intent.original, original, backoffMs, report(0)),
-        putWithRetry(intent.thumbnail, thumbnail, backoffMs, report(1)),
+        putOrAbortSibling(controller, () =>
+          putWithRetry(intent.original, original, backoffMs, report(0), controller.signal),
+        ),
+        putOrAbortSibling(controller, () =>
+          putWithRetry(intent.thumbnail, thumbnail, backoffMs, report(1), controller.signal),
+        ),
       ])
       return intent.uuid
     } catch (error: unknown) {
-      if (isExpiredIntent(error) && renewal < MAX_INTENT_RENEWALS) continue
+      // A 403 only means "expired" when the client clock agrees; otherwise it is a
+      // real rejection (permissions, CORS, signature) and renewing would just burn intents.
+      if (isExpiredIntent(error) && isIntentExpired(intent) && renewal < MAX_INTENT_RENEWALS) {
+        continue
+      }
       throw error
     }
   }
 }
 
-/** Finishes a direct upload; the server verifies the objects and creates the photo. */
-export async function completeUpload(uuid: string, metadata: FormData): Promise<void> {
-  await api.post(`/photos/${uuid}/complete`, metadata, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
+function isRetryableApiError(error: unknown): boolean {
+  const response = (error as { response?: { status?: number } })?.response
+  return !response || (response.status ?? 0) >= 500
+}
+
+/**
+ * Finishes a direct upload; the server verifies the objects and creates the photo.
+ * Retries 5xx and network errors (up to 3 attempts); the endpoint is safe to repeat.
+ */
+export async function completeUpload(
+  uuid: string,
+  metadata: FormData,
+  options: { backoffMs?: number } = {},
+): Promise<void> {
+  const backoffMs = options.backoffMs ?? 500
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await api.post(`/photos/${uuid}/complete`, metadata, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return
+    } catch (error: unknown) {
+      if (attempt + 1 >= COMPLETE_ATTEMPTS || !isRetryableApiError(error)) throw error
+      await sleep(backoffMs * 2 ** attempt)
+    }
+  }
 }

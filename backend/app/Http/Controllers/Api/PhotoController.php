@@ -20,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class PhotoController extends Controller
 {
@@ -87,6 +88,11 @@ class PhotoController extends Controller
         $validated = $request->validated();
         $user = $request->user();
 
+        $pending = UploadIntent::where('user_id', $user->id)->unexpired()->count();
+        if ($pending >= (int) config('avapeek.uploads.max_pending_intents')) {
+            return response()->json(['message' => 'Too many uploads in progress. Finish or wait for them to expire before starting more.'], 429);
+        }
+
         $uuid = (string) str()->uuid();
         [$originalPath, $thumbPath] = $this->blobPaths($uuid, $validated['original_mime']);
         $total = $validated['original_bytes'] + $validated['thumbnail_bytes'];
@@ -133,9 +139,38 @@ class PhotoController extends Controller
     {
         $user = $request->user();
 
+        try {
+            return DB::transaction(fn (): JsonResponse => $this->completeClaimed($request, $user, $uuid));
+        } catch (HttpException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            // A photo with this uuid means another request already completed the upload:
+            // its blobs are live and must never be deleted here.
+            if (Photo::where('uuid', $uuid)->exists()) {
+                Log::warning('Concurrent complete for an already completed upload', ['uuid' => $uuid]);
+
+                return response()->json(['message' => 'This upload was already completed.'], 409);
+            }
+
+            $intent = UploadIntent::where('uuid', $uuid)->where('user_id', $user->id)->first();
+            if ($intent !== null) {
+                $this->discardIntent($intent);
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Runs inside a transaction holding a row lock on the intent, so parallel
+     * completes of the same intent are serialized and only one can win.
+     */
+    private function completeClaimed(CompleteUploadRequest $request, User $user, string $uuid): JsonResponse
+    {
         $intent = UploadIntent::where('uuid', $uuid)
             ->where('user_id', $user->id)
             ->unexpired()
+            ->lockForUpdate()
             ->first();
 
         if ($intent === null) {
@@ -156,8 +191,15 @@ class PhotoController extends Controller
             return $invalid;
         }
 
-        $originalBytes = $this->storageService->objectSize($intent->original_path);
-        $thumbBytes = $this->storageService->objectSize($intent->thumbnail_path);
+        try {
+            $originalBytes = $this->storageService->objectSize($intent->original_path);
+            $thumbBytes = $this->storageService->objectSize($intent->thumbnail_path);
+        } catch (\Throwable $e) {
+            // Transient storage error: keep blobs and intent so the client can retry.
+            Log::warning('Storage HEAD failed during complete', ['uuid' => $uuid, 'error' => $e->getMessage()]);
+
+            return response()->json(['message' => 'Storage is temporarily unavailable. Please retry.'], 503);
+        }
 
         if ($originalBytes !== $intent->expected_original_bytes || $thumbBytes !== $intent->expected_thumbnail_bytes) {
             $this->discardIntent($intent);
@@ -165,17 +207,11 @@ class PhotoController extends Controller
             return response()->json(['message' => 'Uploaded objects are missing or have an unexpected size.'], 422);
         }
 
-        try {
-            $photo = $this->persistPhoto(
-                $validated, $childrenData, $user, $intent->uuid, $intent->original_path, $intent->thumbnail_path,
-                $originalBytes + $thumbBytes,
-                fn () => $intent->delete(),
-            );
-        } catch (\Throwable $e) {
-            $this->discardIntent($intent);
-
-            throw $e;
-        }
+        $photo = $this->persistPhoto(
+            $validated, $childrenData, $user, $intent->uuid, $intent->original_path, $intent->thumbnail_path,
+            $originalBytes + $thumbBytes,
+            fn () => $intent->delete(),
+        );
 
         return $this->createdPhotoResponse($photo);
     }
@@ -214,6 +250,13 @@ class PhotoController extends Controller
 
     private function discardIntent(UploadIntent $intent): void
     {
+        // Never delete blobs a live photo points at.
+        if (Photo::where('uuid', $intent->uuid)->exists()) {
+            $intent->delete();
+
+            return;
+        }
+
         $this->cleanupBlobs([$intent->original_path, $intent->thumbnail_path]);
         $intent->delete();
     }
