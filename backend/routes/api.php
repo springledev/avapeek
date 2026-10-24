@@ -94,6 +94,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Child-scoped routes
     Route::middleware('child.member')->group(function () {
         Route::get('/children/{child}', [ChildController::class, 'show']);
+        Route::put('/children/{child}', [ChildController::class, 'update']);
+        Route::delete('/children/{child}', [ChildController::class, 'destroy']);
 
         // Invites (admin only)
         Route::middleware('child.admin')->group(function () {
