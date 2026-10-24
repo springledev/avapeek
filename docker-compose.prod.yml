@@ -29,13 +29,19 @@ services:
       - backend/.env
     volumes:
       - storage:/app/storage
+      # Read-only view of Garage's data volume so STORAGE_VOLUME_PATH=/garage-data
+      # can derive the quota. Empty (harmless) when the garage profile is off.
+      - garage_data:/garage-data:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # Only present with the "garage" profile (COMPOSE_PROFILES=garage).
+      # Needs Docker Compose >= 2.20 for `required: false`.
       garage-init:
         condition: service_completed_successfully
+        required: false
     healthcheck:
       test: ["CMD", "caddy", "version"]
       interval: 30s
@@ -144,6 +150,7 @@ services:
 
   # --- Garage (self-hosted S3-compatible object storage) ---
   garage:
+    profiles: ["garage"]
     image: dxflrs/garage:v2.4.1
     container_name: avapeek_garage
     restart: unless-stopped
@@ -164,6 +171,7 @@ services:
 
   # --- Garage provisioning (layout, key, bucket) — idempotent ---
   garage-init:
+    profiles: ["garage"]
     build:
       context: .
       dockerfile: docker/garage/Dockerfile

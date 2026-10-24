@@ -4,8 +4,8 @@ import { api } from '@/services/api'
 
 interface QuotaData {
   used_bytes: number
-  limit_bytes: number
-  percentage: number
+  limit_bytes: number | null
+  percentage: number | null
 }
 
 const props = withDefaults(defineProps<{
@@ -25,8 +25,10 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
+const hasLimit = computed(() => quota.value?.limit_bytes != null)
+
 function freeBytes(): number {
-  if (!quota.value) return 0
+  if (!quota.value || quota.value.limit_bytes == null) return 0
   return quota.value.limit_bytes - quota.value.used_bytes
 }
 
@@ -66,15 +68,19 @@ defineExpose({ refresh: fetchQuota })
   <div v-if="quota" class="rounded-lg border border-gray-200 bg-white p-3 dark:border-slate-600 dark:bg-slate-800">
     <div class="mb-1.5 flex items-center justify-between text-xs">
       <span class="text-slate-500 dark:text-slate-400">
-        {{ formatBytes(quota.used_bytes) }} / {{ formatBytes(quota.limit_bytes) }}
+        <template v-if="hasLimit">{{ formatBytes(quota.used_bytes) }} / {{ formatBytes(quota.limit_bytes!) }}</template>
+        <template v-else>{{ formatBytes(quota.used_bytes) }} used</template>
       </span>
       <slot name="plan-info" :usage="quota">
-        <span :class="textColorClass">
+        <span v-if="hasLimit" :class="textColorClass">
           {{ formatBytes(freeBytes()) }} free
+        </span>
+        <span v-else class="text-slate-500 dark:text-slate-400" data-testid="quota-limit-unknown">
+          Limit unknown
         </span>
       </slot>
     </div>
-    <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+    <div v-if="hasLimit" class="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
       <div
         class="h-full rounded-full transition-all duration-300"
         :class="barColorClass"

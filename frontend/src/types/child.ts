@@ -14,7 +14,7 @@ export interface Child {
   role: string
   relationship: string | null
   storage_used: number
-  storage_limit_bytes: number
+  storage_limit_bytes: number | null
   storage_percentage: number
   member_count?: number
   photo_count?: number
