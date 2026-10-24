@@ -6,7 +6,7 @@ No. Your password derives the key that unwraps your encryption keys. There is no
 
 ## I lost my database. Can I recover the photos?
 
-No. The database holds the wrapped keys; the bucket alone is unreadable ciphertext. Back up both ([backups](installation.md#backups)).
+No. The database holds the wrapped keys; the bucket alone is unreadable ciphertext. Back up both ([backups](installation.md#backups)). The scheduler makes a nightly database dump automatically; check that it reaches a destination separate from your photos ([storage](storage.md#database-backups)).
 
 ## "Registration is by invitation only"
 
