@@ -32,7 +32,7 @@ Password change re-wraps the private key and every DEK under the new KEK in the 
 
 ## What the server sees
 
-**Never plaintext:** photo and thumbnail bytes, LQIP placeholders, EXIF data (`exif_encrypted`), comment text (`body_encrypted`), the passwords' derived key, DEKs, PEKs, private keys.
+**Never plaintext:** photo and thumbnail bytes, LQIP placeholders, EXIF data (`exif_encrypted`), original filenames (`name_encrypted`, PEK), comment text (`body_encrypted`), the passwords' derived key, DEKs, PEKs, private keys.
 
 **Plaintext metadata (today):**
 
@@ -79,6 +79,8 @@ Does **not** protect against:
 - PBKDF2 rather than a memory-hard function (the source notes an Argon2id upgrade as a possibility).
 - Presigned download URLs are short-lived bearer links; anyone holding one can fetch that ciphertext until it expires. The ciphertext is useless without the key.
 - Presigned upload (PUT) URLs are short-lived (15 minute) bearer **write** links to one server-chosen key. They are not size-limited by the signature; the server checks the object size on completion, deletes mismatches, and prunes unused slots. Until a URL expires, its holder (the uploading user) could overwrite their own just-completed blob; AES-GCM makes such tampering detectable on decrypt, and keys are per-upload so it cannot touch another user's data.
+- **Exports put plaintext on your disk.** "Download all photos" (child settings) and the single-photo download save decrypted originals, and the export adds a `manifest.json` that can contain GPS EXIF, comments with author names and tag names. Avapeek cannot protect those files afterwards. Decryption and zip assembly happen only in the browser; nothing about the export is sent back to the server, and the export listing endpoints return ciphertext only (the requested child's wrapped PEK and tags). The export deliberately bypasses the decrypted cache (IndexedDB `avapeek-decrypted`), so nothing it decrypts persists in the browser after the tab closes. Any member of a child can export it; the listing endpoints are rate limited (30 requests per minute per user) and membership-scoped. Browsers without the File System Access API buffer each zip part in memory before saving it.
+- The original filename is stored encrypted with the photo key (`photos.name_encrypted` + `iv_name`); photos uploaded before this field existed have none and get a generated name on download. The proxy upload sends the file under a neutral part name, so the real name is not visible in the multipart body.
 - No audit log, no admin recovery of any kind.
 
 ## Password loss

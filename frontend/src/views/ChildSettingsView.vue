@@ -8,6 +8,7 @@ import { toast } from 'vue-sonner'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiSheet from '@/components/ui/UiSheet.vue'
+import ChildExportSheet from '@/components/ChildExportSheet.vue'
 import { apiErrorMessage, firstValidationError } from '@/lib/util'
 import type { ChildMember, InviteResponse } from '@/types/child'
 
@@ -49,6 +50,8 @@ const editBirthDate = ref('')
 const editError = ref('')
 const isSaving = ref(false)
 const today = new Date().toISOString().split('T')[0]
+
+const showExportSheet = ref(false)
 
 const showDeleteSheet = ref(false)
 const deleteConfirmName = ref('')
@@ -279,6 +282,13 @@ function formatLastActive(dateStr: string | null): string {
         <UiButton variant="accent" @click="showInviteSheet = true"> Generate invite link </UiButton>
       </div>
 
+      <div class="child-settings__section">
+        <h3 class="child-settings__section-title">Export</h3>
+        <UiButton variant="subtle" @click="showExportSheet = true">
+          Download all photos
+        </UiButton>
+      </div>
+
       <div v-if="canDelete" class="child-settings__section">
         <h3 class="child-settings__section-title">Danger zone</h3>
         <UiButton variant="danger" @click="openDeleteSheet">Delete this kid</UiButton>
@@ -306,6 +316,13 @@ function formatLastActive(dateStr: string | null): string {
   </div>
 
   <div v-else class="child-settings__not-found">Child not found.</div>
+
+  <ChildExportSheet
+    v-if="child"
+    :open="showExportSheet"
+    :child="{ id: child.id, name: child.name }"
+    @close="showExportSheet = false"
+  />
 
   <UiSheet :open="showEditSheet" title="Edit profile" @close="showEditSheet = false">
     <div v-if="editError" class="invite-sheet__error" role="alert">{{ editError }}</div>

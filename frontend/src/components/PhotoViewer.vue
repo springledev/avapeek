@@ -18,6 +18,9 @@ import {
   MoreVertical,
 } from '@lucide/vue'
 import { fetchOriginal, fetchThumbnail, getPEKForPhoto, cleanupComponent } from '@/services/storage'
+import { prepareOriginalDownload } from '@/services/export'
+import { saveBlob } from '@/lib/export/sink'
+import { toast } from 'vue-sonner'
 import { useMotionPolicy } from '@/composables/useMotionPolicy'
 import { useChildStore } from '@/stores/child'
 import { useCommentsStore, MAX_COMMENT_LENGTH } from '@/stores/comments'
@@ -190,15 +193,21 @@ function onOriginalLoad() {
   originalMotion.value = resolve(origStartTs.value)
 }
 
-function downloadImage() {
-  const url = originalUrl.value || thumbnailUrl.value
-  if (!url) return
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `photo-${props.photo.id}.${props.photo.original_mime.split('/')[1] || 'jpg'}`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
+let downloading = false
+
+async function downloadImage() {
+  if (downloading) return
+  downloading = true
+  try {
+    const pek = currentPek.value ?? (await getPEKForPhoto(props.photo.children))
+    if (!pek) throw new Error('No key for this photo')
+    const { blob, filename } = await prepareOriginalDownload(props.photo, pek)
+    saveBlob(blob, filename)
+  } catch {
+    toast.error(MSG.downloadFailed)
+  } finally {
+    downloading = false
+  }
 }
 
 function zoomIn() {
@@ -465,7 +474,7 @@ function retryLoadComments() {
 
 function menuDownload() {
   showMenu.value = false
-  downloadImage()
+  void downloadImage()
 }
 
 function menuEdit() {

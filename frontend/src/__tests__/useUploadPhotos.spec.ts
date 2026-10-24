@@ -41,6 +41,10 @@ vi.mock('@/crypto/encrypt', () => ({
     encrypted: new ArrayBuffer(4),
     iv: 'iv-b64',
   })),
+  encryptString: vi.fn<(text: string, key: CryptoKey) => Promise<unknown>>(async (text: string) => ({
+    encrypted: `enc(${text})`,
+    iv: 'iv-name',
+  })),
 }))
 
 vi.mock('@/crypto/heic', () => ({
@@ -116,6 +120,9 @@ describe('useUploadPhotos', () => {
     expect(body.has('thumbnail')).toBe(false)
     expect(body.get('iv')).toBe('iv-b64')
     expect(body.get('iv_thumbnail')).toBe('iv-b64')
+    expect(body.get('name_encrypted')).toBe('enc(a.jpg)')
+    expect(body.get('iv_name')).toBe('iv-name')
+    expect(JSON.stringify([...body.entries()])).not.toContain('"a.jpg"')
     expect(JSON.parse(body.get('children') as string)).toEqual({
       5: { encrypted_pek: 'wrapped', iv_pek: 'iv' },
     })
@@ -144,6 +151,9 @@ describe('useUploadPhotos', () => {
     expect(url).toBe('/photos/upload')
     expect(body.get('file')).toBeInstanceOf(Blob)
     expect(body.get('thumbnail')).toBeInstanceOf(Blob)
+    expect(body.get('name_encrypted')).toBe('enc(a.jpg)')
+    expect(body.get('iv_name')).toBe('iv-name')
+    expect((body.get('file') as File).name).toBe('original.enc')
   })
 
   it('uploads every file with only encrypted fields and reports success', async () => {

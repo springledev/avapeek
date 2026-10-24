@@ -38,6 +38,9 @@ export interface Photo {
   height: number | null
   exif_encrypted: string | null
   iv_exif: string | null
+  /** Original filename, encrypted with the PEK; null for photos uploaded before names were stored. */
+  name_encrypted?: string | null
+  iv_name?: string | null
   taken_at: string | null
   created_at: string
   tags: PhotoTag[]
