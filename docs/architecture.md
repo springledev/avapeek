@@ -54,6 +54,15 @@ Uploads therefore bypass PHP; expired, unused slots are removed by `uploads:prun
 2. The browser fetches each ciphertext original, decrypts it, and streams it into a store-only zip (`client-zip`, Zip64-capable) together with `manifest.json`. With the File System Access API the zip streams to disk; otherwise it is split into parts (400 MB on mobile, 1.5 GB on desktop) saved as separate downloads. Expired URLs are refreshed once through `GET /api/photos/{id}`.
 3. The single-photo download uses the same helper (`src/services/export.ts`) and saves the original bytes with the decrypted original filename, or `avapeek-{date}-{id}.{ext}` when none was stored.
 
+## Bulk actions
+
+Photos in the feed and Recents can be multi-selected (long press on touch, or the Select button) for download, tagging, sharing to another kid, and removal. The three write endpoints sit before the `{photo}` routes and are limited to 100 ids per request; the client batches sequentially and can cancel between batches.
+
+- `POST /api/photos/bulk-delete` runs the same detach-or-delete logic as the single delete (`PhotoRemovalService`): it removes the photo from the kids the user administers, and deletes the row, usage and blobs (after commit) only when no kid links it any more. The response buckets ids as `deleted`, `detached` and `forbidden` (visible but not removable); unknown and invisible ids are omitted.
+- `POST /api/photos/bulk-tags` takes `{assignments: [{photo_id, tag_ids}]}`. The client picks, per photo, one tag per linked kid (creating missing per-kid tags first); the server authorizes each pair with `PhotoPolicy::attachTag` and attaches all of a photo's tags or none (`updated` / `skipped`).
+- `POST /api/photos/share` links photos into another kid. For each photo the browser unwraps the photo key with a kid key it holds and re-wraps it under the target kid's key (`rewrapPEK`, fresh IV); only that wrap is sent. Any member of the target kid may share photos they can view into it (`PhotoPolicy::share`). Existing links are never overwritten. Tags do not carry over, since they belong to the source kid.
+- Download saves the untouched original bytes with the decrypted original name, one file at a time, through the same helpers as the single-photo download.
+
 ## Presigned URLs
 
 Both GET (downloads) and PUT (uploads) use presigned URLs.

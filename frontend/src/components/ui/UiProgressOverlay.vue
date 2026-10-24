@@ -11,9 +11,12 @@ const props = withDefaults(
     current: number
     total: number
     fileName?: string
+    cancellable?: boolean
   }>(),
-  { fileName: '' },
+  { fileName: '', cancellable: false },
 )
+
+const emit = defineEmits<{ (e: 'cancel'): void }>()
 
 const percent = computed(() =>
   props.total > 0 ? Math.round((props.current / props.total) * 100) : 0,
@@ -35,6 +38,15 @@ const percent = computed(() =>
           <div class="overlay__fill" :style="{ width: `${percent}%` }" />
         </div>
         <p v-if="fileName" class="overlay__name">{{ fileName }}</p>
+        <button
+          v-if="cancellable"
+          type="button"
+          class="overlay__cancel u-focus-ring"
+          data-test="progress-cancel"
+          @click="emit('cancel')"
+        >
+          Cancel
+        </button>
       </div>
     </div>
   </Teleport>
@@ -92,6 +104,20 @@ const percent = computed(() =>
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.overlay__cancel {
+  margin-top: var(--space-4);
+  min-height: var(--target-min);
+  padding: 0 var(--space-6);
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
+  color: var(--color-ink);
+  font-family: inherit;
+  font-size: var(--text-body);
+  font-weight: 700;
+  cursor: pointer;
 }
 
 @media (prefers-reduced-motion: reduce) {

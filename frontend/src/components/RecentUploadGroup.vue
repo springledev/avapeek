@@ -2,6 +2,9 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { fetchThumbnail, cleanupComponent, getPEKForPhoto } from '@/services/storage'
 import { dedupeTagsByName } from '@/lib/tags'
+import { LONG_PRESS_MS } from '@/composables/useSelection'
+import { MSG } from '@/lib/messages'
+import { Check } from '@lucide/vue'
 import type { Photo } from '@/types/photo'
 
 const props = defineProps<{
@@ -10,11 +13,52 @@ const props = defineProps<{
   childName: string
   childColor: string | null
   relativeTime: string
+  /** Selection mode: a tap toggles instead of opening. */
+  selecting?: boolean
+  selectedIds?: number[]
 }>()
 
 const emit = defineEmits<{
   select: [photo: Photo]
+  toggle: [photo: Photo]
+  toggleAll: []
 }>()
+
+const LONG_PRESS = LONG_PRESS_MS
+let pressTimer: ReturnType<typeof setTimeout> | null = null
+let longPressFired = false
+
+function isChosen(photo: Photo): boolean {
+  return props.selectedIds?.includes(photo.id) ?? false
+}
+
+const allChosen = computed(
+  () => props.photos.length > 0 && props.photos.every((p) => isChosen(p)),
+)
+
+function startPress(event: PointerEvent, photo: Photo) {
+  if (event.pointerType === 'mouse' || props.selecting) return
+  longPressFired = false
+  pressTimer = setTimeout(() => {
+    pressTimer = null
+    longPressFired = true
+    emit('toggle', photo)
+  }, LONG_PRESS)
+}
+
+function endPress() {
+  if (pressTimer) clearTimeout(pressTimer)
+  pressTimer = null
+}
+
+function onThumbClick(photo: Photo) {
+  if (longPressFired) {
+    longPressFired = false
+    return
+  }
+  if (props.selecting) emit('toggle', photo)
+  else emit('select', photo)
+}
 
 const thumbnails = ref<Map<number, string>>(new Map())
 const loaded = ref<Set<number>>(new Set())
@@ -76,6 +120,16 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <button
+      v-if="selecting"
+      type="button"
+      class="group__select u-focus-ring"
+      data-test="select-group"
+      @click="emit('toggleAll')"
+    >
+      {{ allChosen ? MSG.deselectAllIn('this group') : MSG.selectAllIn('this group') }}
+    </button>
+
     <div v-if="tags.length > 0" class="group__tags">
       <span
         v-for="tag in tags"
@@ -90,9 +144,24 @@ onBeforeUnmount(() => {
       <button
         v-for="photo in displayThumbnails"
         :key="photo.id"
-        @click="emit('select', photo)"
+        :class="{ 'group__thumb--selected': isChosen(photo) }"
+        :aria-pressed="selecting ? isChosen(photo) : undefined"
         class="group__thumb u-focus-ring"
+        @click="onThumbClick(photo)"
+        @pointerdown="startPress($event, photo)"
+        @pointerup="endPress"
+        @pointercancel="endPress"
+        @pointerleave="endPress"
+        @contextmenu="(selecting || longPressFired) && $event.preventDefault()"
       >
+        <span
+          v-if="selecting"
+          class="group__check"
+          :class="{ 'group__check--on': isChosen(photo) }"
+          aria-hidden="true"
+        >
+          <Check v-if="isChosen(photo)" :size="14" :stroke-width="3" />
+        </span>
         <img
           v-if="thumbnails.get(photo.id)"
           :src="thumbnails.get(photo.id)"
@@ -191,6 +260,49 @@ onBeforeUnmount(() => {
   background: var(--color-surface-2);
   border: none;
   padding: 0;
+  cursor: pointer;
+}
+
+.group__thumb {
+  position: relative;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.group__thumb--selected {
+  outline: 3px solid var(--color-accent);
+  outline-offset: -3px;
+}
+
+.group__check {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--color-overlay);
+  color: var(--color-on-accent);
+}
+
+.group__check--on {
+  background: var(--color-accent);
+}
+
+.group__select {
+  min-height: var(--target-min);
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--color-accent-ink);
+  font-family: inherit;
+  font-size: var(--text-body);
+  font-weight: 700;
   cursor: pointer;
 }
 
