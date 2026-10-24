@@ -6,6 +6,7 @@ use App\Models\Photo;
 use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 describe('GET /api/tags', function () {
     it('lists global tags visible to the user with photo counts', function () {
@@ -285,6 +286,7 @@ describe('tag family scoping', function () {
 
 describe('tag scoping on upload and detach', function () {
     it('creates a new tag on upload instead of reusing an unrelated family tag', function () {
+        Storage::fake('s3');
         $alice = User::factory()->create();
         $child = Child::factory()->create(['created_by' => $alice->id]);
         ChildUser::create(['child_id' => $child->id, 'user_id' => $alice->id, 'role' => 'owner']);
