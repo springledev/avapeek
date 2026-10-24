@@ -58,7 +58,7 @@ export function isPushEnabledOnDevice(): boolean {
   }
 }
 
-function setPushEnabledOnDevice(enabled: boolean): void {
+export function setPushEnabledOnDevice(enabled: boolean): void {
   try {
     if (enabled) localStorage.setItem(ENABLED_KEY, '1')
     else localStorage.removeItem(ENABLED_KEY)
