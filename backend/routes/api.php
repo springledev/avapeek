@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\EncryptionKeysController;
 use App\Http\Controllers\Api\InviteController;
 use App\Http\Controllers\Api\MfaController;
+use App\Http\Controllers\Api\PhotoBulkController;
 use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\Api\QuotaController;
 use App\Http\Controllers\Api\StorageInfoController;
@@ -71,6 +72,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::post('/photos/upload', [PhotoController::class, 'upload'])->middleware('throttle:upload');
     Route::post('/photos/upload-intent', [PhotoController::class, 'uploadIntent'])->middleware('throttle:upload-intent');
     Route::post('/photos/{uuid}/complete', [PhotoController::class, 'complete'])->middleware('throttle:upload')->whereUuid('uuid');
+    Route::post('/photos/bulk-delete', [PhotoBulkController::class, 'destroy']);
+    Route::post('/photos/bulk-tags', [PhotoBulkController::class, 'tags']);
+    Route::post('/photos/share', [PhotoBulkController::class, 'share']);
     Route::get('/photos/{photo}', [PhotoController::class, 'show']);
     Route::get('/photos/{photo}/thumbnail', [PhotoController::class, 'thumbnail']);
     Route::patch('/photos/{photo}', [PhotoController::class, 'update']);

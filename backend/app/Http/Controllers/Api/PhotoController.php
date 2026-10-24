@@ -11,7 +11,7 @@ use App\Models\Photo;
 use App\Models\Tag;
 use App\Models\UploadIntent;
 use App\Models\User;
-use App\Policies\PhotoPolicy;
+use App\Services\PhotoRemovalService;
 use App\Services\QuotaService;
 use App\Services\StorageService;
 use Closure;
@@ -491,38 +491,22 @@ class PhotoController extends Controller
         ]);
     }
 
-    public function destroy(Request $request, Photo $photo): JsonResponse
+    public function destroy(Request $request, Photo $photo, PhotoRemovalService $removal): JsonResponse
     {
-        $paths = null;
+        $result = $removal->remove($request->user(), $photo->id);
 
-        DB::transaction(function () use ($request, $photo, &$paths) {
-            $photo = Photo::whereKey($photo->id)->lockForUpdate()->firstOrFail();
+        if ($result['outcome'] === PhotoRemovalService::INVISIBLE && $result['denial'] === null) {
+            abort(404);
+        }
 
-            Gate::authorize('delete', $photo);
+        $result['denial']?->authorize();
 
-            $photo->children()->detach(
-                app(PhotoPolicy::class)->administrableChildIds($request->user(), $photo)->all()
-            );
-
-            if ($photo->children()->exists()) {
-                return;
-            }
-
-            $paths = [$photo->original_path, $photo->thumbnail_path];
-
-            $this->quotaService->removeUsage((int) $photo->stored_bytes);
-
-            $photo->delete();
-        });
-
-        if ($paths === null) {
+        if ($result['outcome'] === PhotoRemovalService::DETACHED) {
             return response()->json([
                 'message' => 'Removed from your children.',
                 'remaining' => true,
             ]);
         }
-
-        $this->storageService->deleteMultiple($paths);
 
         return response()->json(null, 204);
     }
