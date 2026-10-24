@@ -36,10 +36,10 @@
 
 1. The browser reads the file, makes a thumbnail and a small placeholder (LQIP), extracts EXIF.
 2. It generates a random photo key (PEK), encrypts original, thumbnail, LQIP and EXIF with it (AES-GCM, random IV each), and wraps the PEK with the child's DEK (one wrapped copy per child it is shared with).
-3. It POSTs the ciphertext and the wrapped PEK (`/api/photos/upload`, multipart, up to 64 MB) with a bearer token.
-4. The backend checks membership and quota, writes the original and thumbnail ciphertext to the `s3` disk, then stores a `photos` row plus a `child_photo` row per child (wrapped PEK). The server never sees keys or plaintext.
+3. It asks the API for an upload slot (`POST /api/photos/upload-intent` with the ciphertext sizes). The backend reserves quota under a row lock and returns presigned PUT URLs (15 minutes) for the original and the thumbnail. The browser PUTs both ciphertext blobs directly to storage, with no `Authorization` header.
+4. It calls `POST /api/photos/{uuid}/complete` with the encrypted metadata and the wrapped PEK. The backend checks membership, verifies both objects exist with the reserved sizes (HEAD), then stores a `photos` row plus a `child_photo` row per child (wrapped PEK) and counts the usage. The server never sees keys or plaintext and never reads the blob bodies.
 
-Uploads therefore pass through PHP; only downloads go straight to storage.
+Uploads therefore bypass PHP; expired, unused slots are removed by `uploads:prune-intents` (every 15 minutes). If `UPLOADS_DIRECT=false`, `upload-intent` answers 404 and the client falls back to the multipart `POST /api/photos/upload` (up to 64 MB through PHP).
 
 ## View flow
 
@@ -50,8 +50,10 @@ Uploads therefore pass through PHP; only downloads go straight to storage.
 
 ## Presigned URLs
 
+Both GET (downloads) and PUT (uploads) use presigned URLs.
+
 - **Garage:** the backend signs against `AWS_ENDPOINT` (`http://garage:3900`, unreachable from browsers). `AWS_TEMPORARY_URL=<APP_URL>` rewrites the host so the URL points at your own origin; Caddy forwards `/photos/*` to Garage and sets `Host: garage:3900` so the signature validates. No bucket CORS is needed because it is same-origin.
-- **External S3/B2/R2:** `AWS_TEMPORARY_URL` is empty, so URLs point directly at the provider. The browser fetches cross-origin, so the bucket needs a CORS rule allowing your origin. See [storage.md](storage.md).
+- **External S3/B2/R2:** `AWS_TEMPORARY_URL` is empty, so URLs point directly at the provider. The browser reads and writes cross-origin, so the bucket needs a CORS rule allowing your origin with `GET`, `HEAD` and `PUT`. See [storage.md](storage.md).
 
 ## Authorization
 

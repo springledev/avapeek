@@ -3,6 +3,7 @@ import { extractTakenAt } from '@/lib/exif/takenAt'
 import { useChildStore } from '@/stores/child'
 import { useFeedStore } from '@/stores/feed'
 import { api } from '@/services/api'
+import { completeUpload, uploadEncryptedBlobs } from '@/services/storage'
 import { generatePEK, wrapPEKWithDEK } from '@/crypto/keychain'
 import { generateThumbnail, generateLQIP } from '@/crypto/thumbnails'
 import { encryptBuffer } from '@/crypto/encrypt'
@@ -29,13 +30,40 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 }
 
 /**
- * The only network step of an upload: sends one fully encrypted photo.
- * Everything before this call is client-side encryption; swap the transport here.
+ * Proxy transport (fallback when direct uploads are disabled): streams the
+ * encrypted blobs and metadata through the API in one multipart request.
  */
-async function sendEncryptedPhoto(formData: FormData): Promise<void> {
+async function sendViaProxy(formData: FormData): Promise<void> {
   await api.post('/photos/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
+}
+
+/**
+ * The only network step of an upload: sends one fully encrypted photo.
+ * Everything before this call is client-side encryption. Tries a direct
+ * presigned PUT to storage and falls back to the proxy upload when the server
+ * reports direct uploads are disabled.
+ */
+async function sendEncryptedPhoto(
+  encrypted: { original: Blob; thumbnail: Blob; originalName: string },
+  originalMime: string,
+  metadata: FormData,
+  onProgress: (fraction: number) => void,
+): Promise<void> {
+  const uuid = await uploadEncryptedBlobs(originalMime, encrypted.original, encrypted.thumbnail, {
+    onProgress,
+  })
+
+  if (uuid !== null) {
+    await completeUpload(uuid, metadata)
+    return
+  }
+
+  metadata.append('file', encrypted.original, encrypted.originalName)
+  metadata.append('thumbnail', encrypted.thumbnail, 'thumb.webp')
+  await sendViaProxy(metadata)
+  onProgress(1)
 }
 
 const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
@@ -53,6 +81,8 @@ export function useUploadPhotos() {
   const total = ref(0)
   const fileName = ref('')
   const errors = ref<UploadFileError[]>([])
+  /** Upload progress of the file currently being sent, 0..1. */
+  const fileProgress = ref(0)
 
   async function uploadOne(f: File, childIds: number[]): Promise<void> {
     const bitmap: ImageBitmap = isHeic(f) ? await decodeHeic(f) : await createImageBitmap(f)
@@ -87,9 +117,7 @@ export function useUploadPhotos() {
       await yieldToUi()
 
       const formData = new FormData()
-      formData.append('file', new Blob([encOriginal]), f.name)
       formData.append('iv', ivOriginal)
-      formData.append('thumbnail', new Blob([encThumbnail]), 'thumb.webp')
       formData.append('iv_thumbnail', ivThumbnail)
       formData.append('lqip_encrypted', lqipEncrypted)
       formData.append('iv_lqip', ivLQIP)
@@ -103,7 +131,18 @@ export function useUploadPhotos() {
         formData.append('taken_at', takenAt)
       }
 
-      await sendEncryptedPhoto(formData)
+      await sendEncryptedPhoto(
+        {
+          original: new Blob([encOriginal]),
+          thumbnail: new Blob([encThumbnail]),
+          originalName: f.name,
+        },
+        originalMime,
+        formData,
+        (fraction) => {
+          fileProgress.value = fraction
+        },
+      )
     } finally {
       bitmap.close()
     }
@@ -125,6 +164,7 @@ export function useUploadPhotos() {
         const f = files[i]!
         current.value = i + 1
         fileName.value = f.name
+        fileProgress.value = 0
         await yieldToUi()
 
         try {
@@ -148,5 +188,5 @@ export function useUploadPhotos() {
     return { succeeded, failed: errors.value.length }
   }
 
-  return { isUploading, current, total, fileName, errors, upload }
+  return { isUploading, current, total, fileName, fileProgress, errors, upload }
 }

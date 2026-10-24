@@ -77,6 +77,7 @@ Does **not** protect against:
 - Tag names and several metadata fields are plaintext (see above). Encrypting tags is on the roadmap.
 - PBKDF2 rather than a memory-hard function (the source notes an Argon2id upgrade as a possibility).
 - Presigned download URLs are short-lived bearer links; anyone holding one can fetch that ciphertext until it expires. The ciphertext is useless without the key.
+- Presigned upload (PUT) URLs are short-lived (15 minute) bearer **write** links to one server-chosen key. They are not size-limited by the signature; the server checks the object size on completion, deletes mismatches, and prunes unused slots. Until a URL expires, its holder (the uploading user) could overwrite their own just-completed blob; AES-GCM makes such tampering detectable on decrypt, and keys are per-upload so it cannot touch another user's data.
 - No audit log, no admin recovery of any kind.
 
 ## Password loss

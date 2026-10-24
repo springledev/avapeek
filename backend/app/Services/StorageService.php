@@ -54,6 +54,56 @@ class StorageService
     }
 
     /**
+     * Generate a presigned PUT URL for a direct browser upload of an encrypted blob.
+     *
+     * The SigV4 presigner does not sign Content-Type or Cache-Control, so they are
+     * not enforced; the client sends them as returned so the object gets the
+     * immutable cache header. Host is dropped (browsers cannot set it).
+     *
+     * @return array{url: string, headers: array<string, string>}
+     */
+    public function presignedPutUrl(string $path, int $minutes = 15): array
+    {
+        $signed = Storage::disk('s3')->temporaryUploadUrl($path, now()->addMinutes($minutes), [
+            'ContentType' => 'application/octet-stream',
+            'CacheControl' => 'public, max-age=31536000, immutable',
+        ]);
+
+        $headers = [
+            'Content-Type' => 'application/octet-stream',
+            'Cache-Control' => 'public, max-age=31536000, immutable',
+        ];
+
+        foreach ($signed['headers'] ?? [] as $name => $value) {
+            if (strtolower((string) $name) === 'host') {
+                continue;
+            }
+            foreach (array_keys($headers) as $existing) {
+                if (strtolower($existing) === strtolower((string) $name)) {
+                    unset($headers[$existing]);
+                }
+            }
+            $headers[(string) $name] = is_array($value) ? implode(', ', $value) : (string) $value;
+        }
+
+        return ['url' => $signed['url'], 'headers' => $headers];
+    }
+
+    /**
+     * Size in bytes of a stored object (HEAD), or null when it does not exist.
+     */
+    public function objectSize(string $path): ?int
+    {
+        try {
+            $size = Storage::disk('s3')->size($path);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $size === false ? null : (int) $size;
+    }
+
+    /**
      * List objects under a prefix with their size and last-modified timestamp.
      * last_modified is null when the age could not be determined.
      *

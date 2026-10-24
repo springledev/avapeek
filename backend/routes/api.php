@@ -68,6 +68,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Unified photo feed (across all children)
     Route::get('/photos', [PhotoController::class, 'feed']);
     Route::post('/photos/upload', [PhotoController::class, 'upload'])->middleware('throttle:upload');
+    Route::post('/photos/upload-intent', [PhotoController::class, 'uploadIntent'])->middleware('throttle:upload-intent');
+    Route::post('/photos/{uuid}/complete', [PhotoController::class, 'complete'])->middleware('throttle:upload')->whereUuid('uuid');
     Route::get('/photos/{photo}', [PhotoController::class, 'show']);
     Route::get('/photos/{photo}/thumbnail', [PhotoController::class, 'thumbnail']);
     Route::patch('/photos/{photo}', [PhotoController::class, 'update']);

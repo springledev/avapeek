@@ -52,7 +52,13 @@ vi.mock('@/lib/exif/takenAt', () => ({
   extractTakenAt: vi.fn<(f: File) => Promise<string | null>>(async () => null),
 }))
 
+vi.mock('@/services/storage', () => ({
+  uploadEncryptedBlobs: vi.fn<(...args: unknown[]) => Promise<string | null>>(async () => null),
+  completeUpload: vi.fn<(uuid: string, metadata: FormData) => Promise<void>>(async () => {}),
+}))
+
 import { api } from '@/services/api'
+import { completeUpload, uploadEncryptedBlobs } from '@/services/storage'
 import { useChildStore } from '@/stores/child'
 import { useFeedStore } from '@/stores/feed'
 import { useUploadPhotos } from '@/composables/useUploadPhotos'
@@ -67,6 +73,8 @@ describe('useUploadPhotos', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.mocked(api.post).mockReset()
+    vi.mocked(uploadEncryptedBlobs).mockReset().mockResolvedValue(null)
+    vi.mocked(completeUpload).mockReset().mockResolvedValue()
     closeSpy.mockReset()
     vi.stubGlobal(
       'createImageBitmap',
@@ -87,6 +95,54 @@ describe('useUploadPhotos', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+  })
+
+  it('uses the direct path: PUT blobs, then complete with metadata only', async () => {
+    vi.mocked(uploadEncryptedBlobs).mockResolvedValue('intent-uuid')
+    const { upload } = useUploadPhotos()
+
+    const result = await upload([file('a.jpg')], [5])
+
+    expect(result).toEqual({ succeeded: 1, failed: 0 })
+    expect(api.post).not.toHaveBeenCalled()
+    const [mime, original, thumbnail] = vi.mocked(uploadEncryptedBlobs).mock.calls[0]!
+    expect(mime).toBe('image/jpeg')
+    expect(original).toBeInstanceOf(Blob)
+    expect(thumbnail).toBeInstanceOf(Blob)
+    const [uuid, body] = vi.mocked(completeUpload).mock.calls[0]!
+    expect(uuid).toBe('intent-uuid')
+    expect(body.has('file')).toBe(false)
+    expect(body.has('thumbnail')).toBe(false)
+    expect(body.get('iv')).toBe('iv-b64')
+    expect(body.get('iv_thumbnail')).toBe('iv-b64')
+    expect(JSON.parse(body.get('children') as string)).toEqual({
+      5: { encrypted_pek: 'wrapped', iv_pek: 'iv' },
+    })
+  })
+
+  it('surfaces a complete failure as a per-file error without re-uploading', async () => {
+    vi.mocked(uploadEncryptedBlobs).mockResolvedValue('intent-uuid')
+    vi.mocked(completeUpload).mockRejectedValue(new Error('422'))
+    const { upload, errors } = useUploadPhotos()
+
+    const result = await upload([file('a.jpg')], [5])
+
+    expect(result).toEqual({ succeeded: 0, failed: 1 })
+    expect(errors.value).toHaveLength(1)
+    expect(uploadEncryptedBlobs).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to the proxy upload when direct uploads are disabled', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: {} })
+    const { upload } = useUploadPhotos()
+
+    await upload([file('a.jpg')], [5])
+
+    expect(completeUpload).not.toHaveBeenCalled()
+    const [url, body] = vi.mocked(api.post).mock.calls[0]! as [string, FormData]
+    expect(url).toBe('/photos/upload')
+    expect(body.get('file')).toBeInstanceOf(Blob)
+    expect(body.get('thumbnail')).toBeInstanceOf(Blob)
   })
 
   it('uploads every file with only encrypted fields and reports success', async () => {
