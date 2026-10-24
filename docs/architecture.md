@@ -57,6 +57,16 @@ Uploads therefore pass through PHP; only downloads go straight to storage.
 
 Every photo, comment, tag and key route verifies that the caller belongs to a child linked to the photo (`child_photo` intersected with the user's children). Child-scoped routes use `child.member` and `child.admin` middleware.
 
+## PWA and service worker
+
+The frontend is an installable PWA (`vite-plugin-pwa`, `injectManifest`, source `frontend/src/sw.ts`, registered from `src/lib/pwa-register.ts`). The build emits `sw.js` and `manifest.webmanifest` at the site root (`start_url` `/feed`, `scope` `/`).
+
+- **Precache only.** The worker precaches static build assets (JS, CSS, fonts, icons, `index.html`) and answers navigations with the cached shell, except `/api/`, `/photos/` and `/share-target`. There is **no runtime caching**: API and storage requests always go to the network.
+- **Offline mode** is deliberately small: the app shell, an "Offline" banner, and thumbnails already in the decrypted cache. Feed metadata is not persisted.
+- **Updates.** A new build installs in the background and shows an "Update available" toast; Reload activates it and removes the old precache.
+- **Share target.** `POST /share-target` is intercepted by the worker, which stages the shared images in an IndexedDB inbox and redirects (303) to `/upload?shared=1`. See [security.md](security.md) for what this stores.
+- **nginx rules** (`docker/nginx/frontend.conf`): `/sw.js` and `/manifest.webmanifest` are `no-cache` (the manifest is served as `application/manifest+json`); only hashed `/assets/*` are `immutable`; unhashed public files (icons, favicon, fonts) and `index.html` are `no-cache`; a direct `POST /share-target` without a worker gets a relative 303 to `/upload?shared=1` instead of a 405. Caddy needs no change. The `add_header` directive is not inherited into a location that sets its own, so each location repeats its `Cache-Control`.
+
 ## Source layout
 
 See [development.md](development.md#repository-layout).
