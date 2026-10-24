@@ -7,6 +7,7 @@ import { usePrefetch } from '@/composables/usePrefetch'
 import { Image } from '@lucide/vue'
 import FeedToolbar from '@/components/feed/FeedToolbar.vue'
 import PhotoTile from '@/components/feed/PhotoTile.vue'
+import OnThisDayCard from '@/components/feed/OnThisDayCard.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -22,8 +23,12 @@ const { prefetchNextPage } = usePrefetch()
 const selectedPhoto = ref<Photo | null>(null)
 const selectedPhotoIndex = ref(0)
 
-const hasPrev = computed(() => selectedPhotoIndex.value > 0)
-const hasNext = computed(() => selectedPhotoIndex.value < feedStore.photos.length - 1)
+const isStandalonePhoto = ref(false)
+
+const hasPrev = computed(() => !isStandalonePhoto.value && selectedPhotoIndex.value > 0)
+const hasNext = computed(
+  () => !isStandalonePhoto.value && selectedPhotoIndex.value < feedStore.photos.length - 1,
+)
 const prevPhotoObj = computed(() =>
   hasPrev.value ? (feedStore.photos[selectedPhotoIndex.value - 1] ?? null) : null,
 )
@@ -99,9 +104,21 @@ function schedulePreload() {
 
 function openPhoto(photo: Photo) {
   const idx = feedStore.photos.findIndex((p) => p.id === photo.id)
+  isStandalonePhoto.value = false
   selectedPhotoIndex.value = idx >= 0 ? idx : 0
   selectedPhoto.value = photo
   schedulePreload()
+}
+
+function openMemory(photo: Photo) {
+  const idx = feedStore.photos.findIndex((p) => p.id === photo.id)
+  if (idx >= 0) {
+    openPhoto(photo)
+    return
+  }
+  isStandalonePhoto.value = true
+  selectedPhotoIndex.value = 0
+  selectedPhoto.value = photo
 }
 
 function closePhoto() {
@@ -198,6 +215,8 @@ async function updateDate(photoId: number, takenAt: string) {
     <h1 class="feed-title">Photos</h1>
 
     <FeedToolbar />
+
+    <OnThisDayCard v-if="!hasActiveFilters" @open="openMemory" />
 
     <div v-if="feedStore.isLoading && feedStore.photos.length === 0" class="u-grid">
       <div v-for="i in 8" :key="i" class="tile-skeleton" />
