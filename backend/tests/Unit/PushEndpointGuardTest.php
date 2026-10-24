@@ -12,6 +12,10 @@ it('classifies addresses', function (string $address, bool $public) {
     ['172.16.0.1', false],
     ['192.168.1.1', false],
     ['169.254.169.254', false],
+    ['192.0.0.8', false],
+    ['198.18.0.1', false],
+    ['198.19.255.255', false],
+    ['198.20.0.1', true],
     ['100.64.0.1', false],
     ['0.0.0.0', false],
     ['224.0.0.1', false],
@@ -35,6 +39,8 @@ it('rejects bad hosts without any DNS lookup', function (string $url) {
     'ftp://example.com/x',
     'https://localhost/x',
     'https://LOCALHOST./x',
+    'https://host.example.com./x',
+    'https://host.example.com.:443/x',
     'https://[::1]/x',
     'https://1.2.3.4/x',
     'https://0x7f.1/x',
@@ -50,6 +56,16 @@ it('accepts a plain public https host and honours the resolver', function () {
     expect($guard->check('https://updates.push.services.mozilla.com/wpush/v2/abc'))
         ->toMatchArray(['safe' => true, 'host' => 'updates.push.services.mozilla.com', 'reason' => null]);
 });
+
+it('returns the exact host used in the request URL so the DNS pin key matches', function (string $url) {
+    $guard = new PushEndpointGuard(fn () => ['93.184.216.34']);
+
+    expect($guard->check($url)['host'])->toBe(strtolower(parse_url($url, PHP_URL_HOST)));
+})->with([
+    'https://good.example.com/x',
+    'https://Good.Example.COM/x',
+    'https://good.example.com:443/x',
+]);
 
 it('reports unsafe versus unresolved', function () {
     expect((new PushEndpointGuard(fn () => ['10.0.0.1']))->check('https://a.example.test/x')['reason'])->toBe('unsafe')

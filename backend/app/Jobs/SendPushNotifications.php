@@ -7,6 +7,7 @@ use App\Services\PushRecipientResolver;
 use App\Services\WebPushService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
 
 /**
  * Delayed job that closes a batching window for one notification type and
@@ -39,8 +40,15 @@ class SendPushNotifications implements ShouldQueue
 
         $events = $batcher->drain($this->type);
 
-        foreach ($resolver->resolve($this->type, $events) as $subscription) {
-            $push->send($subscription, $this->type);
+        try {
+            foreach ($resolver->resolve($this->type, $events) as $subscription) {
+                $push->send($subscription, $this->type);
+            }
+        } catch (Throwable $e) {
+            // Keep the batch for the retry; successful runs never restore, so nothing is duplicated.
+            $batcher->restore($this->type, $events);
+
+            throw $e;
         }
     }
 }
