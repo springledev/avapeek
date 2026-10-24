@@ -10,11 +10,19 @@ const removePhotos = vi.hoisted(() => vi.fn<(ids: number[]) => Promise<unknown>>
 vi.mock('@/services/bulk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/bulk')>()),
   removePhotos,
+  sharePhotos,
 }))
 
 vi.mock('vue-sonner', () => ({
-  toast: { success: vi.fn<() => void>(), error: vi.fn<() => void>(), message: vi.fn<() => void>() },
+  toast: {
+    success: vi.fn<() => void>(),
+    error: vi.fn<() => void>(),
+    message: vi.fn<() => void>(),
+    warning: vi.fn<() => void>(),
+  },
 }))
+
+const sharePhotos = vi.hoisted(() => vi.fn<(p: unknown, c: number) => Promise<unknown>>())
 
 vi.mock('@/stores/child', () => ({
   useChildStore: () => ({
@@ -34,6 +42,7 @@ vi.mock('@/stores/tags', () => ({
 import BulkActions from '@/components/BulkActions.vue'
 import PhotoTile from '@/components/feed/PhotoTile.vue'
 import { MSG } from '@/lib/messages'
+import { toast } from 'vue-sonner'
 import type { Photo } from '@/types/photo'
 
 function photo(id: number, childIds: number[]): Photo {
@@ -50,7 +59,10 @@ function photo(id: number, childIds: number[]): Photo {
   } as unknown as Photo
 }
 
-beforeEach(() => setActivePinia(createPinia()))
+beforeEach(() => {
+  vi.clearAllMocks()
+  setActivePinia(createPinia())
+})
 
 describe('BulkActions', () => {
   it('shows the count and a remove confirmation that names the limit of what is removed', async () => {
@@ -73,6 +85,41 @@ describe('BulkActions', () => {
     await vi.waitFor(() => expect(wrapper.emitted('removed')).toBeTruthy())
     expect(wrapper.emitted('removed')![0]).toEqual([[1], 1])
     expect(wrapper.emitted('clear')).toBeTruthy()
+    wrapper.unmount()
+  })
+
+  it('asks the parent to refetch after a cancelled remove, since the aborted batch may be committed', async () => {
+    const wrapper = mount(BulkActions, { props: { photos: [photo(1, [1])] }, attachTo: document.body })
+    await wrapper.get('[data-test="bulk-remove"]').trigger('click')
+    removePhotos.mockResolvedValue({
+      deleted: [],
+      detached: [],
+      forbidden: [],
+      notProcessed: 1,
+      cancelled: true,
+      error: null,
+    })
+    ;(document.body.querySelector('[data-test="remove-confirm"]') as HTMLElement).click()
+    await vi.waitFor(() => expect(wrapper.emitted('removed')).toBeTruthy())
+    expect(wrapper.emitted('removed')![0]).toEqual([[], 1])
+    wrapper.unmount()
+  })
+
+  it('warns instead of celebrating when nothing was shared', async () => {
+    sharePhotos.mockResolvedValue({
+      shared: [],
+      skipped: [1],
+      unwrappable: [],
+      wraps: new Map(),
+      notProcessed: 0,
+      cancelled: false,
+      error: null,
+    })
+    const wrapper = mount(BulkActions, { props: { photos: [photo(1, [1])] }, attachTo: document.body })
+    await wrapper.get('[data-test="bulk-share"]').trigger('click')
+    ;(document.body.querySelector('[data-test="share-target"]') as HTMLElement).click()
+    await vi.waitFor(() => expect(toast.warning).toHaveBeenCalled())
+    expect(toast.success).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 

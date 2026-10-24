@@ -20,6 +20,7 @@ import type { DecryptedChildTag } from '@/types/child'
 export const DELETE_BATCH = 100
 export const TAGS_BATCH = 100
 export const SHARE_BATCH = 50
+export const MAX_TAGS_PER_PHOTO = 20
 
 type Progress = (processed: number, total: number) => void
 
@@ -135,7 +136,7 @@ export async function buildTagAssignments(
         if (id !== null) ids.add(id)
       }
     }
-    if (ids.size > 0) assignments.push({ photo_id: photo.id, tag_ids: [...ids].slice(0, 20) })
+    if (ids.size > 0) assignments.push({ photo_id: photo.id, tag_ids: [...ids] })
   }
   return assignments
 }
@@ -161,12 +162,16 @@ export async function tagPhotos(
   const tagsStore = useTagsStore()
   const resolved = new Map<number, DecryptedChildTag>()
 
-  const assignments = await buildTagAssignments(photos, names, async (childId, name) => {
+  const wanted = await buildTagAssignments(photos, names, async (childId, name) => {
     if (!(await childStore.tryGetChildDEK(childId))) return null
     const tag = await tagsStore.findOrCreate(childId, name)
     resolved.set(tag.id, tag)
     return tag.id
   })
+
+  // The server allows 20 tags per photo; never truncate silently, report those photos as skipped.
+  const assignments = wanted.filter((a) => a.tag_ids.length <= MAX_TAGS_PER_PHOTO)
+  const overLimit = wanted.filter((a) => a.tag_ids.length > MAX_TAGS_PER_PHOTO).map((a) => a.photo_id)
 
   const run = await runBatches(
     assignments,
@@ -186,7 +191,7 @@ export async function tagPhotos(
   applyTagsLocally(photos, assignments, updated, resolved)
   return {
     updated,
-    skipped: run.results.flatMap((r) => r.skipped),
+    skipped: [...overLimit, ...run.results.flatMap((r) => r.skipped)],
     notProcessed: assignments.length - run.processed,
     cancelled: run.cancelled,
     error: run.error,

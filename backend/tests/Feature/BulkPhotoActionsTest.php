@@ -319,11 +319,16 @@ describe('POST /api/photos/share', function () {
             ->postJson('/api/photos/share', ['child_id' => $childId ?? $source->id, 'photos' => $photos]);
         $entry = fn (array $override) => [array_merge(['photo_id' => $photo->id, ...bulkWrap()], $override)];
 
-        $post($entry(['encrypted_pek' => bin2hex(random_bytes(32))]))->assertUnprocessable(); // hex, 64 chars
+        $post($entry(['encrypted_pek' => str_repeat('A', 63).'=']))->assertUnprocessable(); // padding where none is valid
+        $post($entry(['encrypted_pek' => str_repeat('A', 62)."\n\n"]))->assertUnprocessable(); // whitespace
+        $post($entry(['encrypted_pek' => str_repeat('-', 32).str_repeat('_', 32)]))->assertUnprocessable(); // url-safe alphabet
         $post($entry(['encrypted_pek' => base64_encode(random_bytes(47))]))->assertUnprocessable(); // short
         $post($entry(['encrypted_pek' => base64_encode(random_bytes(51))]))->assertUnprocessable(); // long
         $post($entry(['encrypted_pek' => str_repeat('!', 64)]))->assertUnprocessable();
-        $post($entry(['iv_pek' => bin2hex(random_bytes(8))]))->assertUnprocessable(); // 16 hex chars
+        $post($entry(['iv_pek' => 'AAAAAAAAAAAAAAA=']))->assertUnprocessable(); // padding, decodes to 11 bytes
+        $post($entry(['iv_pek' => "AAAAAAAAAAAAAAA\n"]))->assertUnprocessable(); // whitespace
+        $post($entry(['iv_pek' => 'AAAAAAAA-_AAAAAA']))->assertUnprocessable(); // url-safe alphabet
+        $post($entry(['iv_pek' => str_repeat('A', 20)]))->assertUnprocessable(); // too long
         $post($entry(['iv_pek' => base64_encode(random_bytes(11))]))->assertUnprocessable();
         $post($entry(['iv_pek' => base64_encode(random_bytes(15))]))->assertUnprocessable();
         $post($entry(['iv_pek' => 'AAAAAAAAAAAAAAB=']))->assertUnprocessable(); // non canonical padding bits
