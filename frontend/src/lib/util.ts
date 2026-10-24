@@ -24,3 +24,14 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
   const response = (err as { response?: { data?: { message?: string } } } | null)?.response
   return response?.data?.message || fallback
 }
+
+/**
+ * First field message from a Laravel 422 response, or null when the error has none.
+ */
+export function firstValidationError(err: unknown): string | null {
+  const errors = (err as { response?: { data?: { errors?: Record<string, string[]> } } } | null)
+    ?.response?.data?.errors
+  if (!errors) return null
+  const firstKey = Object.keys(errors)[0]
+  return firstKey ? (errors[firstKey]?.[0] ?? null) : null
+}

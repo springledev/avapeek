@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { X } from '@lucide/vue'
 import { useChildStore } from '@/stores/child'
 import UiSheet from '@/components/ui/UiSheet.vue'
 import UiChip from '@/components/ui/UiChip.vue'
 import UiButton from '@/components/ui/UiButton.vue'
+import CreateChildSheet from '@/components/CreateChildSheet.vue'
+import type { Child } from '@/types/child'
 
 const props = defineProps<{
   open: boolean
@@ -19,8 +21,28 @@ const emit = defineEmits<{
 const childStore = useChildStore()
 
 const selectedChildIds = ref<number[]>(
-  childStore.children.length === 1 ? [childStore.children[0]!.id] : [],
+  childStore.uploadableChildren.length === 1 ? [childStore.uploadableChildren[0]!.id] : [],
 )
+const showCreateChild = ref(false)
+
+const needsChildChoice = computed(
+  () => childStore.uploadableChildren.length > 1 && selectedChildIds.value.length === 0,
+)
+
+// Children can load (or be created) after mount: drop stale ids and preselect a lone child.
+watch(
+  () => childStore.uploadableChildren.map((c) => c.id),
+  (ids) => {
+    selectedChildIds.value = selectedChildIds.value.filter((id) => ids.includes(id))
+    if (ids.length === 1 && selectedChildIds.value.length === 0) {
+      selectedChildIds.value = [ids[0]!]
+    }
+  },
+)
+
+function onChildCreated(child: Child) {
+  if (!selectedChildIds.value.includes(child.id)) selectedChildIds.value.push(child.id)
+}
 
 const objectUrls = computed(() => props.files.map((f) => URL.createObjectURL(f)))
 
@@ -51,9 +73,18 @@ function formatBytes(bytes: number): string {
 <template>
   <UiSheet :open="open" title="Review photos" @close="emit('close')">
     <div class="batch">
-      <div v-if="childStore.children.length > 0" class="batch__kids">
+      <div v-if="childStore.uploadableChildren.length === 0" class="batch__no-kids">
+        <p class="batch__hint">
+          Photos live in a kid's album. Add a kid first, then choose who is in these photos.
+        </p>
+        <UiButton variant="accent" @click="showCreateChild = true">Add a kid</UiButton>
+      </div>
+
+      <p v-else-if="needsChildChoice" class="batch__hint">Choose who's in these photos</p>
+
+      <div v-if="childStore.uploadableChildren.length > 0" class="batch__kids">
         <UiChip
-          v-for="child in childStore.children"
+          v-for="child in childStore.uploadableChildren"
           :key="child.id"
           :label="child.name"
           tone="kid"
@@ -94,6 +125,12 @@ function formatBytes(bytes: number): string {
       </UiButton>
     </div>
   </UiSheet>
+
+  <CreateChildSheet
+    :open="showCreateChild"
+    @close="showCreateChild = false"
+    @created="onChildCreated"
+  />
 </template>
 
 <style scoped>
@@ -101,6 +138,19 @@ function formatBytes(bytes: number): string {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.batch__no-kids {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.batch__hint {
+  font-size: var(--text-body);
+  color: var(--color-ink-soft);
+  margin: 0;
 }
 
 .batch__kids {

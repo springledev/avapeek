@@ -2,16 +2,21 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { preloadOriginal } from '@/services/storage'
 import { useFeedStore } from '@/stores/feed'
+import { useChildStore } from '@/stores/child'
 import { usePrefetch } from '@/composables/usePrefetch'
 import { Image } from '@lucide/vue'
 import FeedToolbar from '@/components/feed/FeedToolbar.vue'
 import PhotoTile from '@/components/feed/PhotoTile.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import CreateChildSheet from '@/components/CreateChildSheet.vue'
 import { MSG } from '@/lib/messages'
 import type { Photo } from '@/types/photo'
 
 const feedStore = useFeedStore()
+const childStore = useChildStore()
+const showCreateChild = ref(false)
 const { prefetchNextPage } = usePrefetch()
 
 const selectedPhoto = ref<Photo | null>(null)
@@ -199,11 +204,34 @@ async function updateDate(photoId: number, takenAt: string) {
     </div>
 
     <UiEmptyState
+      v-else-if="
+        feedStore.photos.length === 0 &&
+        !hasActiveFilters &&
+        childStore.childrenLoaded &&
+        !childStore.hasChildren
+      "
+      title="Add your first kid"
+      message="Create a profile for your child, then add their photos."
+    >
+      <template #icon>
+        <Image :size="48" />
+      </template>
+      <template #action>
+        <UiButton variant="accent" size="lg" @click="showCreateChild = true">
+          Add your first kid
+        </UiButton>
+      </template>
+    </UiEmptyState>
+
+    <UiEmptyState
       v-else-if="feedStore.photos.length === 0 && !hasActiveFilters"
       :title="MSG.feedEmpty"
     >
       <template #icon>
         <Image :size="48" />
+      </template>
+      <template #action>
+        <router-link to="/upload" class="feed-add-photos">Add photos</router-link>
       </template>
     </UiEmptyState>
 
@@ -230,6 +258,8 @@ async function updateDate(photoId: number, takenAt: string) {
         <div class="feed-spinner" />
       </div>
     </div>
+
+    <CreateChildSheet :open="showCreateChild" @close="showCreateChild = false" />
 
     <PhotoViewer
       v-if="selectedPhoto"
@@ -260,6 +290,19 @@ async function updateDate(photoId: number, takenAt: string) {
   line-height: var(--lh-title);
   color: var(--color-ink);
   margin: 0 0 var(--space-4);
+}
+
+.feed-add-photos {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-card);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .u-grid {

@@ -6,15 +6,21 @@ use App\Http\Controllers\Controller;
 use App\Models\Child;
 use App\Models\ChildUser;
 use App\Models\EncryptionKey;
+use App\Models\Photo;
+use App\Models\User;
 use App\Services\QuotaService;
+use App\Services\StorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
 class ChildController extends Controller
 {
     public function __construct(
         protected QuotaService $quotaService,
+        protected StorageService $storageService,
     ) {}
 
     private const AVATAR_PALETTE = [
@@ -77,26 +83,56 @@ class ChildController extends Controller
             'relationship' => 'parent',
         ]);
 
-        $quota = $this->quotaService->getUsage();
+        return response()->json(['data' => $this->formatChild($child, $request->user())], 201);
+    }
 
-        return response()->json([
-            'data' => [
-                'id' => $child->id,
-                'slug' => $child->slug,
-                'name' => $child->name,
-                'birth_date' => $child->birth_date?->toDateString(),
-                'avatar_color' => $child->avatar_color,
-                'age' => $child->ageAt(),
-                'member_count' => 1,
-                'photo_count' => 0,
-                'role' => 'owner',
-                'relationship' => 'parent',
-                'storage_used' => $quota['used_bytes'],
-                'storage_limit_bytes' => $quota['limit_bytes'],
-                'storage_percentage' => $quota['percentage'],
-                'created_at' => $child->created_at?->toISOString(),
-            ],
-        ], 201);
+    public function update(Request $request, Child $child): JsonResponse
+    {
+        Gate::authorize('update', $child);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:100', 'regex:/^[\pL\pN\s\-.,\'&()]+$/u'],
+            'birth_date' => ['nullable', 'date', 'before_or_equal:today'],
+        ]);
+
+        $child->update([
+            'name' => $validated['name'],
+            'birth_date' => $validated['birth_date'] ?? null,
+        ]);
+
+        return response()->json(['data' => $this->formatChild($child, $request->user())]);
+    }
+
+    public function destroy(Request $request, Child $child): JsonResponse
+    {
+        Gate::authorize('delete', $child);
+
+        $paths = [];
+
+        DB::transaction(function () use ($child, &$paths) {
+            $photoIds = $child->photos()->pluck('photos.id');
+
+            // child_photo, encryption_keys, child_users and invites cascade on the child row.
+            $child->delete();
+
+            Photo::whereIn('id', $photoIds)
+                ->whereDoesntHave('children')
+                ->lockForUpdate()
+                ->get()
+                ->each(function (Photo $photo) use (&$paths) {
+                    array_push($paths, $photo->original_path, $photo->thumbnail_path);
+
+                    $this->quotaService->removeUsage((int) $photo->stored_bytes);
+
+                    $photo->delete();
+                });
+        });
+
+        if ($paths !== []) {
+            $this->storageService->deleteMultiple($paths);
+        }
+
+        return response()->json(null, 204);
     }
 
     public function show(Request $request, Child $child): JsonResponse
@@ -178,6 +214,32 @@ class ChildController extends Controller
             ->delete();
 
         return response()->json(['message' => 'Member removed successfully']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function formatChild(Child $child, User $user): array
+    {
+        $pivot = $user->children()->where('children.id', $child->id)->first()?->pivot;
+        $quota = $this->quotaService->getUsage();
+
+        return [
+            'id' => $child->id,
+            'slug' => $child->slug,
+            'name' => $child->name,
+            'birth_date' => $child->birth_date?->toDateString(),
+            'avatar_color' => $child->avatar_color,
+            'age' => $child->ageAt(),
+            'member_count' => $child->users()->count(),
+            'photo_count' => $child->photos()->count(),
+            'role' => $pivot?->role,
+            'relationship' => $pivot?->relationship,
+            'storage_used' => $quota['used_bytes'],
+            'storage_limit_bytes' => $quota['limit_bytes'],
+            'storage_percentage' => $quota['percentage'],
+            'created_at' => $child->created_at?->toISOString(),
+        ];
     }
 
     private function generateUniqueSlug(string $name): string
