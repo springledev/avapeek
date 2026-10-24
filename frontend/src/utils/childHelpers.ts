@@ -3,19 +3,45 @@
  */
 
 /**
- * Calculate age at a given date (or current date).
+ * Parse a `YYYY-MM-DD` (optionally followed by a time part) into calendar components
+ * without going through `Date`, so the result never depends on the host time zone.
+ */
+function parseDateParts(value: string): { year: number; month: number; day: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
+  if (!match) {
+    return null
+  }
+  return { year: Number(match[1]), month: Number(match[2]) - 1, day: Number(match[3]) }
+}
+
+/**
+ * Calculate age at a given date (or now). The reference date is read as local calendar
+ * components, the birth date as a plain calendar date. Returns null when there is no
+ * valid birth date or the reference date is before birth.
  */
 export function ageAt(birthDate: string | null, date?: Date): string | null {
   if (!birthDate) {
     return null
   }
 
-  const birth = new Date(birthDate)
-  const at = date ?? new Date()
+  const birth = parseDateParts(birthDate)
+  if (!birth) {
+    return null
+  }
 
-  let months = (at.getFullYear() - birth.getFullYear()) * 12 + (at.getMonth() - birth.getMonth())
+  const ref = date ?? new Date()
+  const at = { year: ref.getFullYear(), month: ref.getMonth(), day: ref.getDate() }
 
-  if (at.getDate() < birth.getDate()) {
+  const dayDiff = Math.round(
+    (Date.UTC(at.year, at.month, at.day) - Date.UTC(birth.year, birth.month, birth.day)) / 86400000,
+  )
+  if (dayDiff < 0) {
+    return null
+  }
+
+  let months = (at.year - birth.year) * 12 + (at.month - birth.month)
+
+  if (at.day < birth.day) {
     months--
   }
 
@@ -23,8 +49,7 @@ export function ageAt(birthDate: string | null, date?: Date): string | null {
   const remainingMonths = months % 12
 
   if (years === 0 && remainingMonths === 0) {
-    const days = Math.floor((at.getTime() - birth.getTime()) / 86400000)
-    return `${days} day${days !== 1 ? 's' : ''} old`
+    return `${dayDiff} day${dayDiff !== 1 ? 's' : ''} old`
   }
 
   if (years === 0) {
@@ -32,7 +57,7 @@ export function ageAt(birthDate: string | null, date?: Date): string | null {
   }
 
   if (years < 5) {
-    return `${years} year${years > 1 ? 's' : ''}, ${remainingMonths} month${remainingMonths > 1 ? 's' : ''}`
+    return `${years} year${years > 1 ? 's' : ''}, ${remainingMonths} month${remainingMonths !== 1 ? 's' : ''}`
   }
 
   return `${years} year${years !== 1 ? 's' : ''} old`
