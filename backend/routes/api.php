@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ChildController;
+use App\Http\Controllers\Api\ChildExportController;
 use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\EncryptionKeysController;
 use App\Http\Controllers\Api\InviteController;
@@ -100,6 +101,12 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         // Tags (ciphertext names only)
         Route::get('/children/{child}/tags', [TagController::class, 'index']);
         Route::post('/children/{child}/tags', [TagController::class, 'store'])->middleware('throttle:tags');
+
+        // Export listings (ciphertext only, any member)
+        Route::middleware('throttle:export')->group(function () {
+            Route::get('/children/{child}/export/photos', [ChildExportController::class, 'photos']);
+            Route::get('/children/{child}/export/comments', [ChildExportController::class, 'comments']);
+        });
 
         // Invites (admin only)
         Route::middleware('child.admin')->group(function () {
