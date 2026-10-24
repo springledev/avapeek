@@ -38,4 +38,51 @@ export const MSG = {
   setupFinishBody: 'Add a kid and a first photo to get the most out of Avapeek.',
   setupFinishAction: 'Continue setup',
   setupDismiss: 'Dismiss',
+  selectPhotos: 'Select',
+  selectCancel: 'Cancel',
+  selectedCount: (n: number) => `${n} selected`,
+  selectAllIn: (label: string) => `Select all in ${label}`,
+  deselectAllIn: (label: string) => `Deselect all in ${label}`,
+  bulkDownload: 'Download',
+  bulkTags: 'Tags',
+  bulkShare: 'Share to...',
+  bulkRemove: 'Remove',
+  bulkCancelAction: 'Cancel',
+  bulkRemoveTitle: (n: number) => `Remove ${n} ${n === 1 ? 'photo' : 'photos'}?`,
+  bulkRemoveBody:
+    'Photos that are also in kids you do not manage are only removed from the kids you manage. They stay for everyone else.',
+  bulkRemoveConfirm: 'Remove',
+  bulkRemoved: (deleted: number, detached: number, forbidden: number) =>
+    [
+      deleted > 0 ? `${deleted} deleted` : '',
+      detached > 0 ? `${detached} removed from your kids` : '',
+      forbidden > 0 ? `${forbidden} could not be removed (you do not manage them)` : '',
+    ]
+      .filter(Boolean)
+      .join(', ') || 'Nothing was removed',
+  bulkDownloaded: (saved: number, failed: number) =>
+    failed > 0 ? `${saved} downloaded, ${failed} failed` : `${saved} downloaded`,
+  bulkStopped: (done: number, left: number) => `Stopped. ${done} done, ${left} not done`,
+  bulkFailedPartial: (done: number, left: number) =>
+    `Something went wrong. ${done} done, ${left} not done`,
+  bulkTagsTitle: 'Add tags',
+  bulkTagsHint: 'Tags are added to each photo for every kid it belongs to.',
+  bulkTagsApply: 'Add tags',
+  bulkTagsDone: (n: number) => `Tagged ${n} ${n === 1 ? 'photo' : 'photos'}`,
+  bulkTagsSkipped: (n: number) => `${n} could not be tagged`,
+  bulkTagInputLabel: 'Tag name',
+  bulkTagAdd: 'Add',
+  bulkShareTitle: 'Share to a kid',
+  bulkShareHint:
+    'Everyone in that kid can then see these photos and their comments. Tags from the original kids do not carry over to that kid\'s members.',
+  bulkShareNone: 'These photos are already in all of your kids.',
+  bulkShared: (shared: number, skipped: number, unwrappable: number) =>
+    [
+      `${shared} shared`,
+      skipped > 0 ? `${skipped} already there` : '',
+      unwrappable > 0 ? `${unwrappable} could not be shared` : '',
+    ]
+      .filter(Boolean)
+      .join(', '),
+  bulkActionFailed: "That didn't work — try again",
 } as const
