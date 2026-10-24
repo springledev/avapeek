@@ -6,6 +6,7 @@ use App\Models\Photo;
 use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 function createChildPivot(Photo $photo, Child $child): void
 {
@@ -14,6 +15,10 @@ function createChildPivot(Photo $photo, Child $child): void
         'iv_pek' => bin2hex(random_bytes(16)),
     ]);
 }
+
+beforeEach(function () {
+    Storage::fake('s3');
+});
 
 describe('POST /api/photos/upload', function () {
     it('uploads an encrypted photo with thumbnail and creates child pivot', function () {

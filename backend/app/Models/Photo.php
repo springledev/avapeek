@@ -28,6 +28,7 @@ class Photo extends Model
         'iv_thumbnail',
         'original_mime',
         'size_bytes',
+        'stored_bytes',
         'width',
         'height',
         'exif_encrypted',
