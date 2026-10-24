@@ -46,7 +46,11 @@ class SendPushNotifications implements ShouldQueue
             }
         } catch (Throwable $e) {
             // Keep the batch for the retry; successful runs never restore, so nothing is duplicated.
-            $batcher->restore($this->type, $events);
+            try {
+                $batcher->restore($this->type, $events);
+            } catch (Throwable $restoreFailure) {
+                report($restoreFailure);
+            }
 
             throw $e;
         }

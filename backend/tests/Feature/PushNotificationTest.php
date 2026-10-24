@@ -14,9 +14,12 @@ use App\Services\PushRecipientResolver;
 use App\Services\WebPushService;
 use Database\Factories\PushSubscriptionFactory;
 use GuzzleHttp\Client;
+use GuzzleHttp\Handler\CurlFactory;
+use GuzzleHttp\Handler\EasyHandle;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
+use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\UploadedFile;
@@ -546,6 +549,23 @@ describe('dispatch and batching', function () {
         expect($history)->toHaveCount(1);
     });
 
+    it('rethrows the original exception even when restoring the batch fails', function () {
+        [$owner, , $photo] = pushFamily();
+        pushEnable();
+        Queue::fake();
+        $realBatcher = app(PushBatcher::class);
+        $realBatcher->record('photos', $photo->id, $owner->id);
+
+        $batcher = Mockery::mock(PushBatcher::class);
+        $batcher->shouldReceive('drain')->once()->andReturn([[$photo->id, $owner->id]]);
+        $batcher->shouldReceive('restore')->once()->andThrow(new LogicException('cache down'));
+        $resolver = Mockery::mock(PushRecipientResolver::class);
+        $resolver->shouldReceive('resolve')->once()->andThrow(new RuntimeException('original failure'));
+
+        expect(fn () => (new SendPushNotifications('photos'))->handle($batcher, $resolver, app(WebPushService::class)))
+            ->toThrow(RuntimeException::class, 'original failure');
+    });
+
     it('sends nothing when the batch has no remaining recipients', function () {
         [$owner, , $photo, $other] = pushFamily();
         pushEnable();
@@ -689,8 +709,32 @@ describe('WebPushService', function () {
     it('disables proxies and uses the curl handler so env proxies cannot bypass the pin', function () {
         $client = WebPushService::pinnedClient('push.example.test', ['93.184.216.34']);
 
-        expect($client->getConfig('proxy'))->toBeNull()
-            ->and(array_key_exists('proxy', $client->getConfig()))->toBeTrue();
+        expect($client->getConfig('proxy'))->toBe('');
+    });
+
+    it('sets an empty CURLOPT_PROXY even when proxy env vars are present', function () {
+        $previous = [getenv('HTTPS_PROXY'), getenv('https_proxy'), getenv('ALL_PROXY')];
+        putenv('HTTPS_PROXY=http://127.0.0.1:3128');
+        putenv('https_proxy=http://127.0.0.1:3128');
+        putenv('ALL_PROXY=http://127.0.0.1:3128');
+
+        try {
+            $client = WebPushService::pinnedClient('push.example.test', ['93.184.216.34']);
+            $easy = new EasyHandle;
+            $easy->request = new Request('POST', 'https://push.example.test/x');
+            $easy->options = $client->getConfig();
+            $conf = [];
+            $apply = new ReflectionMethod(CurlFactory::class, 'applyHandlerOptions');
+            $apply->invokeArgs(new CurlFactory(1), [$easy, &$conf]);
+
+            expect(array_key_exists(CURLOPT_PROXY, $conf))->toBeTrue()
+                ->and($conf[CURLOPT_PROXY])->toBe('');
+        } finally {
+            foreach (['HTTPS_PROXY', 'https_proxy', 'ALL_PROXY'] as $i => $name) {
+                $value = $previous[$i];
+                putenv($value === false ? $name : "{$name}={$value}");
+            }
+        }
     });
 
     it('pins the exact host string used in the request URL', function (string $endpoint, string $pinHost) {
