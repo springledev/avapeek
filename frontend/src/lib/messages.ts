@@ -13,6 +13,7 @@ export const MSG = {
   photosAdded: (n: number) => `${n} ${n === 1 ? 'photo' : 'photos'} added`,
   commentPostFailed: "Couldn't post that — try again",
   commentDeleteFailed: "Couldn't delete that — try again",
+  downloadFailed: "Couldn't download that photo — try again",
   commentsLoadFailed: "Couldn't load comments — try again",
   commentTooLong: 'Comments are limited to 500 characters.',
   setupSkip: 'Skip',

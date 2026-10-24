@@ -48,6 +48,12 @@ Uploads therefore bypass PHP; expired, unused slots are removed by `uploads:prun
 3. For the thumbnail or original it asks the API for a **presigned GET URL** (`/api/photos/{id}` and `/api/photos/{id}/thumbnail`, both membership-checked). URLs expire after 5 minutes.
 4. The browser `fetch()`es the ciphertext from that URL, decrypts it with the PEK and shows it through an object URL. Decrypted data stays in memory.
 
+## Export flow
+
+1. `GET /api/children/{child}/export/photos?after_id=&limit=` (keyset by photo id, up to 100 per page) returns, per photo linked to that child, the ciphertext metadata, only that child's wrapped PEK and tags, and a fresh 15 minute presigned URL. `GET /api/children/{child}/export/comments` does the same for comments (up to 200 per page). Both sit behind `child.member` (any member), re-scope the query to the child through `child_photo`, and use the `export` rate limiter (30 requests per minute per user, separate from the 60 per minute `api` limit).
+2. The browser fetches each ciphertext original, decrypts it, and streams it into a store-only zip (`client-zip`, Zip64-capable) together with `manifest.json`. With the File System Access API the zip streams to disk; otherwise it is split into parts (400 MB on mobile, 1.5 GB on desktop) saved as separate downloads. Expired URLs are refreshed once through `GET /api/photos/{id}`.
+3. The single-photo download uses the same helper (`src/services/export.ts`) and saves the original bytes with the decrypted original filename, or `avapeek-{date}-{id}.{ext}` when none was stored.
+
 ## Presigned URLs
 
 Both GET (downloads) and PUT (uploads) use presigned URLs.

@@ -7,7 +7,7 @@ import { api } from '@/services/api'
 import { completeUpload, uploadEncryptedBlobs } from '@/services/storage'
 import { generatePEK, wrapPEKWithDEK } from '@/crypto/keychain'
 import { generateThumbnail, generateLQIP } from '@/crypto/thumbnails'
-import { encryptBuffer } from '@/crypto/encrypt'
+import { encryptBuffer, encryptString } from '@/crypto/encrypt'
 import { arrayBufferToBase64 } from '@/lib/util'
 import { decodeHeic, isHeic } from '@/crypto/heic'
 
@@ -47,7 +47,7 @@ async function sendViaProxy(formData: FormData): Promise<void> {
  * reports direct uploads are disabled.
  */
 async function sendEncryptedPhoto(
-  encrypted: { original: Blob; thumbnail: Blob; originalName: string },
+  encrypted: { original: Blob; thumbnail: Blob },
   originalMime: string,
   metadata: FormData,
   onProgress: (fraction: number) => void,
@@ -61,7 +61,8 @@ async function sendEncryptedPhoto(
     return
   }
 
-  metadata.append('file', encrypted.original, encrypted.originalName)
+  // Neutral part name: the real filename travels only as `name_encrypted`.
+  metadata.append('file', encrypted.original, 'original.enc')
   metadata.append('thumbnail', encrypted.thumbnail, 'thumb.webp')
   await sendViaProxy(metadata)
   onProgress(1)
@@ -107,6 +108,9 @@ export function useUploadPhotos() {
       const { encrypted: encLQIP, iv: ivLQIP } = await encryptBuffer(lqipBytes, pek)
       const lqipEncrypted = arrayBufferToBase64(encLQIP)
 
+      // The original filename is ciphertext too (PEK); sent on both transports.
+      const { encrypted: nameEncrypted, iv: ivName } = await encryptString(f.name, pek)
+
       const ext = f.name.split('.').pop() || 'jpg'
       const originalMime = MIME_BY_EXTENSION[ext] || f.type
 
@@ -123,6 +127,8 @@ export function useUploadPhotos() {
       formData.append('iv_thumbnail', ivThumbnail)
       formData.append('lqip_encrypted', lqipEncrypted)
       formData.append('iv_lqip', ivLQIP)
+      formData.append('name_encrypted', nameEncrypted)
+      formData.append('iv_name', ivName)
       formData.append('original_mime', originalMime)
       formData.append('size_bytes', String(f.size))
       formData.append('width', String(bitmap.width))
@@ -141,7 +147,6 @@ export function useUploadPhotos() {
         {
           original: new Blob([encOriginal]),
           thumbnail: new Blob([encThumbnail]),
-          originalName: f.name,
         },
         originalMime,
         formData,
