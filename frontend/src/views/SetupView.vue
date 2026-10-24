@@ -96,7 +96,7 @@ async function onFilesSelected(files: File[]) {
 
   if (failed > 0) {
     uploadError.value = MSG.uploadFailed
-    toast.error(MSG.uploadFailed)
+    toast.error(succeeded > 0 ? MSG.uploadPartial(succeeded, files.length) : MSG.uploadFailed)
     return
   }
 
