@@ -1,4 +1,4 @@
-FROM dunglas/frankenphp:1.12-php8.5-alpine
+FROM dunglas/frankenphp:1.13.3-php8.5-alpine
 
 RUN install-php-extensions \
     pdo_pgsql \
@@ -11,7 +11,7 @@ RUN install-php-extensions \
 
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
-COPY --from=composer:2.10 /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2.10.3 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
