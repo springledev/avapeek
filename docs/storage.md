@@ -58,6 +58,8 @@ AWS_SECRET_ACCESS_KEY=...
 AWS_DEFAULT_REGION=eu-west-2
 AWS_BUCKET=your-bucket
 AWS_USE_PATH_STYLE_ENDPOINT=false
+AWS_TEMPORARY_URL=
+STORAGE_VOLUME_PATH=          # unset: do not derive the quota from the (empty) Garage volume
 ```
 
 Leave `AWS_ENDPOINT` and `AWS_TEMPORARY_URL` unset. Use an IAM user limited to this bucket (`s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket`), and keep "Block all public access" on.
@@ -85,6 +87,8 @@ AWS_DEFAULT_REGION=us-west-004
 AWS_BUCKET=your-bucket
 AWS_ENDPOINT=https://s3.us-west-004.backblazeb2.com
 AWS_USE_PATH_STYLE_ENDPOINT=false
+AWS_TEMPORARY_URL=
+STORAGE_VOLUME_PATH=          # unset: do not derive the quota from the (empty) Garage volume
 ```
 
 Create an application key scoped to the bucket (read and write) and make the bucket **Private**. The region is the part of your bucket's S3 endpoint between `s3.` and `.backblazeb2.com`.
@@ -122,6 +126,8 @@ AWS_DEFAULT_REGION=auto
 AWS_BUCKET=your-bucket
 AWS_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
 AWS_USE_PATH_STYLE_ENDPOINT=false
+AWS_TEMPORARY_URL=
+STORAGE_VOLUME_PATH=          # unset: do not derive the quota from the (empty) Garage volume
 ```
 
 Create an API token with "Object Read & Write" scoped to the bucket. Do not enable the public `r2.dev` URL or a custom public domain.
