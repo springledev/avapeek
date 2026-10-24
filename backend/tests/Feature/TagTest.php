@@ -5,6 +5,7 @@ use App\Models\ChildUser;
 use App\Models\Photo;
 use App\Models\Tag;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 
 describe('GET /api/tags', function () {
     it('lists global tags visible to the user with photo counts', function () {
@@ -12,8 +13,8 @@ describe('GET /api/tags', function () {
         $child = Child::factory()->create(['created_by' => $user->id]);
         ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => 'owner']);
 
-        $spain = Tag::factory()->create(['name' => 'Spain 2026']);
-        $school = Tag::factory()->create(['name' => 'First Day of School']);
+        $spain = Tag::factory()->create(['name' => 'Spain 2026', 'created_by' => $user->id]);
+        $school = Tag::factory()->create(['name' => 'First Day of School', 'created_by' => $user->id]);
 
         $photo = Photo::factory()->create(['uploaded_by' => $user->id]);
         $photo->children()->attach($child->id, ['encrypted_pek' => 'test', 'iv_pek' => 'test_test_test_test!']);
@@ -98,11 +99,20 @@ describe('POST /api/tags', function () {
 
     it('prevents duplicate tag names globally', function () {
         $user = User::factory()->create();
-        Tag::factory()->create(['name' => 'Spain 2026']);
+        Tag::factory()->create(['name' => 'Spain 2026', 'created_by' => $user->id]);
 
         $this->actingAs($user, 'sanctum')
             ->postJson('/api/tags', ['name' => 'Spain 2026'])
             ->assertStatus(422);
+    });
+
+    it('allows the same name in an unrelated family', function () {
+        $user = User::factory()->create();
+        Tag::factory()->create(['name' => 'Spain 2026']);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/tags', ['name' => 'Spain 2026'])
+            ->assertStatus(201);
     });
 });
 
@@ -112,7 +122,7 @@ describe('DELETE /api/tags/{tag}', function () {
         $child = Child::factory()->create(['created_by' => $user->id]);
         ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => 'owner']);
 
-        $tag = Tag::factory()->create();
+        $tag = Tag::factory()->create(['created_by' => $user->id]);
         $photo = Photo::factory()->create(['uploaded_by' => $user->id]);
         $photo->children()->attach($child->id, ['encrypted_pek' => 't', 'iv_pek' => 'test_test_test_test!']);
         $photo->tags()->attach($tag->id);
@@ -147,7 +157,7 @@ describe('POST /api/photos/{photo}/tags (attach)', function () {
         $photo = Photo::factory()->create(['uploaded_by' => $user->id]);
         $photo->children()->attach($child->id, ['encrypted_pek' => 't', 'iv_pek' => 'test_test_test_test!']);
 
-        $tag = Tag::factory()->create();
+        $tag = Tag::factory()->create(['created_by' => $user->id]);
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson("/api/photos/{$photo->id}/tags", ['tag_ids' => [$tag->id]]);
@@ -195,5 +205,134 @@ describe('DELETE /api/photos/{photo}/tags/{tag} (detach)', function () {
         $photo = Photo::factory()->create();
         $tag = Tag::factory()->create();
         $this->deleteJson("/api/photos/{$photo->id}/tags/{$tag->id}")->assertStatus(401);
+    });
+});
+
+describe('tag family scoping', function () {
+    function familyUser(string $role = 'owner'): array
+    {
+        $user = User::factory()->create();
+        $child = Child::factory()->create(['created_by' => $user->id]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => $role]);
+
+        return [$user, $child];
+    }
+
+    it('hides tags of unrelated families from the index', function () {
+        [$alice] = familyUser();
+        [$bob] = familyUser();
+        Tag::factory()->create(['name' => 'Bobs Secret', 'created_by' => $bob->id]);
+
+        $this->actingAs($alice, 'sanctum')->getJson('/api/tags')
+            ->assertStatus(200)
+            ->assertJsonCount(0, 'data');
+    });
+
+    it('shows tags created by co-members', function () {
+        [$alice, $child] = familyUser();
+        $partner = User::factory()->create();
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $partner->id, 'role' => 'member']);
+        Tag::factory()->create(['name' => 'Shared', 'created_by' => $partner->id]);
+
+        $this->actingAs($alice, 'sanctum')->getJson('/api/tags')
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Shared');
+    });
+
+    it('does not let an outsider delete a tag', function () {
+        [$alice] = familyUser();
+        [$bob] = familyUser();
+        $tag = Tag::factory()->create(['created_by' => $alice->id]);
+
+        $this->actingAs($bob, 'sanctum')->deleteJson("/api/tags/{$tag->id}")->assertStatus(404);
+        $this->assertDatabaseHas('tags', ['id' => $tag->id]);
+    });
+
+    it('does not let a plain co-member delete another member tag', function () {
+        [$alice, $child] = familyUser();
+        $member = User::factory()->create();
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $member->id, 'role' => 'member']);
+        $tag = Tag::factory()->create(['created_by' => $alice->id]);
+
+        $this->actingAs($member, 'sanctum')->deleteJson("/api/tags/{$tag->id}")->assertStatus(403);
+        $this->assertDatabaseHas('tags', ['id' => $tag->id]);
+    });
+
+    it('lets the creator and a family admin delete a tag', function () {
+        [$alice, $child] = familyUser();
+        $member = User::factory()->create();
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $member->id, 'role' => 'member']);
+        $memberTag = Tag::factory()->create(['created_by' => $member->id]);
+        $ownTag = Tag::factory()->create(['created_by' => $member->id]);
+
+        $this->actingAs($alice, 'sanctum')->deleteJson("/api/tags/{$memberTag->id}")->assertStatus(204);
+        $this->actingAs($member, 'sanctum')->deleteJson("/api/tags/{$ownTag->id}")->assertStatus(204);
+    });
+
+    it('rejects attaching a tag from another family', function () {
+        [$alice, $child] = familyUser();
+        [$bob] = familyUser();
+        $photo = Photo::factory()->create(['uploaded_by' => $alice->id]);
+        $photo->children()->attach($child->id, ['encrypted_pek' => 't', 'iv_pek' => 'test_test_test_test!']);
+        $foreign = Tag::factory()->create(['created_by' => $bob->id]);
+
+        $this->actingAs($alice, 'sanctum')
+            ->postJson("/api/photos/{$photo->id}/tags", ['tag_ids' => [$foreign->id]])
+            ->assertStatus(422);
+        $this->assertDatabaseMissing('photo_tags', ['photo_id' => $photo->id, 'tag_id' => $foreign->id]);
+    });
+});
+
+describe('tag scoping on upload and detach', function () {
+    it('creates a new tag on upload instead of reusing an unrelated family tag', function () {
+        $alice = User::factory()->create();
+        $child = Child::factory()->create(['created_by' => $alice->id]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $alice->id, 'role' => 'owner']);
+        $bob = User::factory()->create();
+        $foreign = Tag::factory()->create(['name' => 'Spain 2026', 'created_by' => $bob->id]);
+
+        $response = $this->actingAs($alice, 'sanctum')
+            ->post('/api/photos/upload', [
+                'file' => UploadedFile::fake()->create('photo.heic', 100),
+                'iv' => bin2hex(random_bytes(16)),
+                'thumbnail' => UploadedFile::fake()->create('thumb.webp', 50),
+                'iv_thumbnail' => bin2hex(random_bytes(16)),
+                'original_mime' => 'image/heic',
+                'size_bytes' => 100,
+                'children' => json_encode([$child->id => [
+                    'encrypted_pek' => bin2hex(random_bytes(32)),
+                    'iv_pek' => bin2hex(random_bytes(16)),
+                ]]),
+                'tags' => ['Spain 2026'],
+            ]);
+
+        $response->assertStatus(201);
+        $photoId = $response->json('data.id');
+        $own = Tag::where('name', 'Spain 2026')->where('created_by', $alice->id)->first();
+        expect($own)->not->toBeNull()->and($own->id)->not->toBe($foreign->id);
+        $this->assertDatabaseHas('photo_tags', ['photo_id' => $photoId, 'tag_id' => $own->id]);
+        $this->assertDatabaseMissing('photo_tags', ['photo_id' => $photoId, 'tag_id' => $foreign->id]);
+    });
+
+    it('returns 204 on detaching a non-visible tag and leaves other photos untouched', function () {
+        $alice = User::factory()->create();
+        $child = Child::factory()->create(['created_by' => $alice->id]);
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $alice->id, 'role' => 'owner']);
+        $bob = User::factory()->create();
+        $bobChild = Child::factory()->create(['created_by' => $bob->id]);
+        ChildUser::create(['child_id' => $bobChild->id, 'user_id' => $bob->id, 'role' => 'owner']);
+
+        $foreign = Tag::factory()->create(['created_by' => $bob->id]);
+        $alicePhoto = Photo::factory()->create(['uploaded_by' => $alice->id]);
+        $alicePhoto->children()->attach($child->id, ['encrypted_pek' => 't', 'iv_pek' => 'test_test_test_test!']);
+        $bobPhoto = Photo::factory()->create(['uploaded_by' => $bob->id]);
+        $bobPhoto->children()->attach($bobChild->id, ['encrypted_pek' => 't', 'iv_pek' => 'test_test_test_test!']);
+        $bobPhoto->tags()->attach($foreign->id);
+
+        $this->actingAs($alice, 'sanctum')
+            ->deleteJson("/api/photos/{$alicePhoto->id}/tags/{$foreign->id}")
+            ->assertStatus(204);
+
+        $this->assertDatabaseHas('photo_tags', ['photo_id' => $bobPhoto->id, 'tag_id' => $foreign->id]);
     });
 });

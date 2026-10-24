@@ -118,10 +118,8 @@ class PhotoController extends Controller
         if (! empty($validated['tags'])) {
             $tagIds = [];
             foreach ($validated['tags'] as $tagName) {
-                $tag = Tag::firstOrCreate(
-                    ['name' => $tagName],
-                    ['created_by' => $user->id],
-                );
+                $tag = Tag::visibleTo($user)->where('name', $tagName)->orderBy('tags.id')->first()
+                    ?? Tag::create(['name' => $tagName, 'created_by' => $user->id]);
                 $tagIds[] = $tag->id;
             }
             $photo->tags()->sync($tagIds);
