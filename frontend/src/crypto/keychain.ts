@@ -77,41 +77,69 @@ export async function generateDEK(): Promise<CryptoKey> {
   ])
 }
 
+/** Byte length of the random AES-GCM IV prefixed to every KEK-wrapped DEK. */
+const KEK_WRAP_IV_LENGTH = 12
+
+/** Byte length of a KEK-wrapped DEK: 12-byte IV + 32-byte raw AES-256 key + 16-byte GCM tag. */
+const KEK_WRAPPED_DEK_LENGTH = KEK_WRAP_IV_LENGTH + 32 + 16
+
 /**
  * Wraps (encrypts) a DEK using a KEK for secure storage.
+ * Output is base64(iv || ciphertext) with a fresh random IV per wrap.
  *
  * @param dek - The Data Encryption Key to wrap
  * @param kek - The Key Encryption Key used for wrapping
  * @returns Promise resolving to base64-encoded wrapped DEK
  */
 export async function wrapDEK(dek: CryptoKey, kek: CryptoKey): Promise<string> {
-  const wrappedKey = await crypto.subtle.wrapKey('raw', dek, kek, {
-    name: 'AES-GCM',
-    iv: new Uint8Array(12),
-  })
+  const iv = crypto.getRandomValues(new Uint8Array(KEK_WRAP_IV_LENGTH))
+  const wrappedKey = await crypto.subtle.wrapKey('raw', dek, kek, { name: 'AES-GCM', iv })
 
-  return arrayBufferToBase64(wrappedKey)
+  const combined = new Uint8Array(iv.length + wrappedKey.byteLength)
+  combined.set(iv)
+  combined.set(new Uint8Array(wrappedKey), iv.length)
+
+  return arrayBufferToBase64(combined.buffer as ArrayBuffer)
+}
+
+/**
+ * Unwraps a DEK produced by wrapDEK: splits off the leading IV and decrypts
+ * the remainder with the KEK. Rejects any input that is not exactly
+ * iv || ciphertext before handing it to Web Crypto.
+ */
+async function unwrapKekWrappedDEK(
+  wrappedDEK: string,
+  kek: CryptoKey,
+  extractable: boolean,
+): Promise<CryptoKey> {
+  const combined = new Uint8Array(base64ToArrayBuffer(wrappedDEK))
+
+  if (combined.length !== KEK_WRAPPED_DEK_LENGTH) {
+    throw new Error(
+      `Invalid wrapped DEK: expected ${KEK_WRAPPED_DEK_LENGTH} bytes (iv || ciphertext), got ${combined.length}`,
+    )
+  }
+
+  return await crypto.subtle.unwrapKey(
+    'raw',
+    combined.slice(KEK_WRAP_IV_LENGTH),
+    kek,
+    { name: 'AES-GCM', iv: combined.slice(0, KEK_WRAP_IV_LENGTH) },
+    { name: 'AES-GCM', length: 256 },
+    extractable,
+    ['encrypt', 'decrypt'],
+  )
 }
 
 /**
  * Unwraps (decrypts) a DEK using a KEK.
  *
- * @param wrappedDEK - Base64-encoded wrapped DEK
+ * @param wrappedDEK - Base64-encoded wrapped DEK, base64(iv || ciphertext) as produced by wrapDEK
  * @param kek - The Key Encryption Key used for unwrapping
  * @returns Promise resolving to the unwrapped DEK
  */
 export async function unwrapDEK(wrappedDEK: string, kek: CryptoKey): Promise<CryptoKey> {
-  const wrappedBuffer = base64ToArrayBuffer(wrappedDEK)
-
-  return await crypto.subtle.unwrapKey(
-    'raw',
-    wrappedBuffer,
-    kek,
-    { name: 'AES-GCM', iv: new Uint8Array(12) },
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt'],
-  )
+  return await unwrapKekWrappedDEK(wrappedDEK, kek, false)
 }
 
 /**
@@ -204,21 +232,14 @@ export async function unwrapPEK(
 /**
  * Re-wraps a KEK-wrapped DEK under a new KEK. Used when the password (and so
  * the KEK) changes; the DEK itself never changes, so photos stay readable.
+ * Input and output are base64(iv || ciphertext); the output gets a fresh random IV.
  */
 export async function rewrapDEK(
   wrappedDEK: string,
   oldKek: CryptoKey,
   newKek: CryptoKey,
 ): Promise<string> {
-  const dek = await crypto.subtle.unwrapKey(
-    'raw',
-    base64ToArrayBuffer(wrappedDEK),
-    oldKek,
-    { name: 'AES-GCM', iv: new Uint8Array(12) },
-    { name: 'AES-GCM', length: 256 },
-    true,
-    ['encrypt', 'decrypt'],
-  )
+  const dek = await unwrapKekWrappedDEK(wrappedDEK, oldKek, true)
 
   return await wrapDEK(dek, newKek)
 }
@@ -248,21 +269,14 @@ export async function rewrapSharedDEK(
 /**
  * Shares a KEK-wrapped DEK with another member by re-wrapping it with their
  * RSA public key. The DEK is only ever handled inside Web Crypto.
+ * The input is a KEK-wrapped DEK in wrapDEK's base64(iv || ciphertext) format.
  */
 export async function rewrapDEKForPublicKey(
   wrappedDEK: string,
   kek: CryptoKey,
   publicKey: CryptoKey,
 ): Promise<string> {
-  const dek = await crypto.subtle.unwrapKey(
-    'raw',
-    base64ToArrayBuffer(wrappedDEK),
-    kek,
-    { name: 'AES-GCM', iv: new Uint8Array(12) },
-    { name: 'AES-GCM', length: 256 },
-    true,
-    ['encrypt', 'decrypt'],
-  )
+  const dek = await unwrapKekWrappedDEK(wrappedDEK, kek, true)
 
   return await wrapDEKWithPublicKey(dek, publicKey)
 }
