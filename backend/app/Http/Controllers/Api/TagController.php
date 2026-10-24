@@ -7,6 +7,7 @@ use App\Models\Photo;
 use App\Models\Tag;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 class TagController extends Controller
 {
@@ -67,11 +68,7 @@ class TagController extends Controller
 
     public function attach(Request $request, Photo $photo): JsonResponse
     {
-        $userChildIds = $request->user()->children()->pluck('children.id');
-        $photoChildIds = $photo->children()->pluck('children.id');
-        if ($photoChildIds->intersect($userChildIds)->isEmpty()) {
-            abort(403);
-        }
+        Gate::authorize('view', $photo);
 
         $validated = $request->validate([
             'tag_ids' => ['required', 'array'],
@@ -95,11 +92,7 @@ class TagController extends Controller
 
     public function detach(Request $request, Photo $photo, Tag $tag): JsonResponse
     {
-        $userChildIds = $request->user()->children()->pluck('children.id');
-        $photoChildIds = $photo->children()->pluck('children.id');
-        if ($photoChildIds->intersect($userChildIds)->isEmpty()) {
-            abort(403);
-        }
+        Gate::authorize('view', $photo);
 
         $photo->tags()->detach($tag->id);
 

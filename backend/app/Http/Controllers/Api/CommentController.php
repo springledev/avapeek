@@ -7,6 +7,7 @@ use App\Models\Comment;
 use App\Models\Photo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 class CommentController extends Controller
 {
@@ -14,11 +15,7 @@ class CommentController extends Controller
     {
         $user = $request->user();
 
-        $userChildIds = $user->children()->pluck('children.id');
-        $photoChildIds = $photo->children()->pluck('children.id');
-        if ($photoChildIds->intersect($userChildIds)->isEmpty()) {
-            abort(403, 'You do not have access to this photo.');
-        }
+        Gate::authorize('view', $photo);
 
         $validated = $request->validate([
             'body_encrypted' => ['required', 'string', 'max:100000'],
@@ -43,11 +40,7 @@ class CommentController extends Controller
     {
         $user = $request->user();
 
-        $userChildIds = $user->children()->pluck('children.id');
-        $photoChildIds = $photo->children()->pluck('children.id');
-        if ($photoChildIds->intersect($userChildIds)->isEmpty()) {
-            abort(403, 'You do not have access to this photo.');
-        }
+        Gate::authorize('view', $photo);
 
         $comments = $photo->comments()
             ->with('user:id,display_name')
@@ -70,24 +63,11 @@ class CommentController extends Controller
     {
         $user = $request->user();
 
-        $userChildIds = $user->children()->pluck('children.id');
-        $photoChildIds = $photo->children()->pluck('children.id');
-        if ($photoChildIds->intersect($userChildIds)->isEmpty()) {
-            abort(403, 'You do not have access to this photo.');
-        }
+        Gate::authorize('view', $photo);
 
         abort_if($comment->photo_id !== $photo->id, 404);
 
-        if ($comment->user_id !== $user->id) {
-            $childWithAdminRole = $user->children()
-                ->whereIn('children.id', $photoChildIds)
-                ->wherePivotIn('role', ['owner', 'admin'])
-                ->exists();
-
-            if (! $childWithAdminRole) {
-                abort(403, 'You do not have permission to delete this comment.');
-            }
-        }
+        Gate::authorize('deleteComment', [$photo, $comment]);
 
         $comment->delete();
 
