@@ -39,7 +39,7 @@ async function startUpload(files: File[], childIds: number[]) {
   if (failed > 0) {
     // Keep only the failed photos in the review so a retry doesn't duplicate the rest.
     selectedFiles.value = errors.value.map((e) => e.file)
-    toast.error(MSG.uploadFailed)
+    toast.error(succeeded > 0 ? MSG.uploadPartial(succeeded, files.length) : MSG.uploadFailed)
     return
   }
 

@@ -174,6 +174,19 @@ describe('SetupView', () => {
     expect(wrapper!.find('[data-test="setup-invite"]').exists()).toBe(true)
   })
 
+  it('opens the step named in the ?step= query', async () => {
+    await mountSetup({ children: [makeChild()], query: '/setup?step=3' })
+    expect(wrapper!.find('[data-test="setup-step-done"]').exists()).toBe(true)
+    wrapper!.unmount()
+
+    await mountSetup({ children: [makeChild()], query: '/setup?step=1' })
+    expect(wrapper!.find('[data-test="setup-step-kid"]').exists()).toBe(true)
+    wrapper!.unmount()
+
+    await mountSetup({ children: [makeChild()], query: '/setup?step=bogus' })
+    expect(wrapper!.find('[data-test="setup-step-photo"]').exists()).toBe(true)
+  })
+
   it('redirects to /feed when the user already has a kid and photos', async () => {
     const { router } = await mountSetup({ children: [makeChild({ photo_count: 4 })] })
 
