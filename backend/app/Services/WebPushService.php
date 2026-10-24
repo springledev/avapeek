@@ -159,8 +159,9 @@ class WebPushService
 
         $options = [
             'handler' => HandlerStack::create(new CurlHandler),
-            // Proxy env vars (HTTPS_PROXY/NO_PROXY) must not bypass the DNS pin.
-            'proxy' => null,
+            // An empty string (not null) makes Guzzle set CURLOPT_PROXY='' so libcurl ignores
+            // HTTPS_PROXY/ALL_PROXY/NO_PROXY and the DNS pin cannot be bypassed via a proxy.
+            'proxy' => '',
             'timeout' => $timeout,
             'connect_timeout' => $timeout,
             'allow_redirects' => false,
