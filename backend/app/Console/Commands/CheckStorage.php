@@ -24,7 +24,7 @@ class CheckStorage extends Command
      *
      * @var string
      */
-    protected $description = 'Verify the S3 storage configuration: write, presigned GET with CORS, delete';
+    protected $description = 'Verify the S3 storage configuration: write, presigned GET with CORS, presigned PUT, delete';
 
     public function handle(StorageService $storage): int
     {
@@ -96,10 +96,7 @@ class CheckStorage extends Command
         $this->info('[ok] presigned GET returned the expected body');
 
         if ($proxied) {
-            $this->newLine();
-            $this->info('Storage check passed.');
-
-            return self::SUCCESS;
+            return $this->verifyPresignedWrite($storage, $origin, true);
         }
 
         $allowOrigin = $response->header('Access-Control-Allow-Origin');
@@ -114,10 +111,103 @@ class CheckStorage extends Command
         }
         $this->info('[ok] CORS allows origin '.$origin);
 
+        return $this->verifyPresignedWrite($storage, $origin, false);
+    }
+
+    /**
+     * Presigned PUT (direct browser uploads), plus a CORS preflight for external providers.
+     * A failure only fails the command when UPLOADS_DIRECT is enabled.
+     */
+    protected function verifyPresignedWrite(StorageService $storage, string $origin, bool $proxied): int
+    {
+        $direct = (bool) config('avapeek.uploads.direct');
+        $path = '.storage-check/'.Str::uuid().'.bin';
+        $body = 'avapeek-storage-check-put-'.Str::random(16);
+
+        $error = null;
+        try {
+            $error = $this->attemptPresignedWrite($storage, $path, $body, $origin, $proxied);
+        } catch (Throwable $e) {
+            $error = $this->explainException($e);
+        } finally {
+            try {
+                Storage::disk('s3')->delete($path);
+            } catch (Throwable) {
+                // best effort
+            }
+        }
+
         $this->newLine();
+
+        if ($error !== null) {
+            if ($direct) {
+                $this->reportFailure($error);
+
+                return self::FAILURE;
+            }
+            $this->warn('[warn] '.$error);
+            $this->warn('[warn] UPLOADS_DIRECT is disabled, so uploads use the PHP proxy and this does not block uploads.');
+        }
+
         $this->info('Storage check passed.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return string|null An error message, or null when the PUT round-trips.
+     */
+    protected function attemptPresignedWrite(StorageService $storage, string $path, string $body, string $origin, bool $proxied): ?string
+    {
+        $signed = $storage->presignedPutUrl($path, 2);
+        $url = $signed['url'];
+        $this->info('[ok] generated presigned PUT URL ('.parse_url($url, PHP_URL_HOST).')');
+
+        if ($proxied) {
+            $url = rtrim((string) config('filesystems.disks.s3.endpoint'), '/')
+                .substr($url, strlen(rtrim((string) config('filesystems.disks.s3.temporary_url'), '/')));
+        }
+
+        if (! $proxied) {
+            $requested = strtolower(implode(',', array_keys($signed['headers'])));
+            try {
+                $preflight = Http::withHeaders([
+                    'Origin' => $origin,
+                    'Access-Control-Request-Method' => 'PUT',
+                    'Access-Control-Request-Headers' => $requested,
+                ])->timeout(15)->send('OPTIONS', $url);
+            } catch (ConnectionException $e) {
+                return 'Could not reach the presigned PUT URL host ('.$e->getMessage().').';
+            }
+
+            $methods = strtoupper((string) $preflight->header('Access-Control-Allow-Methods'));
+            if (! $preflight->successful() || ! (str_contains($methods, 'PUT') || trim($methods) === '*')) {
+                return 'The CORS preflight for PUT was rejected (HTTP '.$preflight->status().'). Browsers will block direct uploads. '
+                    .'Allow PUT from '.$origin.' with the '.implode(' and ', array_keys($signed['headers'])).' headers in the bucket CORS rule, '
+                    .'or set UPLOADS_DIRECT=false (see docs/storage.md).';
+            }
+            $this->info('[ok] CORS preflight allows PUT');
+        }
+
+        try {
+            $response = Http::withHeaders($signed['headers'] + ['Origin' => $origin])
+                ->withBody($body, $signed['headers']['Content-Type'] ?? 'application/octet-stream')
+                ->timeout(15)
+                ->put($url);
+        } catch (ConnectionException $e) {
+            return 'Could not reach the presigned PUT URL host ('.$e->getMessage().').';
+        }
+
+        if (! $response->successful()) {
+            return $this->explainHttpFailure($response->status(), $response->body(), 'PUT');
+        }
+
+        if ($storage->objectSize($path) !== strlen($body)) {
+            return 'Presigned PUT succeeded but the object is missing or has the wrong size.';
+        }
+        $this->info('[ok] presigned PUT stored the expected object');
+
+        return null;
     }
 
     protected function reportFailure(string $message): void
@@ -155,16 +245,17 @@ class CheckStorage extends Command
         };
     }
 
-    protected function explainHttpFailure(int $status, string $body): string
+    protected function explainHttpFailure(int $status, string $body, string $method = 'GET'): string
     {
         return match (true) {
             str_contains($body, 'SignatureDoesNotMatch') => 'Presigned URL rejected with SignatureDoesNotMatch. The signed host differs from the host requested: '
                 .'check AWS_TEMPORARY_URL (proxy setups), AWS_DEFAULT_REGION and AWS_USE_PATH_STYLE_ENDPOINT.',
             str_contains($body, 'InvalidAccessKeyId') => 'Presigned URL rejected with InvalidAccessKeyId. Check AWS_ACCESS_KEY_ID.',
             str_contains($body, 'NoSuchBucket') => 'Presigned URL points at a missing bucket (NoSuchBucket). Check AWS_BUCKET and path-style setting.',
+            $status === 403 && $method === 'PUT' => 'Presigned PUT returned 403. The key may lack s3:PutObject, or the Content-Type / Cache-Control headers do not match what was signed. Check credentials, bucket permissions and CORS.',
             $status === 403 => 'Presigned GET returned 403. Check credentials, region and path-style setting.',
-            $status === 404 => 'Presigned GET returned 404. Check AWS_TEMPORARY_URL / AWS_ENDPOINT and path-style setting.',
-            default => 'Presigned GET failed with HTTP '.$status.'.',
+            $status === 404 => 'Presigned '.$method.' returned 404. Check AWS_TEMPORARY_URL / AWS_ENDPOINT and path-style setting.',
+            default => 'Presigned '.$method.' failed with HTTP '.$status.'.',
         };
     }
 }

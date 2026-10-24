@@ -3,12 +3,18 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\CompleteUploadRequest;
+use App\Http\Requests\PhotoMetadataRequest;
+use App\Http\Requests\UploadIntentRequest;
 use App\Models\Child;
 use App\Models\Photo;
 use App\Models\Tag;
+use App\Models\UploadIntent;
+use App\Models\User;
 use App\Policies\PhotoPolicy;
 use App\Services\QuotaService;
 use App\Services\StorageService;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,39 +28,17 @@ class PhotoController extends Controller
         protected QuotaService $quotaService,
     ) {}
 
-    public function upload(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'file' => ['required', 'file', 'max:51200'],
-            'iv' => ['required', 'string', 'size:32'],
-            'thumbnail' => ['required', 'file', 'max:5120'],
-            'iv_thumbnail' => ['required', 'string', 'size:32'],
-            'original_mime' => ['required', 'string', 'in:image/jpeg,image/png,image/webp,image/heic,image/heif'],
-            'size_bytes' => ['required', 'integer', 'min:1', 'max:52428800'],
-            'width' => ['nullable', 'integer', 'min:1'],
-            'height' => ['nullable', 'integer', 'min:1'],
-            'exif_encrypted' => ['nullable', 'string'],
-            'iv_exif' => ['nullable', 'string', 'size:32'],
-            'taken_at' => ['nullable', 'date'],
-            'lqip_encrypted' => ['nullable', 'string'],
-            'iv_lqip' => ['nullable', 'string', 'size:32'],
-            'tags' => ['nullable', 'array'],
-            'tags.*' => ['string', 'max:100'],
-            'children' => ['required', 'json'],
-        ]);
+    private const INTENT_MINUTES = 15;
 
+    public function upload(PhotoMetadataRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
         $childrenData = json_decode($validated['children'], true);
-        if (empty($childrenData)) {
-            return response()->json(['message' => 'At least one child is required.'], 422);
-        }
 
         $user = $request->user();
-        $accessibleChildIds = $user->children()->pluck('children.id')->toArray();
 
-        $childIds = array_keys($childrenData);
-        $unknownIds = array_diff($childIds, $accessibleChildIds);
-        if (! empty($unknownIds)) {
-            return response()->json(['message' => 'Invalid child IDs: '.implode(', ', $unknownIds)], 422);
+        if ($invalid = $this->invalidChildIdsResponse($user, $childrenData)) {
+            return $invalid;
         }
 
         $fileObj = $request->file('file');
@@ -75,7 +59,133 @@ class PhotoController extends Controller
         }
 
         $uuid = (string) str()->uuid();
-        $ext = match ($validated['original_mime']) {
+        [$originalPath, $thumbPath] = $this->blobPaths($uuid, $validated['original_mime']);
+
+        try {
+            $this->storageService->upload($originalPath, file_get_contents($fileObj->getPathname()));
+            $this->storageService->upload($thumbPath, file_get_contents($thumbObj->getPathname()));
+
+            $photo = $this->persistPhoto($validated, $childrenData, $user, $uuid, $originalPath, $thumbPath, $totalBytes);
+        } catch (\Throwable $e) {
+            $this->cleanupBlobs([$originalPath, $thumbPath]);
+
+            throw $e;
+        }
+
+        return $this->createdPhotoResponse($photo);
+    }
+
+    /**
+     * Reserve an upload slot and hand out presigned PUT URLs for a direct upload.
+     */
+    public function uploadIntent(UploadIntentRequest $request): JsonResponse
+    {
+        if (! config('avapeek.uploads.direct')) {
+            abort(404);
+        }
+
+        $validated = $request->validated();
+        $user = $request->user();
+
+        $uuid = (string) str()->uuid();
+        [$originalPath, $thumbPath] = $this->blobPaths($uuid, $validated['original_mime']);
+        $total = $validated['original_bytes'] + $validated['thumbnail_bytes'];
+
+        $intent = $this->quotaService->reserve($total, fn (): UploadIntent => UploadIntent::create([
+            'uuid' => $uuid,
+            'user_id' => $user->id,
+            'original_path' => $originalPath,
+            'thumbnail_path' => $thumbPath,
+            'original_mime' => $validated['original_mime'],
+            'expected_original_bytes' => $validated['original_bytes'],
+            'expected_thumbnail_bytes' => $validated['thumbnail_bytes'],
+            'reserved_bytes' => $total,
+            'expires_at' => now()->addMinutes(self::INTENT_MINUTES),
+        ]));
+
+        if ($intent === null) {
+            return response()->json(['message' => 'Storage quota exceeded.'], 413);
+        }
+
+        try {
+            $original = $this->storageService->presignedPutUrl($originalPath, self::INTENT_MINUTES);
+            $thumbnail = $this->storageService->presignedPutUrl($thumbPath, self::INTENT_MINUTES);
+        } catch (\Throwable $e) {
+            $intent->delete();
+
+            throw $e;
+        }
+
+        return response()->json([
+            'data' => [
+                'uuid' => $intent->uuid,
+                'original' => $original,
+                'thumbnail' => $thumbnail,
+                'expires_at' => $intent->expires_at->toISOString(),
+            ],
+        ], 201);
+    }
+
+    /**
+     * Verify the directly uploaded objects and create the photo row.
+     */
+    public function complete(CompleteUploadRequest $request, string $uuid): JsonResponse
+    {
+        $user = $request->user();
+
+        $intent = UploadIntent::where('uuid', $uuid)
+            ->where('user_id', $user->id)
+            ->unexpired()
+            ->first();
+
+        if ($intent === null) {
+            abort(404);
+        }
+
+        $validated = $request->validated();
+
+        if ($validated['original_mime'] !== $intent->original_mime) {
+            return response()->json(['message' => 'original_mime does not match the upload intent.'], 422);
+        }
+
+        $childrenData = json_decode($validated['children'], true);
+
+        if ($invalid = $this->invalidChildIdsResponse($user, $childrenData)) {
+            $this->discardIntent($intent);
+
+            return $invalid;
+        }
+
+        $originalBytes = $this->storageService->objectSize($intent->original_path);
+        $thumbBytes = $this->storageService->objectSize($intent->thumbnail_path);
+
+        if ($originalBytes !== $intent->expected_original_bytes || $thumbBytes !== $intent->expected_thumbnail_bytes) {
+            $this->discardIntent($intent);
+
+            return response()->json(['message' => 'Uploaded objects are missing or have an unexpected size.'], 422);
+        }
+
+        try {
+            $photo = $this->persistPhoto(
+                $validated, $childrenData, $user, $intent->uuid, $intent->original_path, $intent->thumbnail_path,
+                $originalBytes + $thumbBytes,
+                fn () => $intent->delete(),
+            );
+        } catch (\Throwable $e) {
+            $this->discardIntent($intent);
+
+            throw $e;
+        }
+
+        return $this->createdPhotoResponse($photo);
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function blobPaths(string $uuid, string $mime): array
+    {
+        $ext = match ($mime) {
             'image/jpeg' => 'jpg',
             'image/png' => 'png',
             'image/webp' => 'webp',
@@ -84,64 +194,95 @@ class PhotoController extends Controller
             default => 'bin',
         };
 
-        $originalPath = "photos/{$uuid}.{$ext}.enc";
-        $thumbPath = "photos/{$uuid}_thumb.webp.enc";
+        return ["photos/{$uuid}.{$ext}.enc", "photos/{$uuid}_thumb.webp.enc"];
+    }
 
-        $uploadedPaths = [];
+    /**
+     * @param  array<int|string, mixed>  $childrenData
+     */
+    private function invalidChildIdsResponse(User $user, array $childrenData): ?JsonResponse
+    {
+        $accessibleChildIds = $user->children()->pluck('children.id')->toArray();
+        $unknownIds = array_diff(array_keys($childrenData), $accessibleChildIds);
 
-        try {
-            $this->storageService->upload($originalPath, file_get_contents($fileObj->getPathname()));
-            $uploadedPaths[] = $originalPath;
-            $this->storageService->upload($thumbPath, file_get_contents($thumbObj->getPathname()));
-            $uploadedPaths[] = $thumbPath;
-
-            $photo = DB::transaction(function () use ($validated, $childrenData, $user, $uuid, $originalPath, $thumbPath, $totalBytes): Photo {
-                $photo = Photo::create([
-                    'uuid' => $uuid,
-                    'uploaded_by' => $user->id,
-                    'original_path' => $originalPath,
-                    'thumbnail_path' => $thumbPath,
-                    'lqip_encrypted' => $validated['lqip_encrypted'] ?? null,
-                    'iv_lqip' => $validated['iv_lqip'] ?? null,
-                    'iv_original' => $validated['iv'],
-                    'iv_thumbnail' => $validated['iv_thumbnail'],
-                    'original_mime' => $validated['original_mime'],
-                    'size_bytes' => $validated['size_bytes'],
-                    'stored_bytes' => $totalBytes,
-                    'width' => $validated['width'] ?? null,
-                    'height' => $validated['height'] ?? null,
-                    'exif_encrypted' => $validated['exif_encrypted'] ?? null,
-                    'iv_exif' => $validated['iv_exif'] ?? null,
-                    'taken_at' => $validated['taken_at'] ?? null,
-                ]);
-
-                foreach ($childrenData as $childId => $wrap) {
-                    $photo->children()->attach($childId, [
-                        'encrypted_pek' => $wrap['encrypted_pek'],
-                        'iv_pek' => $wrap['iv_pek'],
-                    ]);
-                }
-
-                if (! empty($validated['tags'])) {
-                    $tagIds = [];
-                    foreach ($validated['tags'] as $tagName) {
-                        $tag = Tag::visibleTo($user)->where('name', $tagName)->orderBy('tags.id')->first()
-                            ?? Tag::create(['name' => $tagName, 'created_by' => $user->id]);
-                        $tagIds[] = $tag->id;
-                    }
-                    $photo->tags()->sync($tagIds);
-                }
-
-                $this->quotaService->addUsage($totalBytes);
-
-                return $photo;
-            });
-        } catch (\Throwable $e) {
-            $this->cleanupBlobs([$originalPath, $thumbPath]);
-
-            throw $e;
+        if (! empty($unknownIds)) {
+            return response()->json(['message' => 'Invalid child IDs: '.implode(', ', $unknownIds)], 422);
         }
 
+        return null;
+    }
+
+    private function discardIntent(UploadIntent $intent): void
+    {
+        $this->cleanupBlobs([$intent->original_path, $intent->thumbnail_path]);
+        $intent->delete();
+    }
+
+    /**
+     * Create the photo, its child wraps, tags and usage in one transaction.
+     *
+     * @param  array<string, mixed>  $validated
+     * @param  array<int|string, array{encrypted_pek: string, iv_pek: string}>  $childrenData
+     */
+    private function persistPhoto(
+        array $validated,
+        array $childrenData,
+        User $user,
+        string $uuid,
+        string $originalPath,
+        string $thumbPath,
+        int $totalBytes,
+        ?Closure $inTransaction = null,
+    ): Photo {
+        return DB::transaction(function () use ($validated, $childrenData, $user, $uuid, $originalPath, $thumbPath, $totalBytes, $inTransaction): Photo {
+            $photo = Photo::create([
+                'uuid' => $uuid,
+                'uploaded_by' => $user->id,
+                'original_path' => $originalPath,
+                'thumbnail_path' => $thumbPath,
+                'lqip_encrypted' => $validated['lqip_encrypted'] ?? null,
+                'iv_lqip' => $validated['iv_lqip'] ?? null,
+                'iv_original' => $validated['iv'],
+                'iv_thumbnail' => $validated['iv_thumbnail'],
+                'original_mime' => $validated['original_mime'],
+                'size_bytes' => $validated['size_bytes'],
+                'stored_bytes' => $totalBytes,
+                'width' => $validated['width'] ?? null,
+                'height' => $validated['height'] ?? null,
+                'exif_encrypted' => $validated['exif_encrypted'] ?? null,
+                'iv_exif' => $validated['iv_exif'] ?? null,
+                'taken_at' => $validated['taken_at'] ?? null,
+            ]);
+
+            foreach ($childrenData as $childId => $wrap) {
+                $photo->children()->attach($childId, [
+                    'encrypted_pek' => $wrap['encrypted_pek'],
+                    'iv_pek' => $wrap['iv_pek'],
+                ]);
+            }
+
+            if (! empty($validated['tags'])) {
+                $tagIds = [];
+                foreach ($validated['tags'] as $tagName) {
+                    $tag = Tag::visibleTo($user)->where('name', $tagName)->orderBy('tags.id')->first()
+                        ?? Tag::create(['name' => $tagName, 'created_by' => $user->id]);
+                    $tagIds[] = $tag->id;
+                }
+                $photo->tags()->sync($tagIds);
+            }
+
+            $this->quotaService->addUsage($totalBytes);
+
+            if ($inTransaction !== null) {
+                $inTransaction();
+            }
+
+            return $photo;
+        });
+    }
+
+    private function createdPhotoResponse(Photo $photo): JsonResponse
+    {
         $photo->load(['tags', 'children' => function ($q) {
             $q->select('children.id', 'children.name', 'children.avatar_color');
         }]);

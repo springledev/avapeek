@@ -100,8 +100,16 @@ Full provider-specific instructions are in [storage.md](storage.md).
 
 With neither set the limit is "unknown": uploads are not capped by Avapeek and the UI shows usage without a limit.
 
+### Uploads
+
+| Name | Default | Required | Description |
+| --- | --- | --- | --- |
+| `UPLOADS_DIRECT` | `true` | no | Browsers upload encrypted blobs straight to object storage with presigned PUT URLs. Set to `false` to stream uploads through the PHP backend instead (`POST /api/photos/upload`) |
+
+**Upgrading operators on an external S3 provider** (AWS S3, B2, R2): direct uploads are on by default and need bucket CORS to allow `PUT` (`AllowedMethods`: `GET`, `HEAD`, `PUT`; `AllowedHeaders` covering `Content-Type` and `Cache-Control`, or `*`). Update the CORS rule (see [storage.md](storage.md)) and run `php artisan storage:check`, or set `UPLOADS_DIRECT=false`. If you run your own reverse proxy in front of the bundled Garage setup, it may need a larger request body limit for `/photos/*`.
+
 ## Behaviour that is not configurable via env
 
-- Rate limits (per minute unless noted): API 60, login 5, register 3, MFA 10, password-confirm 10, upload 30, invites 10 per hour.
-- Upload size is capped at 64 MB per request (`docker/php/uploads.ini`).
+- Rate limits (per minute unless noted): API 60, login 5, register 3, MFA 10, password-confirm 10, upload 30 (also applied to completing a direct upload), upload-intent 60, invites 10 per hour.
+- Photos are capped at 50 MB (ciphertext) plus a 5 MB thumbnail. The 64 MB per-request PHP cap (`docker/php/uploads.ini`) applies only to the proxy fallback (`UPLOADS_DIRECT=false`).
 - Registration is open only until the first account exists; afterwards it is invite-only.

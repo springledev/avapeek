@@ -2,10 +2,10 @@
 
 Avapeek stores only encrypted blobs. Object storage is always the Laravel `s3` disk; which S3 you use is purely environment configuration. You can switch between the bundled self-hosted Garage and AWS S3, Backblaze B2 or Cloudflare R2 without code changes.
 
-How it works: uploads go through the PHP backend to the bucket. Downloads use short-lived **presigned GET URLs** that the browser fetches directly from the storage provider. Two consequences:
+How it works: the browser uploads encrypted blobs straight to the bucket with short-lived **presigned PUT URLs** (the backend only reserves a slot, signs the URLs and later verifies the objects exist; set `UPLOADS_DIRECT=false` to stream uploads through PHP instead). Downloads use short-lived **presigned GET URLs** that the browser fetches directly from the storage provider. Two consequences:
 
 - The bucket must be **private**. Never enable public read access; presigned URLs are the only access path.
-- The bucket needs a **CORS rule**, because the browser `fetch()`es the presigned URLs from your app origin.
+- The bucket needs a **CORS rule**, because the browser reads (GET) and writes (PUT) the presigned URLs from your app origin. The rule must allow `GET`, `HEAD` and `PUT`, and `AllowedHeaders` must cover `Content-Type` and `Cache-Control` (the examples below use `*`). Garage behind the bundled Caddy is same-origin and needs no CORS.
 
 All variables below go in `backend/.env` (and `COMPOSE_PROFILES` in the root `.env`).
 
@@ -70,7 +70,7 @@ CORS (Bucket > Permissions > CORS):
 [
   {
     "AllowedOrigins": ["https://your-domain.com"],
-    "AllowedMethods": ["GET", "HEAD"],
+    "AllowedMethods": ["GET", "HEAD", "PUT"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["Content-Length", "ETag"],
     "MaxAgeSeconds": 3600
@@ -100,7 +100,7 @@ CORS via the S3 API (needs the AWS CLI; use a key that may manage the bucket, e.
   "CORSRules": [
     {
       "AllowedOrigins": ["https://your-domain.com"],
-      "AllowedMethods": ["GET", "HEAD"],
+      "AllowedMethods": ["GET", "HEAD", "PUT"],
       "AllowedHeaders": ["*"],
       "ExposeHeaders": ["Content-Length", "ETag"],
       "MaxAgeSeconds": 3600
@@ -138,7 +138,7 @@ CORS (Bucket > Settings > CORS policy):
 [
   {
     "AllowedOrigins": ["https://your-domain.com"],
-    "AllowedMethods": ["GET", "HEAD"],
+    "AllowedMethods": ["GET", "HEAD", "PUT"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["Content-Length", "ETag"],
     "MaxAgeSeconds": 3600
@@ -156,11 +156,11 @@ Set `STORAGE_LIMIT_BYTES` for a fixed limit. If it is unset and `STORAGE_VOLUME_
 docker compose exec backend php artisan storage:check
 ```
 
-The command writes a tiny object, generates a presigned URL, fetches it over HTTP with `Origin` set to `FRONTEND_URL` (or `APP_URL`), checks the content and the `Access-Control-Allow-Origin` header, then deletes the object. Failures come with a hint: wrong secret or region/path-style (`SignatureDoesNotMatch`), unknown key, missing bucket, unreachable endpoint, or missing CORS.
+The command writes a tiny object, generates a presigned URL, fetches it over HTTP with `Origin` set to `FRONTEND_URL` (or `APP_URL`), checks the content and the `Access-Control-Allow-Origin` header, then deletes the object. It then repeats the exercise for uploads: it generates a presigned PUT URL, sends a CORS preflight (`OPTIONS` with `Access-Control-Request-Method: PUT`, external providers only), PUTs a tiny body with the signed `Content-Type` and `Cache-Control` headers, verifies the object, and deletes it. A PUT failure fails the command when `UPLOADS_DIRECT=true` (the default) and only warns otherwise. Failures come with a hint: wrong secret or region/path-style (`SignatureDoesNotMatch`), unknown key, missing bucket, unreachable endpoint, missing CORS, or a key lacking `s3:PutObject`.
 
 ### What `storage:check` does not cover
 
-With Garage (`AWS_TEMPORARY_URL` set), the command fetches from `AWS_ENDPOINT` directly, so it does not exercise the browser-facing route (your reverse proxy forwarding `/photos/*` to Garage). Test that from your own machine by presigning in the container and requesting the public URL:
+With Garage (`AWS_TEMPORARY_URL` set), the command reads and writes via `AWS_ENDPOINT` directly, so it does not exercise the browser-facing route (your reverse proxy forwarding `/photos/*` to Garage). If you run your own reverse proxy in front of the stack, make sure it allows request bodies of at least 50 MB on `/photos/*`, since uploads are now PUT through it to Garage. Test that from your own machine by presigning in the container and requesting the public URL:
 
 ```sh
 docker compose exec backend php artisan tinker --execute 'echo app(App\Services\StorageService::class)->presignedUrl("does-not-exist", 5);'
