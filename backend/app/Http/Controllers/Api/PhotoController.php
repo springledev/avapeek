@@ -144,21 +144,40 @@ class PhotoController extends Controller
         } catch (HttpException $e) {
             throw $e;
         } catch (\Throwable $e) {
-            // A photo with this uuid means another request already completed the upload:
-            // its blobs are live and must never be deleted here.
-            if (Photo::where('uuid', $uuid)->exists()) {
-                Log::warning('Concurrent complete for an already completed upload', ['uuid' => $uuid]);
-
-                return response()->json(['message' => 'This upload was already completed.'], 409);
-            }
-
-            $intent = UploadIntent::where('uuid', $uuid)->where('user_id', $user->id)->first();
-            if ($intent !== null) {
-                $this->discardIntent($intent);
+            if ($conflict = $this->cleanupFailedComplete($uuid, $user)) {
+                return $conflict;
             }
 
             throw $e;
         }
+    }
+
+    /**
+     * Failure cleanup after complete() rolled back, under its own lock on the intent so
+     * a parallel complete cannot commit a photo between our checks and the blob deletion.
+     * Returns a 409 when the upload was completed meanwhile (its blobs are live and kept).
+     */
+    private function cleanupFailedComplete(string $uuid, User $user): ?JsonResponse
+    {
+        return DB::transaction(function () use ($uuid, $user): ?JsonResponse {
+            $intent = UploadIntent::where('uuid', $uuid)
+                ->where('user_id', $user->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (Photo::where('uuid', $uuid)->exists()) {
+                Log::warning('Concurrent complete for an already completed upload', ['uuid' => $uuid]);
+                $intent?->delete();
+
+                return response()->json(['message' => 'This upload was already completed.'], 409);
+            }
+
+            if ($intent !== null) {
+                $this->discardIntent($intent);
+            }
+
+            return null;
+        });
     }
 
     /**
@@ -174,6 +193,12 @@ class PhotoController extends Controller
             ->first();
 
         if ($intent === null) {
+            // Retry after a lost 201: the photo exists and is this user's, so answer idempotently.
+            $existing = Photo::where('uuid', $uuid)->where('uploaded_by', $user->id)->first();
+            if ($existing !== null) {
+                return $this->createdPhotoResponse($existing, 200);
+            }
+
             abort(404);
         }
 
@@ -324,7 +349,7 @@ class PhotoController extends Controller
         });
     }
 
-    private function createdPhotoResponse(Photo $photo): JsonResponse
+    private function createdPhotoResponse(Photo $photo, int $status = 201): JsonResponse
     {
         $photo->load(['tags', 'children' => function ($q) {
             $q->select('children.id', 'children.name', 'children.avatar_color');
@@ -333,7 +358,7 @@ class PhotoController extends Controller
 
         return response()->json([
             'data' => $this->formatPhoto($photo),
-        ], 201);
+        ], $status);
     }
 
     public function feed(Request $request): JsonResponse

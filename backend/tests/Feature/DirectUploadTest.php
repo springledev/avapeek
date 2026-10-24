@@ -9,7 +9,9 @@ use App\Models\UploadIntent;
 use App\Models\User;
 use App\Services\StorageService;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use League\Flysystem\FilesystemOperator;
 use League\Flysystem\UnableToCheckFileExistence;
@@ -197,14 +199,34 @@ describe('complete upload', function () {
         expect(array_keys($direct))->toBe(array_keys($proxy));
     });
 
-    it('is not repeatable: a second call finds no intent and creates no second row', function () {
+    it('answers a retry after a lost response idempotently with the existing photo', function () {
         [$user, $child, $disk] = directUploadSetup();
         $intent = openIntent($this, $user, $disk);
         $payload = completePayload($child);
 
-        $this->actingAs($user, 'sanctum')->postJson("/api/photos/{$intent->uuid}/complete", $payload)->assertCreated();
-        $this->actingAs($user, 'sanctum')->postJson("/api/photos/{$intent->uuid}/complete", $payload)->assertNotFound();
+        $first = $this->actingAs($user, 'sanctum')->postJson("/api/photos/{$intent->uuid}/complete", $payload)->assertCreated();
+        $retry = $this->actingAs($user, 'sanctum')->postJson("/api/photos/{$intent->uuid}/complete", $payload)->assertOk();
 
+        expect($retry->json('data.id'))->toBe($first->json('data.id'))
+            ->and(array_keys($retry->json('data')))->toBe(array_keys($first->json('data')))
+            ->and(Photo::count())->toBe(1)
+            ->and((int) StorageUsage::global()->used_bytes)->toBe(1100);
+        $disk->assertExists($intent->original_path);
+    });
+
+    it('gives another user a 404 for a completed upload uuid', function () {
+        [$user, $child, $disk] = directUploadSetup();
+        $intent = openIntent($this, $user, $disk);
+        $this->actingAs($user, 'sanctum')->postJson("/api/photos/{$intent->uuid}/complete", completePayload($child))->assertCreated();
+        $other = User::factory()->create();
+        $otherChild = Child::factory()->create(['created_by' => $other->id]);
+        ChildUser::create(['child_id' => $otherChild->id, 'user_id' => $other->id, 'role' => 'owner']);
+
+        $this->actingAs($other, 'sanctum')
+            ->postJson("/api/photos/{$intent->uuid}/complete", completePayload($otherChild))
+            ->assertNotFound();
+
+        $disk->assertExists($intent->original_path);
         expect(Photo::count())->toBe(1);
     });
 
@@ -453,5 +475,57 @@ describe('pending intent cap', function () {
         $other = User::factory()->create();
         $this->actingAs($other, 'sanctum')->postJson('/api/photos/upload-intent', intentPayload())
             ->assertCreated();
+    });
+});
+
+describe('locked failure cleanup and pruning', function () {
+    it('keeps blobs when a parallel complete commits a photo between the failure and its cleanup', function () {
+        [$user, $child, $disk] = directUploadSetup();
+        $intent = openIntent($this, $user, $disk);
+
+        Tag::creating(function () {
+            throw new RuntimeException('forced failure');
+        });
+        // Interleaving: right after our transaction rolls back, a parallel request commits a photo.
+        $injected = false;
+        // Level 1 is the test's own wrapper transaction, i.e. complete()'s transaction is fully rolled back.
+        Event::listen(TransactionRolledBack::class, function (TransactionRolledBack $event) use (&$injected, $intent, $user) {
+            if ($injected || $event->connection->transactionLevel() !== 1) {
+                return;
+            }
+            $injected = true;
+            Photo::factory()->create([
+                'uuid' => $intent->uuid,
+                'uploaded_by' => $user->id,
+                'original_path' => $intent->original_path,
+                'thumbnail_path' => $intent->thumbnail_path,
+            ]);
+        });
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/photos/{$intent->uuid}/complete", completePayload($child))
+            ->assertStatus(409);
+
+        $disk->assertExists($intent->original_path);
+        $disk->assertExists($intent->thumbnail_path);
+        expect(Photo::count())->toBe(1);
+    });
+
+    it('prune keeps blobs of a completed photo but removes the stale intent row', function () {
+        [, , $disk] = directUploadSetup();
+        $intent = UploadIntent::factory()->expired()->create();
+        Photo::factory()->create([
+            'uuid' => $intent->uuid,
+            'original_path' => $intent->original_path,
+            'thumbnail_path' => $intent->thumbnail_path,
+        ]);
+        $disk->put($intent->original_path, 'x');
+        $disk->put($intent->thumbnail_path, 'y');
+
+        $this->artisan('uploads:prune-intents')->assertSuccessful();
+
+        $disk->assertExists($intent->original_path);
+        $disk->assertExists($intent->thumbnail_path);
+        expect(UploadIntent::count())->toBe(0);
     });
 });
