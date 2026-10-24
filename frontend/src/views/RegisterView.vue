@@ -157,7 +157,8 @@ async function handleSubmit() {
       await router.push('/welcome')
       return
     }
-    const redirect = (route.query.redirect as string) || '/'
+    // An explicit redirect (e.g. back to an invite page) wins over the setup flow.
+    const redirect = (route.query.redirect as string) || '/setup'
     await router.push(redirect)
   } catch {
     serverError.value = authStore.error

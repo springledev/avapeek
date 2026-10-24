@@ -4,6 +4,7 @@ import { preloadOriginal } from '@/services/storage'
 import { useFeedStore } from '@/stores/feed'
 import { useChildStore } from '@/stores/child'
 import { usePrefetch } from '@/composables/usePrefetch'
+import { useSetupState } from '@/composables/useSetupState'
 import { Image } from '@lucide/vue'
 import FeedToolbar from '@/components/feed/FeedToolbar.vue'
 import PhotoTile from '@/components/feed/PhotoTile.vue'
@@ -18,6 +19,11 @@ const feedStore = useFeedStore()
 const childStore = useChildStore()
 const showCreateChild = ref(false)
 const { prefetchNextPage } = usePrefetch()
+const setup = useSetupState()
+
+const showFinishSetup = computed(
+  () => childStore.childrenLoaded && !setup.isComplete.value && !setup.isDismissed.value,
+)
 
 const selectedPhoto = ref<Photo | null>(null)
 const selectedPhotoIndex = ref(0)
@@ -197,6 +203,25 @@ async function updateDate(photoId: number, takenAt: string) {
   <div>
     <h1 class="feed-title">Photos</h1>
 
+    <section v-if="showFinishSetup" class="finish-setup" data-test="finish-setup-card">
+      <div>
+        <h2 class="finish-setup__title">{{ MSG.setupFinishTitle }}</h2>
+        <p class="finish-setup__body">{{ MSG.setupFinishBody }}</p>
+      </div>
+      <div class="finish-setup__actions">
+        <router-link
+          :to="{ path: '/setup', query: { step: setup.firstIncompleteStep.value } }"
+          class="feed-add-photos"
+          data-test="finish-setup-continue"
+        >
+          {{ MSG.setupFinishAction }}
+        </router-link>
+        <UiButton variant="ghost" data-test="finish-setup-dismiss" @click="setup.dismiss()">
+          {{ MSG.setupDismiss }}
+        </UiButton>
+      </div>
+    </section>
+
     <FeedToolbar />
 
     <div v-if="feedStore.isLoading && feedStore.photos.length === 0" class="u-grid">
@@ -290,6 +315,37 @@ async function updateDate(photoId: number, takenAt: string) {
   line-height: var(--lh-title);
   color: var(--color-ink);
   margin: 0 0 var(--space-4);
+}
+
+.finish-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+
+.finish-setup__title {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.finish-setup__body {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+}
+
+.finish-setup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .feed-add-photos {
