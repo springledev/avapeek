@@ -6,22 +6,26 @@ use App\Models\StorageUsage;
 
 class QuotaService
 {
-    protected function getStorageLimit(): int
+    /**
+     * The storage limit in bytes, or null when it is unknown (external S3
+     * provider with no STORAGE_LIMIT_BYTES configured).
+     */
+    protected function getStorageLimit(): ?int
     {
-        $limit = env('STORAGE_LIMIT_BYTES');
-        if ($limit !== null && $limit !== '') {
+        $limit = config('avapeek.storage.limit_bytes');
+        if ($limit !== null) {
             return (int) $limit;
         }
 
-        $volumePath = env('STORAGE_VOLUME_PATH');
-        if ($volumePath !== null && $volumePath !== '' && is_dir($volumePath)) {
+        $volumePath = config('avapeek.storage.volume_path');
+        if ($volumePath !== null && is_dir($volumePath)) {
             $free = disk_free_space($volumePath);
             if ($free !== false && $free > 0) {
                 return (int) ($free * 0.9);
             }
         }
 
-        return 5 * 1024 * 1024 * 1024;
+        return null;
     }
 
     public function getTotalUsage(): int
@@ -31,7 +35,9 @@ class QuotaService
 
     public function checkQuota(int $additionalBytes): bool
     {
-        return ($this->getTotalUsage() + $additionalBytes) <= $this->getStorageLimit();
+        $limit = $this->getStorageLimit();
+
+        return $limit === null || ($this->getTotalUsage() + $additionalBytes) <= $limit;
     }
 
     public function addUsage(int $bytes): void
@@ -48,11 +54,14 @@ class QuotaService
         }
     }
 
+    /**
+     * @return array{used_bytes: int, limit_bytes: int|null, percentage: float|int|null}
+     */
     public function getUsage(): array
     {
         $used = $this->getTotalUsage();
         $limit = $this->getStorageLimit();
-        $percentage = $limit > 0 ? round(($used / $limit) * 100, 1) : 0;
+        $percentage = $limit === null ? null : ($limit > 0 ? round(($used / $limit) * 100, 1) : 0);
 
         return [
             'used_bytes' => $used,
@@ -63,13 +72,13 @@ class QuotaService
 
     public function getDiskInfo(): array
     {
-        $volumePath = env('STORAGE_VOLUME_PATH', '/');
+        $volumePath = config('avapeek.storage.volume_path');
 
-        if (! is_dir($volumePath)) {
+        if ($volumePath === null || ! is_dir($volumePath)) {
             return [
-                'total_bytes' => 0,
-                'used_bytes' => 0,
-                'free_bytes' => 0,
+                'total_bytes' => null,
+                'used_bytes' => null,
+                'free_bytes' => null,
             ];
         }
 
@@ -77,8 +86,11 @@ class QuotaService
             $total = disk_total_space($volumePath) ?: 0;
             $free = disk_free_space($volumePath) ?: 0;
         } catch (\Throwable) {
-            $total = 0;
-            $free = 0;
+            return [
+                'total_bytes' => null,
+                'used_bytes' => null,
+                'free_bytes' => null,
+            ];
         }
 
         $used = $total - $free;

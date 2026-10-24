@@ -22,7 +22,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/storage': {
-        target: 'http://localhost:9000',  // MinIO
+        target: 'http://localhost:3900',  // Garage S3
         changeOrigin: true,
       }
     }
