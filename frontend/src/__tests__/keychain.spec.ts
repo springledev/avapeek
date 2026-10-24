@@ -16,7 +16,12 @@ import {
   wrapPrivateKey,
   unwrapPrivateKey,
   rewrapPrivateKey,
+  generatePEK,
+  wrapPEKWithDEK,
+  unwrapPEK,
+  rewrapPEK,
 } from '@/crypto/keychain'
+import { encryptBuffer, decryptBlob } from '@/crypto/encrypt'
 
 /** Encrypts with one DEK handle and decrypts with another to prove they hold the same key. */
 async function sameKey(a: CryptoKey, b: CryptoKey): Promise<boolean> {
@@ -170,5 +175,90 @@ describe('keychain KEK-wrapped DEK format', () => {
     await expect(rewrapDEKForPublicKey(legacyWrapped, kek, publicKey)).rejects.toThrow(
       /Invalid wrapped DEK/,
     )
+  })
+})
+
+describe('keychain PEK re-wrapping', () => {
+  const content = new TextEncoder().encode('first steps in the garden')
+
+  async function setup() {
+    const dekA = await generateDEK()
+    const dekB = await generateDEK()
+    const pek = await generatePEK()
+    const wrapped = await wrapPEKWithDEK(pek, dekA)
+    const { encrypted, iv } = await encryptBuffer(content.slice().buffer as ArrayBuffer, pek)
+    return { dekA, dekB, wrapped, encrypted, iv }
+  }
+
+  it('moves a PEK from one DEK to another so content still decrypts', async () => {
+    const { dekA, dekB, wrapped, encrypted, iv } = await setup()
+
+    const rewrapped = await rewrapPEK(wrapped.encrypted_pek, wrapped.iv_pek, dekA, dekB)
+    const pek = await unwrapPEK(rewrapped.encrypted_pek, rewrapped.iv_pek, dekB)
+
+    expect(new Uint8Array(await decryptBlob(encrypted, pek, iv))).toEqual(content)
+  })
+
+  it('rejects a wrong source DEK', async () => {
+    const { dekB, wrapped } = await setup()
+
+    await expect(
+      rewrapPEK(wrapped.encrypted_pek, wrapped.iv_pek, await generateDEK(), dekB),
+    ).rejects.toBeDefined()
+  })
+
+  it('produces output that a different DEK cannot unwrap', async () => {
+    const { dekA, dekB, wrapped } = await setup()
+
+    const rewrapped = await rewrapPEK(wrapped.encrypted_pek, wrapped.iv_pek, dekA, dekB)
+
+    await expect(
+      unwrapPEK(rewrapped.encrypted_pek, rewrapped.iv_pek, await generateDEK()),
+    ).rejects.toBeDefined()
+    await expect(unwrapPEK(rewrapped.encrypted_pek, rewrapped.iv_pek, dekA)).rejects.toBeDefined()
+  })
+
+  it('uses a fresh IV on every call and never reuses the input IV', async () => {
+    const { dekA, dekB, wrapped } = await setup()
+
+    const first = await rewrapPEK(wrapped.encrypted_pek, wrapped.iv_pek, dekA, dekB)
+    const second = await rewrapPEK(wrapped.encrypted_pek, wrapped.iv_pek, dekA, dekB)
+
+    expect(first.iv_pek).not.toBe(second.iv_pek)
+    expect(first.encrypted_pek).not.toBe(second.encrypted_pek)
+    expect(first.iv_pek).not.toBe(wrapped.iv_pek)
+    expect(second.iv_pek).not.toBe(wrapped.iv_pek)
+  })
+
+  it('matches the wrapPEKWithDEK output format', async () => {
+    const { dekA, dekB, wrapped } = await setup()
+
+    const rewrapped = await rewrapPEK(wrapped.encrypted_pek, wrapped.iv_pek, dekA, dekB)
+
+    expect(rewrapped.encrypted_pek).toMatch(/^[A-Za-z0-9+/]{64}$/)
+    expect(rewrapped.iv_pek).toMatch(/^[A-Za-z0-9+/]{16}$/)
+    expect(decodeBase64(rewrapped.encrypted_pek)).toHaveLength(48)
+    expect(decodeBase64(rewrapped.iv_pek)).toHaveLength(12)
+  })
+
+  it('keeps unwrapPEK non-extractable and both wraps open the same PEK', async () => {
+    const { dekA, dekB, wrapped, encrypted, iv } = await setup()
+
+    const rewrapped = await rewrapPEK(wrapped.encrypted_pek, wrapped.iv_pek, dekA, dekB)
+    const original = await unwrapPEK(wrapped.encrypted_pek, wrapped.iv_pek, dekA)
+    const moved = await unwrapPEK(rewrapped.encrypted_pek, rewrapped.iv_pek, dekB)
+
+    expect(original.extractable).toBe(false)
+    expect(moved.extractable).toBe(false)
+    expect(new Uint8Array(await decryptBlob(encrypted, original, iv))).toEqual(content)
+    expect(new Uint8Array(await decryptBlob(encrypted, moved, iv))).toEqual(content)
+  })
+
+  it('rejects a tampered encrypted_pek', async () => {
+    const { dekA, dekB, wrapped } = await setup()
+    const bytes = decodeBase64(wrapped.encrypted_pek)
+    bytes[5] = bytes[5]! ^ 0x01
+
+    await expect(rewrapPEK(encodeBase64(bytes), wrapped.iv_pek, dekA, dekB)).rejects.toBeDefined()
   })
 })
