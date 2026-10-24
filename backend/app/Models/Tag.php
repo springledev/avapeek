@@ -52,6 +52,23 @@ class Tag extends Model
     }
 
     /**
+     * Row-selecting query for tags that exist and belong to the given children, under a share
+     * lock. It must select rows: PostgreSQL rejects FOR SHARE combined with aggregates.
+     *
+     * @param  array<int, int>  $tagIds
+     * @param  array<int, int>  $childIds
+     * @return Builder<Tag>
+     */
+    public static function lockedLinkableIdsQuery(array $tagIds, array $childIds): Builder
+    {
+        return static::query()
+            ->select('tags.id')
+            ->whereIn('tags.id', $tagIds)
+            ->whereIn('tags.child_id', $childIds)
+            ->sharedLock();
+    }
+
+    /**
      * Tags belonging to children the user is a member of.
      *
      * @param  Builder<Tag>  $query
