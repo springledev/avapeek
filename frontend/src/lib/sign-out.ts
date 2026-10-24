@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/stores/auth'
+import { teardownPushForSignOut } from '@/services/push'
 
 /**
  * Signs out and reloads the app on the sign-in page.
@@ -8,6 +9,8 @@ import { useAuthStore } from '@/stores/auth'
  * way to be sure none of it is left for the next person on this device.
  */
 export async function signOut(): Promise<void> {
+  // Needs the bearer token, so it must run before the session is cleared.
+  await teardownPushForSignOut()
   await useAuthStore().logout()
   window.location.assign('/login')
 }

@@ -10,6 +10,7 @@ import {
   Sun,
   Moon,
   ShieldCheck,
+  Bell,
   LogOut,
 } from '@lucide/vue'
 import { api } from '@/services/api'
@@ -18,11 +19,13 @@ import { signOut } from '@/lib/sign-out'
 import { useChildStore } from '@/stores/child'
 import { useGridDensity, type FeedDensity } from '@/composables/useGridDensity'
 import { useDarkMode } from '@/composables/useDarkMode'
+import { usePushNotifications } from '@/composables/usePushNotifications'
 
 const route = useRoute()
 const childStore = useChildStore()
 const { density, setDensity } = useGridDensity()
 const { isDark, toggle: toggleDark } = useDarkMode()
+const push = usePushNotifications()
 
 const hasSubRoute = computed(() => route.matched.length > 1)
 const backTarget = computed(() => {
@@ -77,7 +80,10 @@ async function handleLogout() {
   await signOut()
 }
 
-onMounted(fetchPendingInvites)
+onMounted(() => {
+  void fetchPendingInvites()
+  void push.init()
+})
 </script>
 
 <template>
@@ -110,6 +116,22 @@ onMounted(fetchPendingInvites)
         <div class="settings__text">
           <p class="settings__label">Security</p>
           <p class="settings__desc">Extra lock, authenticator, recovery codes</p>
+        </div>
+        <ChevronRight :size="20" class="settings__chevron" />
+      </router-link>
+
+      <router-link
+        v-if="push.available.value"
+        to="/settings/notifications"
+        class="settings__row"
+        data-testid="settings-notifications-link"
+      >
+        <div class="settings__icon settings__icon--accent">
+          <Bell :size="20" />
+        </div>
+        <div class="settings__text">
+          <p class="settings__label">Notifications</p>
+          <p class="settings__desc">Alerts for new photos and comments</p>
         </div>
         <ChevronRight :size="20" class="settings__chevron" />
       </router-link>
