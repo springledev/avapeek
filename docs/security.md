@@ -23,6 +23,7 @@ password + master_key_salt
 - **KEK (Key Encryption Key)** is derived in the browser from the password and a random per-user salt (`users.master_key_salt`). It is never sent to the server.
 - **User key pair** (RSA-OAEP 2048, SHA-256). The public key is stored in the clear (`users.public_key`); the private key is stored wrapped by the KEK. It is used to hand a child's DEK to another member.
 - **DEK (Data Encryption Key)** is a random AES-256 key per child ("family"). Each member holds a copy wrapped under their own KEK (`wrap_type = kek`). While an invite is being completed, the DEK can briefly be stored wrapped with the invitee's RSA public key (`wrap_type` other than `kek`); the invitee's browser re-wraps it under its own KEK on first login.
+- **Tag names** are encrypted with the child's DEK (AES-256-GCM, fresh random IV per tag, stored as `tags.name_encrypted` + `tags.iv_name`). Tags are per child, so a member only receives ciphertext of tags whose child they belong to.
 - **PEK (Photo Encryption Key)** is a random AES-256 key per photo. It is wrapped by the child's DEK and stored per child in the `child_photo` pivot (so a photo can be shared with several children, each wrapping the same PEK with its own DEK).
 - **Wrap format.** Every AES-GCM key wrap (private key, DEK, PEK) uses a fresh random 12-byte IV per wrap. KEK-wrapped private keys and DEKs are stored as `base64(iv || ciphertext)`; a wrapped DEK is 60 bytes (12-byte IV + 32-byte key + 16-byte tag). Older fixed-IV (48-byte) DEK wraps are not accepted. PEKs are stored as ciphertext with a separate `iv_pek` column.
 - Content (photo bytes, thumbnail, LQIP, EXIF JSON, comment text) is encrypted with AES-GCM using the PEK and a fresh random IV per object, stored alongside as `iv_*` columns.
@@ -44,12 +45,12 @@ Password change re-wraps the private key and every DEK under the new KEK in the 
 | `taken_at` timestamp of each photo (used for sorting and filters) | `photos.taken_at` |
 | Original size in bytes, pixel width and height, MIME type | `photos` |
 | Number and timing of comments, and who wrote them | `comments` |
-| **Tag names** (plaintext) and which photos carry them. Tags are scoped to families: a user only sees and reuses tags created by people they share a child with, or that are on photos they can access; names stay unencrypted | `tags`, `photo_tags` |
+| Tag metadata (names are encrypted, see above): which child a tag belongs to, how many tags a child has, which photos share a tag, how many tags a photo has, who created a tag and when, and the ciphertext length (approximate name length). The server can no longer read, list, match or filter on tag names; deduplication, suggestions and search run in the browser | `tags`, `photo_tags` |
 | Invite tokens, roles, expiry | `invites` |
 | Access patterns: IP addresses and request timing in web server logs | infrastructure |
 | Total storage used | `storage_usage` |
 
-Anyone with the database can therefore tell that a family has N photos taken on certain dates, of certain sizes, and read the tag names and child names. They cannot see what the photos show.
+Anyone with the database can therefore tell that a family has N photos taken on certain dates, of certain sizes, and read the child names. Tag names are ciphertext, but the tag structure listed above is visible. They cannot see what the photos show.
 
 ## Threat model
 
@@ -74,7 +75,7 @@ Does **not** protect against:
 - **Invites trust a server-supplied public key.** When you invite someone, your browser wraps the child's DEK with the invitee's RSA public key as returned by the server. There is no fingerprint or out-of-band verification, so a malicious server can substitute its own key and receive the DEK without modifying any JavaScript.
 - **No binding of ciphertext to its photo.** AES-GCM is used without additional authenticated data (AAD) tying a ciphertext to its photo id, so the server could swap blobs between photos and the client would not detect it.
 - **No key rotation when a member is removed.** Removing a member deletes their wrapped key copies from the server, but the DEK does not change. Anyone who already downloaded ciphertext and had decrypted or cached the keys keeps the ability to read those photos, and the DEK still protects future uploads they could theoretically obtain ciphertext of. A forward-secrecy design (new DEK, re-wrap remaining PEKs client-side) is planned but not implemented. Treat removal as revoking access to the app, not as cryptographic erasure.
-- Tag names and several metadata fields are plaintext (see above). Encrypting tags is on the roadmap.
+- Several metadata fields are plaintext (see above). Tag names are encrypted, but tag structure (which photos share a tag, tags per photo, ciphertext length) is not hidden. The server cannot see names, so it cannot prevent two members racing to create the same tag; the client merges same-named tags into one in the UI. Tags are not re-encrypted when a DEK rotates (part of the planned forward-secrecy work).
 - PBKDF2 rather than a memory-hard function (the source notes an Argon2id upgrade as a possibility).
 - Presigned download URLs are short-lived bearer links; anyone holding one can fetch that ciphertext until it expires. The ciphertext is useless without the key.
 - Presigned upload (PUT) URLs are short-lived (15 minute) bearer **write** links to one server-chosen key. They are not size-limited by the signature; the server checks the object size on completion, deletes mismatches, and prunes unused slots. Until a URL expires, its holder (the uploading user) could overwrite their own just-completed blob; AES-GCM makes such tampering detectable on decrypt, and keys are per-upload so it cannot touch another user's data.
