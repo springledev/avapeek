@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { extractTakenAt } from '@/lib/exif/takenAt'
 import { X, Upload } from '@lucide/vue'
 import { ref } from 'vue'
 import { api } from '@/services/api'
@@ -160,6 +161,10 @@ async function startUpload() {
       formData.append('width', String(bitmap.width))
       formData.append('height', String(bitmap.height))
       formData.append('children', JSON.stringify(children))
+      const takenAt = await extractTakenAt(f)
+      if (takenAt) {
+        formData.append('taken_at', takenAt)
+      }
       if (tags.value.length > 0) {
         for (const tag of tags.value) {
           formData.append('tags[]', tag)

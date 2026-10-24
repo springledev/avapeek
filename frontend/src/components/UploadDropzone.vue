@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { extractTakenAt } from '@/lib/exif/takenAt'
 import { ref, computed } from 'vue'
 import { generateThumbnail } from '@/crypto/thumbnails'
 import { encryptBuffer, encryptString } from '@/crypto/encrypt'
@@ -185,9 +186,10 @@ async function processSingleFile(
   formData.append('width', String(width))
   formData.append('height', String(height))
 
-  const dateValue = exifData.DateTimeOriginal ?? exifData.CreateDate ?? exifData.DateTime ?? new Date(file.lastModified)
-
-  formData.append('taken_at', (dateValue as Date).toISOString())
+  const takenAt = await extractTakenAt(file)
+  if (takenAt) {
+    formData.append('taken_at', takenAt)
+  }
 
   for (const tag of tags.value) {
     formData.append('tags[]', tag)
