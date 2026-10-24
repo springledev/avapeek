@@ -24,7 +24,7 @@ function closeBatchReview() {
   selectedFiles.value = []
 }
 
-async function startUpload(files: File[], childIds: number[]) {
+async function startUpload(files: File[], childIds: number[], tagNames: string[] = []) {
   if (childIds.length === 0) {
     toast.error('Please select at least one child.')
     return
@@ -34,7 +34,7 @@ async function startUpload(files: File[], childIds: number[]) {
     return
   }
 
-  const { succeeded, failed } = await upload(files, childIds)
+  const { succeeded, failed } = await upload(files, childIds, tagNames)
 
   if (failed > 0) {
     // Keep only the failed photos in the review so a retry doesn't duplicate the rest.

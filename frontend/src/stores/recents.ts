@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/services/api'
+import { useTagsStore } from '@/stores/tags'
 import type { Photo, PhotoListResponse, UnseenCountResponse, MarkSeenResponse } from '@/types/photo'
 
 export const useRecentsStore = defineStore('recents', () => {
@@ -24,10 +25,12 @@ export const useRecentsStore = defineStore('recents', () => {
         params: { page: page.value },
       })
 
+      const decrypted = await useTagsStore().decryptPhotoTags(response.data.data)
+
       if (reset) {
-        photos.value = response.data.data
+        photos.value = decrypted
       } else {
-        photos.value.push(...response.data.data)
+        photos.value.push(...decrypted)
       }
 
       hasMore.value = response.data.meta.current_page < response.data.meta.last_page

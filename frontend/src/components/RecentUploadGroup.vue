@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { fetchThumbnail, cleanupComponent, getPEKForPhoto } from '@/services/storage'
+import { dedupeTagsByName } from '@/lib/tags'
 import type { Photo } from '@/types/photo'
 
 const props = defineProps<{
@@ -21,8 +22,7 @@ const loaded = ref<Set<number>>(new Set())
 const count = computed(() => props.photos.length)
 const tags = computed(() => {
   const allTags = props.photos.flatMap(p => p.tags || [])
-  const unique = new Map(allTags.map(t => [t.id, t]))
-  return [...unique.values()].slice(0, 3)
+  return dedupeTagsByName(allTags).slice(0, 3)
 })
 
 const displayThumbnails = computed(() => props.photos.slice(0, 8))

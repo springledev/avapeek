@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { preloadOriginal } from '@/services/storage'
 import { useFeedStore } from '@/stores/feed'
 import { useChildStore } from '@/stores/child'
+import { useTagsStore } from '@/stores/tags'
 import { usePrefetch } from '@/composables/usePrefetch'
 import { useSetupState } from '@/composables/useSetupState'
 import { Image } from '@lucide/vue'
@@ -13,6 +14,7 @@ import UiEmptyState from '@/components/ui/UiEmptyState.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import CreateChildSheet from '@/components/CreateChildSheet.vue'
 import { MSG } from '@/lib/messages'
+import { apiErrorMessage } from '@/lib/util'
 import type { Photo } from '@/types/photo'
 
 const feedStore = useFeedStore()
@@ -152,33 +154,24 @@ async function deletePhoto(photoId: number) {
 }
 
 async function addTag(photoId: number, tagName: string) {
-  void tagName
-  const { api } = await import('@/services/api')
+  const photo = feedStore.photos.find((p) => p.id === photoId)
+  if (!photo) return
   const { toast } = await import('vue-sonner')
   try {
-    await api.post(`/photos/${photoId}/tags`, { tag_ids: [] })
-    toast.success('Tag added')
+    await useTagsStore().attach(photo, tagName)
   } catch (err: unknown) {
-    const message =
-      err instanceof Error && 'response' in err
-        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-        : undefined
-    toast.error(message || 'Failed to add tag')
+    toast.error(apiErrorMessage(err, 'Failed to add tag'))
   }
 }
 
 async function removeTag(photoId: number, tagId: number) {
-  const { api } = await import('@/services/api')
+  const photo = feedStore.photos.find((p) => p.id === photoId)
+  if (!photo) return
   const { toast } = await import('vue-sonner')
   try {
-    await api.delete(`/photos/${photoId}/tags/${tagId}`)
-    toast.success('Tag removed')
+    await useTagsStore().detach(photo, tagId)
   } catch (err: unknown) {
-    const message =
-      err instanceof Error && 'response' in err
-        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-        : undefined
-    toast.error(message || 'Failed to remove tag')
+    toast.error(apiErrorMessage(err, 'Failed to remove tag'))
   }
 }
 
@@ -294,7 +287,6 @@ async function updateDate(photoId: number, takenAt: string) {
       :can-delete="canDelete"
       :can-edit="canEdit"
       :child-birth-date="null"
-      :all-tags="[]"
       :prev-photo="prevPhotoObj"
       :next-photo="nextPhotoObj"
       @close="closePhoto"

@@ -61,6 +61,7 @@ import { api } from '@/services/api'
 import { completeUpload, uploadEncryptedBlobs } from '@/services/storage'
 import { useChildStore } from '@/stores/child'
 import { useFeedStore } from '@/stores/feed'
+import { useTagsStore } from '@/stores/tags'
 import { useUploadPhotos } from '@/composables/useUploadPhotos'
 
 const closeSpy = vi.fn<() => void>()
@@ -186,5 +187,41 @@ describe('useUploadPhotos', () => {
     expect(await upload([], [5])).toEqual({ succeeded: 0, failed: 0 })
     expect(await upload([file('a.jpg')], [])).toEqual({ succeeded: 0, failed: 0 })
     expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('sends tag_ids (one per child) on the proxy upload and never a plaintext tag name', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: {} })
+    const idsForUpload = vi.spyOn(useTagsStore(), 'idsForUpload').mockResolvedValue([11, 12])
+    const { upload } = useUploadPhotos()
+
+    await upload([file('a.jpg')], [5, 6], ['Spain 2026'])
+
+    expect(idsForUpload).toHaveBeenCalledWith([5, 6], ['Spain 2026'])
+    const [, body] = vi.mocked(api.post).mock.calls[0]! as [string, FormData]
+    expect(body.getAll('tag_ids[]')).toEqual(['11', '12'])
+    expect(body.has('tags[]')).toBe(false)
+    expect([...body.values()].some((v) => typeof v === 'string' && v.includes('Spain'))).toBe(false)
+  })
+
+  it('sends tag_ids on the direct complete call', async () => {
+    vi.mocked(uploadEncryptedBlobs).mockResolvedValue('intent-uuid')
+    vi.spyOn(useTagsStore(), 'idsForUpload').mockResolvedValue([7])
+    const { upload } = useUploadPhotos()
+
+    await upload([file('a.jpg')], [5], ['beach'])
+
+    const [, body] = vi.mocked(completeUpload).mock.calls[0]!
+    expect(body.getAll('tag_ids[]')).toEqual(['7'])
+    expect(body.has('tags[]')).toBe(false)
+  })
+
+  it('sends no tag_ids when no tags were chosen', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: {} })
+    const { upload } = useUploadPhotos()
+
+    await upload([file('a.jpg')], [5])
+
+    const [, body] = vi.mocked(api.post).mock.calls[0]! as [string, FormData]
+    expect(body.has('tag_ids[]')).toBe(false)
   })
 })

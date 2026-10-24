@@ -1,7 +1,17 @@
+/** A per-child tag as returned by the API: the name is ciphertext (child DEK). */
 export interface ChildTag {
   id: number
-  name: string
+  name_encrypted: string
+  iv_name: string
   photo_count: number
+  created_at: string
+}
+
+/** A child tag after client-side decryption of its name. */
+export interface DecryptedChildTag extends ChildTag {
+  child_id: number
+  name: string
+  normalized: string
 }
 
 export interface Child {
