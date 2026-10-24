@@ -10,7 +10,6 @@ use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\Api\QuotaController;
 use App\Http\Controllers\Api\StorageInfoController;
 use App\Http\Controllers\Api\TagController;
-use App\Models\User;
 use Illuminate\Support\Facades\Route;
 
 // Authentication routes (no auth required)
@@ -47,15 +46,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/auth/mfa/recovery-codes', [MfaController::class, 'regenerateRecoveryCodes']);
     });
 
-    // User public key (for DEK re-wrapping during invites)
-    Route::get('/users/{user}/public-key', function (User $user) {
-        return response()->json([
-            'data' => [
-                'id' => $user->id,
-                'public_key' => $user->public_key,
-            ],
-        ]);
-    });
+    // User public key (scoped to users sharing a child with the requester)
+    Route::get('/users/{user}/public-key', [EncryptionKeysController::class, 'publicKey']);
 
     // Children
     Route::get('/children', [ChildController::class, 'index']);
