@@ -10,7 +10,6 @@ use App\Services\QuotaService;
 use App\Services\StorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class PhotoController extends Controller
 {
@@ -253,10 +252,7 @@ class PhotoController extends Controller
         $totalBytes = 0;
         foreach ($paths as $path) {
             try {
-                $size = Storage::disk('s3')->size($path);
-                if ($size !== false) {
-                    $totalBytes += $size;
-                }
+                $totalBytes += $this->storageService->size($path);
             } catch (\Throwable) {
                 // File may not exist on S3; skip size calculation
             }

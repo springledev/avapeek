@@ -48,4 +48,12 @@ class StorageService
     {
         return Storage::disk('s3')->temporaryUrl($path, now()->addMinutes($minutes));
     }
+
+    /**
+     * Get the size in bytes of a stored blob.
+     */
+    public function size(string $path): int
+    {
+        return (int) Storage::disk('s3')->size($path);
+    }
 }

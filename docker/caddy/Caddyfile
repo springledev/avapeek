@@ -6,8 +6,14 @@
         }
     }
 
+    # NOTE: if a Content-Security-Policy with connect-src/img-src is ever added,
+    # it must include the object storage origin (the browser fetches presigned
+    # URLs directly from the provider when using AWS S3 / B2 / R2).
+
     # Proxy Garage bucket requests — used for presigned URLs.
     # Override the Host header so Garage's signature validation matches.
+    # Only used with the self-hosted Garage profile; with an external S3
+    # provider this route is never hit (Caddy resolves the upstream lazily).
     handle /photos/* {
         reverse_proxy garage:3900 {
             header_up Host garage:3900

@@ -34,6 +34,7 @@ services:
 
   # --- Garage (self-hosted S3-compatible object storage) ---
   garage:
+    profiles: ["garage"]
     image: dxflrs/garage:v2.4.1
     container_name: avapeek-garage
     ports:
@@ -53,6 +54,7 @@ services:
 
   # --- Garage provisioning (layout, key, bucket) — idempotent ---
   garage-init:
+    profiles: ["garage"]
     build:
       context: .
       dockerfile: docker/garage/Dockerfile
@@ -92,16 +94,21 @@ services:
     environment:
       DB_HOST: postgres
       REDIS_HOST: redis
-      AWS_ENDPOINT: http://garage:3900
-      AWS_DEFAULT_REGION: garage
-      AWS_USE_PATH_STYLE_ENDPOINT: "true"
-      AWS_URL: http://localhost:8000
+      # Defaults target the bundled Garage (COMPOSE_PROFILES=garage). For an
+      # external S3 provider set these in the root .env (see docs/storage.md).
+      AWS_ENDPOINT: ${AWS_ENDPOINT:-http://garage:3900}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-garage}
+      AWS_USE_PATH_STYLE_ENDPOINT: ${AWS_USE_PATH_STYLE_ENDPOINT:-true}
+      AWS_TEMPORARY_URL: ${AWS_TEMPORARY_URL-http://localhost:8000}
     volumes:
       - ./backend:/app
       - storage:/app/storage
       - bootstrap_cache:/app/bootstrap/cache
       - ./docker/php/opcache.dev.ini:/usr/local/etc/php/conf.d/opcache.ini:ro
       - ./docker/php/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Read-only view of Garage's data volume so STORAGE_VOLUME_PATH=/garage-data
+      # can derive the quota. Empty (harmless) when the garage profile is off.
+      - garage_data:/garage-data:ro
     ports:
       - "8000:80"
     depends_on:
@@ -109,8 +116,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # Only present with the "garage" profile; needs Docker Compose >= 2.20.
       garage-init:
         condition: service_completed_successfully
+        required: false
 
 volumes:
   pg_data:

@@ -55,8 +55,12 @@ return [
             'bucket' => env('AWS_BUCKET'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
-            'temporary_url' => env('AWS_URL'),
+            'temporary_url' => env('AWS_TEMPORARY_URL') ?: null,
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            // Passed to the AWS S3Client (not Flysystem options). Avoids default CRC32
+            // checksums that break B2/R2/Garage.
+            'request_checksum_calculation' => 'when_required',
+            'response_checksum_validation' => 'when_required',
             'throw' => false,
             'report' => false,
         ],
