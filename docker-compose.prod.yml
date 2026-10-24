@@ -37,13 +37,15 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "caddy", "version"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/up"]
       interval: 30s
       timeout: 5s
       retries: 3
     networks:
       - app-network
 
+  # Queue worker is disabled: no jobs are dispatched yet (no ShouldQueue
+  # classes or dispatch() calls in backend/app). Re-enable when one is added.
   # # --- Queue Worker ---
   # queue:
   #   build:
@@ -69,26 +71,30 @@ services:
   #   networks:
   #     - app-network
 
-  # # --- Scheduler ---
-  # scheduler:
-  #   build:
-  #     context: .
-  #     dockerfile: docker/php/Dockerfile
-  #   container_name: avapeek_scheduler
-  #   restart: unless-stopped
-  #   env_file:
-  #     - backend/.env
-  #   volumes:
-  #     - storage:/app/storage
-  #   entrypoint: ["/bin/sh", "-c"]
-  #   command: ["while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"]
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   networks:
-  #     - app-network
+  # --- Scheduler (runs sanctum:prune-expired and other routes/console.php schedules) ---
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: avapeek_scheduler
+    restart: unless-stopped
+    env_file:
+      - backend/.env
+    volumes:
+      - storage:/app/storage
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "schedule:work"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    networks:
+      - app-network
 
   # --- Frontend: Vue SPA via Nginx ---
   frontend:
