@@ -2,12 +2,14 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ChildController;
+use App\Http\Controllers\Api\ChildExportController;
 use App\Http\Controllers\Api\ChildMembershipController;
 use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\EncryptionKeysController;
 use App\Http\Controllers\Api\InviteController;
 use App\Http\Controllers\Api\MemoryController;
 use App\Http\Controllers\Api\MfaController;
+use App\Http\Controllers\Api\PhotoBulkController;
 use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\Api\QuotaController;
 use App\Http\Controllers\Api\StorageInfoController;
@@ -70,6 +72,11 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Unified photo feed (across all children)
     Route::get('/photos', [PhotoController::class, 'feed']);
     Route::post('/photos/upload', [PhotoController::class, 'upload'])->middleware('throttle:upload');
+    Route::post('/photos/upload-intent', [PhotoController::class, 'uploadIntent'])->middleware('throttle:upload-intent');
+    Route::post('/photos/{uuid}/complete', [PhotoController::class, 'complete'])->middleware('throttle:upload')->whereUuid('uuid');
+    Route::post('/photos/bulk-delete', [PhotoBulkController::class, 'destroy']);
+    Route::post('/photos/bulk-tags', [PhotoBulkController::class, 'tags']);
+    Route::post('/photos/share', [PhotoBulkController::class, 'share']);
     Route::get('/photos/{photo}', [PhotoController::class, 'show']);
     Route::get('/photos/{photo}/thumbnail', [PhotoController::class, 'thumbnail']);
     Route::patch('/photos/{photo}', [PhotoController::class, 'update']);
@@ -82,9 +89,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Memories ("on this day")
     Route::get('/memories', [MemoryController::class, 'index']);
 
-    // Global tags
-    Route::get('/tags', [TagController::class, 'globalIndex']);
-    Route::post('/tags', [TagController::class, 'store']);
+    // Tags (per child, names are client-encrypted)
     Route::delete('/tags/{tag}', [TagController::class, 'destroy']);
 
     // Photo-Tag management
@@ -101,6 +106,16 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/children/{child}', [ChildController::class, 'show']);
         Route::put('/children/{child}', [ChildController::class, 'update']);
         Route::delete('/children/{child}', [ChildController::class, 'destroy']);
+
+        // Tags (ciphertext names only)
+        Route::get('/children/{child}/tags', [TagController::class, 'index']);
+        Route::post('/children/{child}/tags', [TagController::class, 'store'])->middleware('throttle:tags');
+
+        // Export listings (ciphertext only, any member)
+        Route::middleware('throttle:export')->group(function () {
+            Route::get('/children/{child}/export/photos', [ChildExportController::class, 'photos']);
+            Route::get('/children/{child}/export/comments', [ChildExportController::class, 'comments']);
+        });
 
         // Invites (admin only)
         Route::middleware('child.admin')->group(function () {

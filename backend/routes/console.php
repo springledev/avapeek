@@ -9,6 +9,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
+Schedule::command('uploads:prune-intents')->everyFifteenMinutes();
 
 Schedule::command('backup:database')
     ->dailyAt('02:30')

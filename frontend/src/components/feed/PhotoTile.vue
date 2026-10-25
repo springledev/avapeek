@@ -1,18 +1,68 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
-import { MessageCircle } from '@lucide/vue'
+import { MessageCircle, Check } from '@lucide/vue'
 import { useLazyDecrypt } from '@/composables/useLazyDecrypt'
 import { useMotionPolicy } from '@/composables/useMotionPolicy'
+import { LONG_PRESS_MS } from '@/composables/useSelection'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
 import type { Photo } from '@/types/photo'
 
 const props = defineProps<{
   photo: Photo
+  /** Selection mode is on: the tile shows a checkbox and a tap toggles. */
+  selectable?: boolean
+  selected?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'click'): void
+  (e: 'longpress'): void
 }>()
+
+const MOVE_TOLERANCE_PX = 10
+let pressTimer: ReturnType<typeof setTimeout> | null = null
+let pressOrigin: { x: number; y: number } | null = null
+let longPressFired = false
+
+function cancelPress() {
+  if (pressTimer) clearTimeout(pressTimer)
+  pressTimer = null
+  pressOrigin = null
+}
+
+function onPointerDown(event: PointerEvent) {
+  if (event.pointerType === 'mouse' || props.selectable) return
+  longPressFired = false
+  pressOrigin = { x: event.clientX, y: event.clientY }
+  pressTimer = setTimeout(() => {
+    pressTimer = null
+    longPressFired = true
+    emit('longpress')
+  }, LONG_PRESS_MS)
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (!pressOrigin) return
+  if (
+    Math.abs(event.clientX - pressOrigin.x) > MOVE_TOLERANCE_PX ||
+    Math.abs(event.clientY - pressOrigin.y) > MOVE_TOLERANCE_PX
+  ) {
+    cancelPress()
+  }
+}
+
+function onClick() {
+  // The click that ends a long press must not also open the photo.
+  if (longPressFired) {
+    longPressFired = false
+    return
+  }
+  emit('click')
+}
+
+function onContextMenu(event: Event) {
+  if (props.selectable || pressTimer || longPressFired) event.preventDefault()
+}
 
 const { observePhoto, unobserve } = useLazyDecrypt()
 const { resolve } = useMotionPolicy()
@@ -38,12 +88,26 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  cancelPress()
   if (elRef.value) unobserve(elRef.value)
 })
 </script>
 
 <template>
-  <button ref="elRef" type="button" class="tile u-focus-ring" @click="emit('click')">
+  <button
+    ref="elRef"
+    type="button"
+    class="tile u-focus-ring"
+    :class="{ 'tile--selected': selected }"
+    :aria-pressed="selectable ? !!selected : undefined"
+    @click="onClick"
+    @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerup="cancelPress"
+    @pointercancel="cancelPress"
+    @pointerleave="cancelPress"
+    @contextmenu="onContextMenu"
+  >
     <img
       v-if="thumbnailUrl"
       :src="thumbnailUrl"
@@ -53,6 +117,16 @@ onBeforeUnmount(() => {
       @load="onImgLoad"
     />
     <div v-else class="tile__placeholder" aria-hidden="true" />
+
+    <span
+      v-if="selectable"
+      class="tile__check"
+      :class="{ 'tile__check--on': selected }"
+      data-test="tile-check"
+      aria-hidden="true"
+    >
+      <Check v-if="selected" :size="16" :stroke-width="3" />
+    </span>
 
     <div v-if="visibleChildren.length > 0" class="tile__kids">
       <UiAvatar
@@ -88,6 +162,34 @@ onBeforeUnmount(() => {
   overflow: hidden;
   cursor: pointer;
   background: var(--color-surface-2);
+  -webkit-touch-callout: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.tile--selected {
+  outline: 3px solid var(--color-accent);
+  outline-offset: -3px;
+}
+
+.tile__check {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--color-overlay);
+  color: var(--color-on-accent);
+}
+
+.tile__check--on {
+  background: var(--color-accent);
 }
 
 .tile__img {

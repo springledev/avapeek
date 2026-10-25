@@ -6,7 +6,9 @@ use App\Models\Photo;
 use App\Models\StorageUsage;
 use App\Models\Tag;
 use App\Models\User;
+use App\Services\QuotaService;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 function atomicUploadSetup(): array
@@ -27,7 +29,6 @@ function atomicUploadPayload(Child $child): array
         'iv_thumbnail' => bin2hex(random_bytes(16)),
         'original_mime' => 'image/heic',
         'size_bytes' => 1024,
-        'tags' => ['boom'],
         'children' => json_encode([$child->id => [
             'encrypted_pek' => bin2hex(random_bytes(32)),
             'iv_pek' => bin2hex(random_bytes(16)),
@@ -48,19 +49,20 @@ describe('atomic upload', function () {
             ->and((int) StorageUsage::global()->used_bytes)->toBe(2048);
     });
 
-    it('removes blobs and leaves quota untouched when a db step fails', function () {
+    it('rolls back photo, child_photo, photo_tags and usage and removes blobs when the last db step fails', function () {
         Storage::fake('s3');
         [$user, $child] = atomicUploadSetup();
+        $tag = Tag::factory()->create(['child_id' => $child->id, 'created_by' => $user->id]);
 
-        Tag::creating(function () {
-            throw new RuntimeException('forced failure');
+        // Fires after the photo insert, the child attach and the tag sync.
+        $this->partialMock(QuotaService::class, function ($mock) {
+            $mock->shouldReceive('addUsage')->once()->andThrow(new RuntimeException('forced failure'));
         });
-
         $this->withoutExceptionHandling();
 
         try {
             $this->actingAs($user, 'sanctum')
-                ->post('/api/photos/upload', atomicUploadPayload($child));
+                ->post('/api/photos/upload', atomicUploadPayload($child) + ['tag_ids' => [$tag->id]]);
             $this->fail('Expected exception');
         } catch (RuntimeException $e) {
             expect($e->getMessage())->toBe('forced failure');
@@ -68,6 +70,28 @@ describe('atomic upload', function () {
 
         expect(Storage::disk('s3')->allFiles())->toBe([])
             ->and(Photo::count())->toBe(0)
+            ->and(DB::table('child_photo')->count())->toBe(0)
+            ->and(DB::table('photo_tags')->count())->toBe(0)
+            ->and((int) StorageUsage::global()->used_bytes)->toBe(0);
+    });
+
+    it('answers 422 and persists nothing when a tag is deleted between validation and sync', function () {
+        Storage::fake('s3');
+        [$user, $child] = atomicUploadSetup();
+        $tag = Tag::factory()->create(['child_id' => $child->id, 'created_by' => $user->id]);
+
+        Photo::created(function () use ($tag) {
+            $tag->delete();
+        });
+
+        $this->actingAs($user, 'sanctum')
+            ->post('/api/photos/upload', atomicUploadPayload($child) + ['tag_ids' => [$tag->id]], ['Accept' => 'application/json'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['tag_ids']);
+
+        expect(Storage::disk('s3')->allFiles())->toBe([])
+            ->and(Photo::count())->toBe(0)
+            ->and(DB::table('child_photo')->count())->toBe(0)
             ->and((int) StorageUsage::global()->used_bytes)->toBe(0);
     });
 });

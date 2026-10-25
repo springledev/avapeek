@@ -44,6 +44,11 @@ class Child extends Model
             ->withPivot('encrypted_pek', 'iv_pek');
     }
 
+    public function tags(): HasMany
+    {
+        return $this->hasMany(Tag::class);
+    }
+
     public function storageUsage(): HasOne
     {
         return $this->hasOne(StorageUsage::class);

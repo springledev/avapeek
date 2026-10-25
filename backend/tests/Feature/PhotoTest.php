@@ -177,21 +177,31 @@ describe('GET /api/photos (feed)', function () {
             ->assertJsonPath('meta.total', 1);
     });
 
-    it('filters by tags', function () {
+    it('filters by tag ids and ignores tags of children the user cannot access', function () {
         $user = User::factory()->create();
         $child = Child::factory()->create(['created_by' => $user->id]);
         ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => 'owner']);
+        $otherChild = Child::factory()->create();
 
-        $tag = Tag::factory()->create(['name' => 'Beach']);
-        $photo = Photo::factory()->create(['uploaded_by' => $user->id]);
-        createChildPivot($photo, $child);
-        $photo->tags()->attach($tag->id);
+        $tag = Tag::factory()->create(['child_id' => $child->id]);
+        $foreignTag = Tag::factory()->create(['child_id' => $otherChild->id]);
+        $tagged = Photo::factory()->create(['uploaded_by' => $user->id]);
+        createChildPivot($tagged, $child);
+        $tagged->tags()->attach([$tag->id, $foreignTag->id]);
+        $plain = Photo::factory()->create(['uploaded_by' => $user->id]);
+        createChildPivot($plain, $child);
 
-        $response = $this->actingAs($user, 'sanctum')
-            ->getJson('/api/photos?tags=Beach');
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/photos?tag_ids='.$tag->id)
+            ->assertStatus(200)
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $tagged->id)
+            ->assertJsonCount(1, 'data.0.tags')
+            ->assertJsonPath('data.0.tags.0.id', $tag->id);
 
-        $response->assertStatus(200)
-            ->assertJsonPath('meta.total', 1);
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/photos?tag_ids='.$foreignTag->id)
+            ->assertJsonPath('meta.total', 0);
     });
 
     it('filters by date range', function () {

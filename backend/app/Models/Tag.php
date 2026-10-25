@@ -10,6 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
+ * A per-child tag. The name is AES-GCM encrypted client-side with the child's DEK;
+ * the server only ever sees `name_encrypted` + `iv_name`.
+ *
  * @method static TagFactory factory(...$parameters)
  */
 class Tag extends Model
@@ -17,16 +20,25 @@ class Tag extends Model
     /** @use HasFactory<TagFactory> */
     use HasFactory;
 
+    public const MAX_PER_CHILD = 200;
+
     public $timestamps = false;
 
     protected $fillable = [
-        'name',
+        'child_id',
         'created_by',
+        'name_encrypted',
+        'iv_name',
     ];
 
     protected $casts = [
         'created_at' => 'datetime',
     ];
+
+    public function child(): BelongsTo
+    {
+        return $this->belongsTo(Child::class);
+    }
 
     public function creator(): BelongsTo
     {
@@ -40,59 +52,30 @@ class Tag extends Model
     }
 
     /**
-     * Ids of users who share at least one child with the given user (including themselves).
+     * Row-selecting query for tags that exist and belong to the given children, under a share
+     * lock. It must select rows: PostgreSQL rejects FOR SHARE combined with aggregates.
      *
-     * @return array<int, int>
+     * @param  array<int, int>  $tagIds
+     * @param  array<int, int>  $childIds
+     * @return Builder<Tag>
      */
-    public static function coMemberIds(User $user): array
+    public static function lockedLinkableIdsQuery(array $tagIds, array $childIds): Builder
     {
-        $childIds = $user->children()->pluck('children.id');
-
-        return ChildUser::whereIn('child_id', $childIds)
-            ->pluck('user_id')
-            ->push($user->id)
-            ->unique()
-            ->values()
-            ->all();
+        return static::query()
+            ->select('tags.id')
+            ->whereIn('tags.id', $tagIds)
+            ->whereIn('tags.child_id', $childIds)
+            ->sharedLock();
     }
 
     /**
-     * Tags the user may see: created by a co-member, or used on a photo the user can access.
+     * Tags belonging to children the user is a member of.
      *
      * @param  Builder<Tag>  $query
      * @return Builder<Tag>
      */
-    public function scopeVisibleTo(Builder $query, User $user): Builder
+    public function scopeForUserChildren(Builder $query, User $user): Builder
     {
-        $childIds = $user->children()->pluck('children.id');
-
-        return $query->where(function (Builder $q) use ($user, $childIds) {
-            $q->whereIn('tags.created_by', self::coMemberIds($user))
-                ->orWhereHas('photos.children', function ($q2) use ($childIds) {
-                    $q2->whereIn('child_photo.child_id', $childIds);
-                });
-        });
-    }
-
-    /**
-     * Whether the user may delete this tag: the creator, or an owner/admin of a child shared with the creator.
-     */
-    public function isDeletableBy(User $user): bool
-    {
-        if ($this->created_by === $user->id) {
-            return true;
-        }
-
-        if ($this->created_by === null) {
-            return false;
-        }
-
-        $adminChildIds = ChildUser::where('user_id', $user->id)
-            ->whereIn('role', ['owner', 'admin'])
-            ->pluck('child_id');
-
-        return ChildUser::where('user_id', $this->created_by)
-            ->whereIn('child_id', $adminChildIds)
-            ->exists();
+        return $query->whereIn('tags.child_id', $user->children()->select('children.id'));
     }
 }

@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Calendar, X } from '@lucide/vue'
 import { useFeedStore } from '@/stores/feed'
 import { useChildStore } from '@/stores/child'
+import { useTagsStore } from '@/stores/tags'
 import ChildChip from '@/components/ChildChip.vue'
+import TagInput from '@/components/TagInput.vue'
 
 const feedStore = useFeedStore()
 const childStore = useChildStore()
+const tagsStore = useTagsStore()
 
-const tagInput = ref('')
 const showDateFilter = ref(false)
 const dateFrom = ref('')
 const dateTo = ref('')
@@ -28,14 +30,19 @@ function toggleChild(childId: number) {
   feedStore.fetchPhotos()
 }
 
-function addTag() {
-  const tag = tagInput.value.trim()
-  if (tag && !feedStore.filters.tags.includes(tag)) {
-    const current = [...feedStore.filters.tags, tag]
-    feedStore.setTagFilter(current)
+watch(
+  () => childStore.children.map((c) => c.id),
+  (ids) => {
+    void tagsStore.loadAll(ids)
+  },
+  { immediate: true },
+)
+
+function addTag(tag: string) {
+  if (!feedStore.filters.tags.includes(tag)) {
+    feedStore.setTagFilter([...feedStore.filters.tags, tag])
     feedStore.fetchPhotos()
   }
-  tagInput.value = ''
 }
 
 function removeTag(tag: string) {
@@ -86,12 +93,11 @@ const hasActiveFilters = computed(() =>
 
     <div class="flex flex-wrap items-center gap-2">
       <div class="relative flex-1 max-w-xs">
-        <input
-          v-model="tagInput"
-          type="text"
+        <TagInput
+          :allow-create="false"
+          :exclude="selectedTags"
           placeholder="Filter by tag..."
-          class="w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:placeholder-slate-400"
-          @keydown.enter.prevent="addTag"
+          @add="addTag"
         />
       </div>
 

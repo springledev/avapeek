@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Storage;
+use League\Flysystem\UnableToRetrieveMetadata;
 
 class StorageService
 {
@@ -51,6 +52,62 @@ class StorageService
     public function presignedUrl(string $path, int $minutes = 5): string
     {
         return Storage::disk('s3')->temporaryUrl($path, now()->addMinutes($minutes));
+    }
+
+    /**
+     * Generate a presigned PUT URL for a direct browser upload of an encrypted blob.
+     *
+     * The SigV4 presigner does not sign Content-Type or Cache-Control, so they are
+     * not enforced; the client sends them as returned so the object gets the
+     * immutable cache header. Host is dropped (browsers cannot set it).
+     *
+     * @return array{url: string, headers: array<string, string>}
+     */
+    public function presignedPutUrl(string $path, int $minutes = 15): array
+    {
+        $signed = Storage::disk('s3')->temporaryUploadUrl($path, now()->addMinutes($minutes), [
+            'ContentType' => 'application/octet-stream',
+            'CacheControl' => 'public, max-age=31536000, immutable',
+        ]);
+
+        $headers = [
+            'Content-Type' => 'application/octet-stream',
+            'Cache-Control' => 'public, max-age=31536000, immutable',
+        ];
+
+        foreach ($signed['headers'] ?? [] as $name => $value) {
+            if (strtolower((string) $name) === 'host') {
+                continue;
+            }
+            foreach (array_keys($headers) as $existing) {
+                if (strtolower($existing) === strtolower((string) $name)) {
+                    unset($headers[$existing]);
+                }
+            }
+            $headers[(string) $name] = is_array($value) ? implode(', ', $value) : (string) $value;
+        }
+
+        return ['url' => $signed['url'], 'headers' => $headers];
+    }
+
+    /**
+     * Size in bytes of a stored object (HEAD), or null when it does not exist.
+     * Any other storage failure (timeouts, 5xx, auth) is rethrown, never reported as missing.
+     */
+    public function objectSize(string $path): ?int
+    {
+        $driver = Storage::disk('s3')->getDriver();
+
+        try {
+            return (int) $driver->fileSize($path);
+        } catch (UnableToRetrieveMetadata $e) {
+            // fileExists() throws on real errors and returns false only for not-found.
+            if (! $driver->fileExists($path)) {
+                return null;
+            }
+
+            throw $e;
+        }
     }
 
     /**

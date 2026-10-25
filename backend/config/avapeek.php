@@ -44,4 +44,22 @@ return [
         'prefix' => 'backups/db',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Direct Uploads
+    |--------------------------------------------------------------------------
+    |
+    | When true, browsers upload encrypted blobs straight to object storage via
+    | presigned PUT URLs. Requires bucket CORS allowing PUT with Content-Type and
+    | Cache-Control headers. When false, `photos/upload-intent` returns 404 and
+    | clients fall back to the multipart `photos/upload` endpoint.
+    |
+    */
+
+    'uploads' => [
+        'direct' => filter_var(env('UPLOADS_DIRECT', true), FILTER_VALIDATE_BOOLEAN),
+        // Live (unexpired) upload intents per user; stops one user reserving the whole quota.
+        'max_pending_intents' => 20,
+    ],
+
 ];

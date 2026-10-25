@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { Clock } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useSelection } from '@/composables/useSelection'
+import BulkActions from '@/components/BulkActions.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import { MSG } from '@/lib/messages'
 import { api } from '@/services/api'
 import { preloadOriginal } from '@/services/storage'
 import { useRecentsStore } from '@/stores/recents'
+import { useTagsStore } from '@/stores/tags'
+import { apiErrorMessage } from '@/lib/util'
 import RecentUploadGroup from '@/components/RecentUploadGroup.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
@@ -11,6 +18,18 @@ import { toast } from 'vue-sonner'
 import type { Photo } from '@/types/photo'
 
 const recentsStore = useRecentsStore()
+const route = useRoute()
+const selection = useSelection({ routeKey: () => route.path })
+
+const selectedPhotos = computed(() =>
+  recentsStore.photos.filter((photo) => selection.isSelected(photo.id)),
+)
+
+function onBulkRemoved(deleted: number[], detachedCount: number) {
+  const gone = new Set(deleted)
+  recentsStore.photos = recentsStore.photos.filter((photo) => !gone.has(photo.id))
+  if (detachedCount > 0) recentsStore.fetchRecents()
+}
 
 const selectedPhoto = ref<Photo | null>(null)
 const selectedGroupPhotos = ref<Photo[]>([])
@@ -128,15 +147,23 @@ async function deletePhoto(photoId: number) {
 }
 
 async function addTag(photoId: number, tagName: string) {
-  void tagName
-  void photoId
-  toast.success('Tag added')
+  const photo = recentsStore.photos.find((p) => p.id === photoId)
+  if (!photo) return
+  try {
+    await useTagsStore().attach(photo, tagName)
+  } catch (err: unknown) {
+    toast.error(apiErrorMessage(err, 'Failed to add tag'))
+  }
 }
 
 async function removeTag(photoId: number, tagId: number) {
-  void tagId
-  void photoId
-  toast.success('Tag removed')
+  const photo = recentsStore.photos.find((p) => p.id === photoId)
+  if (!photo) return
+  try {
+    await useTagsStore().detach(photo, tagId)
+  } catch (err: unknown) {
+    toast.error(apiErrorMessage(err, 'Failed to remove tag'))
+  }
 }
 
 async function updateDate(photoId: number, takenAt: string) {
@@ -161,7 +188,17 @@ onMounted(async () => {
 
 <template>
   <div>
-    <h1 class="recents__title">Recent uploads</h1>
+    <div class="recents__head">
+      <h1 class="recents__title">Recent uploads</h1>
+      <UiButton
+        v-if="recentsStore.photos.length > 0"
+        variant="ghost"
+        data-test="select-toggle"
+        @click="selection.isSelecting.value ? selection.clear() : selection.start()"
+      >
+        {{ selection.isSelecting.value ? MSG.selectCancel : MSG.selectPhotos }}
+      </UiButton>
+    </div>
 
     <div v-if="recentsStore.isLoading && recentsStore.photos.length === 0" class="recents__loading">
       <div v-for="i in 3" :key="i" class="recents__skeleton" />
@@ -186,7 +223,11 @@ onMounted(async () => {
         :child-name="group.childName"
         :child-color="group.childColor"
         :relative-time="group.relativeTime"
+        :selecting="selection.isSelecting.value"
+        :selected-ids="selection.selectedIds.value"
         @select="openPhoto($event, group.photos)"
+        @toggle="selection.toggle($event.id)"
+        @toggle-all="selection.toggleMany(group.photos.map((p) => p.id))"
       />
     </div>
 
@@ -197,6 +238,8 @@ onMounted(async () => {
       <div class="recents__spinner" />
     </div>
 
+    <BulkActions :photos="selectedPhotos" @clear="selection.clear()" @removed="onBulkRemoved" />
+
     <PhotoViewer
       v-if="selectedPhoto"
       :photo="selectedPhoto"
@@ -205,7 +248,6 @@ onMounted(async () => {
       :can-delete="true"
       :can-edit="true"
       :child-birth-date="null"
-      :all-tags="[]"
       :prev-photo="prevPhotoObj"
       :next-photo="nextPhotoObj"
       @close="closePhoto"
@@ -220,12 +262,20 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.recents__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
 .recents__title {
   font-size: var(--text-title);
   font-weight: 800;
   line-height: var(--lh-title);
   color: var(--color-ink);
-  margin: 0 0 var(--space-4);
+  margin: 0;
 }
 
 .recents__loading {

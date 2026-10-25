@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import { api } from '@/services/api'
+import { useTagsStore } from '@/stores/tags'
 import type { Photo, PhotoListResponse } from '@/types/photo'
 
 export interface FeedFilters {
   childIds: number[]
+  /** Logical (decrypted, normalised-grouped) tag names; resolved to opaque ids for the API. */
   tags: string[]
   dateFrom: string | null
   dateTo: string | null
@@ -23,6 +25,29 @@ export const useFeedStore = defineStore('feed', () => {
   const hasMore = ref(true)
   const isLoading = ref(false)
 
+  /**
+   * Query params for a feed page. Tag names never leave the client: they are resolved
+   * to opaque tag ids. A tag filter that matches no known tag yields no photos (id 0).
+   */
+  function buildParams(pageNumber: number): Record<string, string> {
+    const params: Record<string, string> = {}
+    if (filters.childIds.length > 0) {
+      params.children = filters.childIds.join(',')
+    }
+    if (filters.tags.length > 0) {
+      const ids = useTagsStore().resolveIds(filters.tags)
+      params.tag_ids = ids.length > 0 ? ids.join(',') : '0'
+    }
+    if (filters.dateFrom) {
+      params.date_from = filters.dateFrom
+    }
+    if (filters.dateTo) {
+      params.date_to = filters.dateTo
+    }
+    params.page = String(pageNumber)
+    return params
+  }
+
   async function fetchPhotos(reset = true): Promise<void> {
     if (reset) {
       page.value = 1
@@ -33,27 +58,15 @@ export const useFeedStore = defineStore('feed', () => {
     isLoading.value = true
 
     try {
-      const params: Record<string, string> = {}
-      if (filters.childIds.length > 0) {
-        params.children = filters.childIds.join(',')
-      }
-      if (filters.tags.length > 0) {
-        params.tags = filters.tags.join(',')
-      }
-      if (filters.dateFrom) {
-        params.date_from = filters.dateFrom
-      }
-      if (filters.dateTo) {
-        params.date_to = filters.dateTo
-      }
-      params.page = String(page.value)
-
-      const response = await api.get<PhotoListResponse>('/photos', { params })
+      const response = await api.get<PhotoListResponse>('/photos', {
+        params: buildParams(page.value),
+      })
+      const decrypted = await useTagsStore().decryptPhotoTags(response.data.data)
 
       if (reset) {
-        photos.value = response.data.data
+        photos.value = decrypted
       } else {
-        photos.value.push(...response.data.data)
+        photos.value.push(...decrypted)
       }
 
       hasMore.value = response.data.meta.current_page < response.data.meta.last_page
@@ -96,6 +109,7 @@ export const useFeedStore = defineStore('feed', () => {
     page,
     hasMore,
     isLoading,
+    buildParams,
     fetchPhotos,
     fetchMore,
     resetFilters,
