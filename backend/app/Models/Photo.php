@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\PhotoFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -39,6 +40,20 @@ class Photo extends Model
     protected $casts = [
         'taken_at' => 'datetime',
     ];
+
+    /**
+     * Limit to photos linked (via child_photo) to a child the user belongs to.
+     *
+     * @param  Builder<Photo>  $query
+     */
+    public function scopeVisibleTo(Builder $query, User $user): void
+    {
+        $accessibleChildIds = $user->children()->pluck('children.id');
+
+        $query->whereHas('children', function ($q) use ($accessibleChildIds) {
+            $q->whereIn('child_photo.child_id', $accessibleChildIds);
+        });
+    }
 
     public function children(): BelongsToMany
     {

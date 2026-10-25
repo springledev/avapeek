@@ -41,7 +41,7 @@ Password change re-wraps the private key and every DEK under the new KEK in the 
 | Child names, slugs, birth dates, avatar colour | `children` |
 | Who belongs to which child, their role and relationship label | `child_users` |
 | Which photo belongs to which child, who uploaded it, when (`created_at`) | `photos`, `child_photo` |
-| `taken_at` timestamp of each photo (used for sorting and filters) | `photos.taken_at` |
+| `taken_at` timestamp of each photo (used for sorting, filters and the server-side month/day match for `GET /api/memories`, interpreted in the viewer's IANA time zone) | `photos.taken_at` |
 | Original size in bytes, pixel width and height, MIME type | `photos` |
 | Number and timing of comments, and who wrote them | `comments` |
 | **Tag names** (plaintext) and which photos carry them. Tags are scoped to families: a user only sees and reuses tags created by people they share a child with, or that are on photos they can access; names stay unencrypted | `tags`, `photo_tags` |

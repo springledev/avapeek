@@ -43,7 +43,7 @@ Uploads therefore pass through PHP; only downloads go straight to storage.
 
 ## View flow
 
-1. The app lists photos (`/api/photos`, `/api/children/...`). Responses contain the ciphertext metadata, the encrypted LQIP and the wrapped PEK for the user's child.
+1. The app lists photos (`/api/photos`, `/api/children/...`). Responses contain the ciphertext metadata, the encrypted LQIP and the wrapped PEK for the user's child. The "On this day" card uses `GET /api/memories?date=YYYY-MM-DD&tz=<IANA zone>`: the server matches the plaintext `taken_at` against the same month/day in earlier years, with the same membership scoping as the feed, and returns at most 48 photos with the usual fields.
 2. The browser unwraps the DEK (from the KEK it derived at login), unwraps the PEK, and decrypts the LQIP for an instant blur-up placeholder.
 3. For the thumbnail or original it asks the API for a **presigned GET URL** (`/api/photos/{id}` and `/api/photos/{id}/thumbnail`, both membership-checked). URLs expire after 5 minutes.
 4. The browser `fetch()`es the ciphertext from that URL, decrypts it with the PEK and shows it through an object URL. Decrypted data stays in memory.

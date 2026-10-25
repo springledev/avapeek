@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\FormatsPhotos;
 use App\Http\Controllers\Controller;
-use App\Models\Child;
 use App\Models\Photo;
 use App\Models\Tag;
 use App\Policies\PhotoPolicy;
@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\Log;
 
 class PhotoController extends Controller
 {
+    use FormatsPhotos;
+
     public function __construct(
         protected StorageService $storageService,
         protected QuotaService $quotaService,
@@ -157,9 +159,7 @@ class PhotoController extends Controller
         $user = $request->user();
         $accessibleChildIds = $user->children()->pluck('children.id');
 
-        $query = Photo::whereHas('children', function ($q) use ($accessibleChildIds) {
-            $q->whereIn('child_photo.child_id', $accessibleChildIds);
-        })->with(['tags', 'children' => function ($q) {
+        $query = Photo::visibleTo($user)->with(['tags', 'children' => function ($q) {
             $q->select('children.id', 'children.name', 'children.avatar_color');
         }, 'uploader' => function ($q) {
             $q->select('id', 'display_name');
@@ -301,11 +301,7 @@ class PhotoController extends Controller
     public function recents(Request $request): JsonResponse
     {
         $user = $request->user();
-        $accessibleChildIds = $user->children()->pluck('children.id');
-
-        $photos = Photo::whereHas('children', function ($q) use ($accessibleChildIds) {
-            $q->whereIn('child_photo.child_id', $accessibleChildIds);
-        })->with(['tags', 'children' => function ($q) {
+        $photos = Photo::visibleTo($user)->with(['tags', 'children' => function ($q) {
             $q->select('children.id', 'children.name', 'children.avatar_color');
         }, 'uploader' => function ($q) {
             $q->select('id', 'display_name');
@@ -330,11 +326,7 @@ class PhotoController extends Controller
     public function unseenCount(Request $request): JsonResponse
     {
         $user = $request->user();
-        $accessibleChildIds = $user->children()->pluck('children.id');
-
-        $query = Photo::whereHas('children', function ($q) use ($accessibleChildIds) {
-            $q->whereIn('child_photo.child_id', $accessibleChildIds);
-        })->where('uploaded_by', '!=', $user->id);
+        $query = Photo::visibleTo($user)->where('uploaded_by', '!=', $user->id);
 
         if ($user->last_seen_at) {
             $query->where('created_at', '>', $user->last_seen_at);
@@ -370,41 +362,5 @@ class PhotoController extends Controller
         } catch (\Throwable $e) {
             Log::warning('Failed to clean up blobs after failed upload', ['paths' => $paths, 'error' => $e->getMessage()]);
         }
-    }
-
-    private function formatPhoto(Photo $photo): array
-    {
-        return [
-            'id' => $photo->id,
-            'uuid' => $photo->uuid,
-            'uploaded_by' => $photo->uploaded_by,
-            'uploader_name' => $photo->uploader?->display_name,
-            'original_path' => $photo->original_path,
-            'thumbnail_path' => $photo->thumbnail_path,
-            'lqip' => $photo->lqip_encrypted,
-            'iv_lqip' => $photo->iv_lqip,
-            'iv_original' => $photo->iv_original,
-            'iv_thumbnail' => $photo->iv_thumbnail,
-            'original_mime' => $photo->original_mime,
-            'size_bytes' => $photo->size_bytes,
-            'width' => $photo->width,
-            'height' => $photo->height,
-            'exif_encrypted' => $photo->exif_encrypted,
-            'iv_exif' => $photo->iv_exif,
-            'taken_at' => $photo->taken_at?->toISOString(),
-            'created_at' => $photo->created_at?->toISOString(),
-            'comment_count' => $photo->comments_count ?? $photo->comments()->count(),
-            'tags' => $photo->tags?->map(fn (Tag $tag) => [
-                'id' => $tag->id,
-                'name' => $tag->name,
-            ]),
-            'children' => $photo->children?->map(fn (Child $child) => [
-                'id' => $child->id,
-                'name' => $child->name,
-                'avatar_color' => $child->avatar_color,
-                'encrypted_pek' => $child->pivot->encrypted_pek,
-                'iv_pek' => $child->pivot->iv_pek,
-            ]),
-        ];
     }
 }
