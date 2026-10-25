@@ -74,6 +74,7 @@ Does **not** protect against:
 - **Invites trust a server-supplied public key.** When you invite someone, your browser wraps the child's DEK with the invitee's RSA public key as returned by the server. There is no fingerprint or out-of-band verification, so a malicious server can substitute its own key and receive the DEK without modifying any JavaScript.
 - **No binding of ciphertext to its photo.** AES-GCM is used without additional authenticated data (AAD) tying a ciphertext to its photo id, so the server could swap blobs between photos and the client would not detect it.
 - **No key rotation when a member is removed.** Removing a member deletes their wrapped key copies from the server, but the DEK does not change. Anyone who already downloaded ciphertext and had decrypted or cached the keys keeps the ability to read those photos, and the DEK still protects future uploads they could theoretically obtain ciphertext of. A forward-secrecy design (new DEK, re-wrap remaining PEKs client-side) is planned but not implemented. Treat removal as revoking access to the app, not as cryptographic erasure.
+- **Leaving a family does not rotate the key either.** A member who leaves, and a member who is removed, lose their wrapped key copies on the server and their access in the app, but the DEK is unchanged. Anyone who already held the DEK or downloaded ciphertext can still decrypt what they have. Key rotation is tracked as B11 and is not part of role management.
 - Tag names and several metadata fields are plaintext (see above). Encrypting tags is on the roadmap.
 - PBKDF2 rather than a memory-hard function (the source notes an Argon2id upgrade as a possibility).
 - Presigned download URLs are short-lived bearer links; anyone holding one can fetch that ciphertext until it expires. The ciphertext is useless without the key.
@@ -88,6 +89,15 @@ Two-factor recovery codes only help you pass the login challenge; they do not re
 ## Authorization
 
 Beyond encryption, the API checks membership on every request: a photo, comment, tag or key operation is allowed only if the user belongs to a child linked to the photo through `child_photo`. Registration is closed after the first account; further accounts need an invite. Login, registration, MFA, password-confirmation, upload and invite endpoints are rate limited. Optional MFA supports TOTP, passkeys and recovery codes.
+
+Roles per child are `owner`, `admin` and `member`, and the server enforces them:
+
+- A child has exactly one owner at a time. Role changes and ownership transfer run in a transaction under a row lock on the child, and re-read the memberships inside the lock.
+- Only the owner can promote or demote (admin or member), transfer ownership (the password must be re-entered), invite someone as admin, or remove an admin.
+- Admins can invite members and remove plain members. Plain members can only leave.
+- The owner cannot be removed and cannot leave; they transfer ownership first. A leaver's uploaded photos stay with the child.
+- When a member leaves, is removed or is demoted, the invite links they created that are still unused are revoked.
+- Roles only gate server actions. They do not change who holds a wrapped key.
 
 ## Reporting a vulnerability
 

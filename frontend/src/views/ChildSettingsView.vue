@@ -8,6 +8,7 @@ import { toast } from 'vue-sonner'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiSheet from '@/components/ui/UiSheet.vue'
+import PasswordConfirmSheet from '@/components/PasswordConfirmSheet.vue'
 import { apiErrorMessage, firstValidationError } from '@/lib/util'
 import type { ChildMember, InviteResponse } from '@/types/child'
 
@@ -172,25 +173,137 @@ async function revokeInvite(inviteId: number) {
   }
 }
 
-async function revokeMemberAccess(userId: number, userName: string) {
+const selectedMember = ref<ChildMember | null>(null)
+const showTransferSheet = ref(false)
+const transferError = ref<string | null>(null)
+const isTransferring = ref(false)
+
+const isSelf = (member: ChildMember) => member.id === currentUser.value?.id
+
+/** Whether tapping this row opens any action. */
+function memberHasActions(member: ChildMember): boolean {
+  if (isSelf(member)) return currentUserRole.value === 'admin'
+  if (member.role === 'owner') return false
+  if (currentUserRole.value === 'owner') return true
+  return currentUserRole.value === 'admin' && member.role === 'member'
+}
+
+const selectedIsSelf = computed(() => !!selectedMember.value && isSelf(selectedMember.value))
+const canSetRole = computed(
+  () => currentUserRole.value === 'owner' && !!selectedMember.value && !selectedIsSelf.value,
+)
+const canRemoveSelected = computed(
+  () =>
+    !!selectedMember.value &&
+    !selectedIsSelf.value &&
+    selectedMember.value.role !== 'owner' &&
+    (currentUserRole.value === 'owner' || selectedMember.value.role === 'member'),
+)
+
+function openMemberSheet(member: ChildMember) {
+  if (!memberHasActions(member)) return
+  selectedMember.value = member
+}
+
+function closeMemberSheet() {
+  selectedMember.value = null
+}
+
+async function removeSelectedMember() {
+  const member = selectedMember.value
+  if (!member) return
   if (
     !confirm(
-      `Remove ${userName} from ${child.value?.name}? They will no longer have access to photos.`,
+      `Remove ${member.display_name} from ${child.value?.name}? They will lose access in the app. Photos are not re-encrypted.`,
     )
   ) {
     return
   }
 
   try {
-    await api.delete(`/children/${childId.value}/members/${userId}`)
-    members.value = members.value.filter((m) => m.id !== userId)
-    toast.success(`${userName} has been removed.`)
+    await api.delete(`/children/${childId.value}/members/${member.id}`)
+    members.value = members.value.filter((m) => m.id !== member.id)
+    closeMemberSheet()
+    toast.success(`${member.display_name} has been removed.`)
   } catch (err: unknown) {
-    const message =
-      err instanceof Error && 'response' in err
-        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-        : undefined
-    toast.error(message || 'Failed to remove member.')
+    toast.error(apiErrorMessage(err, 'Failed to remove member.'))
+  }
+}
+
+async function changeSelectedRole(role: 'admin' | 'member') {
+  const member = selectedMember.value
+  if (!member) return
+  if (
+    role === 'member' &&
+    !confirm(`Make ${member.display_name} a regular member? They lose admin rights.`)
+  ) {
+    return
+  }
+
+  try {
+    const updated = await childStore.setMemberRole(childId.value, member.id, role)
+    members.value = members.value.map((m) =>
+      m.id === member.id ? { ...m, role: updated.role } : m,
+    )
+    closeMemberSheet()
+    toast.success(
+      `${member.display_name} is now ${updated.role === 'admin' ? 'an admin' : 'a member'}.`,
+    )
+  } catch (err: unknown) {
+    toast.error(apiErrorMessage(err, 'Failed to change role.'))
+  }
+}
+
+function startTransfer() {
+  const member = selectedMember.value
+  if (!member) return
+  if (
+    !confirm(
+      `Make ${member.display_name} the owner of ${child.value?.name}? You will become an admin and only the new owner can undo this.`,
+    )
+  ) {
+    return
+  }
+  transferError.value = null
+  showTransferSheet.value = true
+}
+
+async function confirmTransfer(password: string) {
+  const member = selectedMember.value
+  if (!member) return
+  isTransferring.value = true
+  transferError.value = null
+  try {
+    await childStore.transferOwnership(childId.value, member.id, password)
+    showTransferSheet.value = false
+    closeMemberSheet()
+    toast.success(`${member.display_name} is now the owner.`)
+    await fetchMembers()
+  } catch (err: unknown) {
+    transferError.value =
+      firstValidationError(err) || apiErrorMessage(err, 'Failed to transfer ownership.')
+    toast.error(transferError.value)
+  } finally {
+    isTransferring.value = false
+  }
+}
+
+async function leaveFamily() {
+  if (
+    !confirm(
+      `Leave ${child.value?.name}? You will lose access to its photos in the app. Photos are not re-encrypted, so anything already saved to your devices stays readable there.`,
+    )
+  ) {
+    return
+  }
+
+  try {
+    await childStore.leaveChild(childId.value)
+    closeMemberSheet()
+    toast.success('You have left.')
+    router.push('/settings/children')
+  } catch (err: unknown) {
+    toast.error(apiErrorMessage(err, 'Failed to leave.'))
   }
 }
 
@@ -244,7 +357,15 @@ function formatLastActive(dateStr: string | null): string {
       <div class="child-settings__section">
         <h3 class="child-settings__section-title">Family</h3>
         <div v-if="members.length > 0" class="child-settings__members">
-          <div v-for="member in members" :key="member.id" class="child-settings__member">
+          <component
+            :is="memberHasActions(member) ? 'button' : 'div'"
+            v-for="member in members"
+            :key="member.id"
+            :type="memberHasActions(member) ? 'button' : undefined"
+            class="child-settings__member"
+            :class="{ 'child-settings__member--tappable': memberHasActions(member) }"
+            @click="openMemberSheet(member)"
+          >
             <div class="child-settings__member-avatar">
               {{ member.display_name.charAt(0).toUpperCase() }}
             </div>
@@ -261,17 +382,18 @@ function formatLastActive(dateStr: string | null): string {
                 >
               </p>
             </div>
-            <button
-              v-if="canManageMembers && member.role !== 'owner' && member.id !== currentUser?.id"
-              type="button"
-              class="child-settings__revoke"
-              @click="revokeMemberAccess(member.id, member.display_name)"
-            >
-              Remove
-            </button>
-          </div>
+          </component>
         </div>
-        <p v-else class="child-settings__empty">No family members yet.</p>
+        <p v-else-if="canManageMembers" class="child-settings__empty">No family members yet.</p>
+        <p v-else class="child-settings__empty">Only owners and admins can see the member list.</p>
+      </div>
+
+      <div v-if="currentUserRole && currentUserRole !== 'owner'" class="child-settings__section">
+        <h3 class="child-settings__section-title">Leave</h3>
+        <p class="invite-sheet__hint child-settings__leave-hint">
+          You lose access to this kid's photos in the app. Photos are not re-encrypted.
+        </p>
+        <UiButton variant="danger" @click="leaveFamily">Leave this kid</UiButton>
       </div>
 
       <div class="child-settings__section">
@@ -306,6 +428,55 @@ function formatLastActive(dateStr: string | null): string {
   </div>
 
   <div v-else class="child-settings__not-found">Child not found.</div>
+
+  <UiSheet
+    :open="selectedMember !== null && !showTransferSheet"
+    :title="selectedMember?.display_name ?? ''"
+    @close="closeMemberSheet"
+  >
+    <div v-if="selectedMember" class="member-sheet">
+      <p class="invite-sheet__hint">
+        {{ selectedMember.role
+        }}<span v-if="selectedMember.relationship"> · {{ selectedMember.relationship }}</span>
+      </p>
+      <template v-if="selectedIsSelf">
+        <UiButton variant="danger" @click="leaveFamily">Leave this kid</UiButton>
+      </template>
+      <template v-else>
+        <template v-if="canSetRole">
+          <UiButton
+            v-if="selectedMember.role === 'member'"
+            variant="subtle"
+            @click="changeSelectedRole('admin')"
+          >
+            Make admin
+          </UiButton>
+          <UiButton v-else variant="subtle" @click="changeSelectedRole('member')">
+            Make member
+          </UiButton>
+          <p class="invite-sheet__hint">
+            Admins can only share photo keys once they have opened the app after joining.
+          </p>
+          <UiButton variant="subtle" @click="startTransfer">Transfer ownership</UiButton>
+        </template>
+        <UiButton v-if="canRemoveSelected" variant="danger" @click="removeSelectedMember">
+          Remove from family
+        </UiButton>
+      </template>
+    </div>
+  </UiSheet>
+
+  <PasswordConfirmSheet
+    :open="showTransferSheet"
+    title="Transfer ownership"
+    :description="`Enter your password to make ${selectedMember?.display_name ?? 'this member'} the owner. You will become an admin.`"
+    confirm-label="Transfer"
+    destructive
+    :loading="isTransferring"
+    :error="transferError"
+    @confirm="confirmTransfer"
+    @close="showTransferSheet = false"
+  />
 
   <UiSheet :open="showEditSheet" title="Edit profile" @close="showEditSheet = false">
     <div v-if="editError" class="invite-sheet__error" role="alert">{{ editError }}</div>
@@ -369,7 +540,7 @@ function formatLastActive(dateStr: string | null): string {
           <label class="invite-sheet__label" for="invite-role">Role</label>
           <select id="invite-role" v-model="inviteRole" class="invite-sheet__select">
             <option value="member">Member</option>
-            <option value="admin">Admin</option>
+            <option v-if="currentUserRole === 'owner'" value="admin">Admin</option>
           </select>
         </div>
         <div class="invite-sheet__field">
@@ -453,6 +624,31 @@ function formatLastActive(dateStr: string | null): string {
 .child-settings__member {
   display: flex;
   align-items: center;
+  gap: var(--space-3);
+  min-height: var(--target-min);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+}
+
+.child-settings__member--tappable {
+  cursor: pointer;
+}
+
+.child-settings__member--tappable:hover {
+  background: var(--color-surface-2);
+}
+
+.child-settings__leave-hint {
+  margin-bottom: var(--space-3);
+}
+
+.member-sheet {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
 }
 
