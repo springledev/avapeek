@@ -118,6 +118,7 @@
   --z-sheet: 60;
   --z-upload-overlay: 70;
   --z-viewer: 80;
+  --z-viewer-sheet: 85; /* sheets opened from inside the viewer */
   --z-toast: 90;
 }
 

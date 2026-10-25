@@ -150,7 +150,8 @@ export const useTagsStore = defineStore('tags', () => {
         normalized,
       }
       byChild.value.set(childId, [...tagsFor(childId), created])
-      return created
+      // Hand back the reactive copy so counters bumped by callers update the UI.
+      return tagsFor(childId).find((t) => t.id === created.id) ?? created
     })().finally(() => creating.delete(key))
 
     creating.set(key, run)

@@ -10,8 +10,10 @@ const props = withDefaults(
   defineProps<{
     open: boolean
     title?: string
+    /** Stack above the full-screen photo viewer (which itself sits above regular sheets). */
+    elevated?: boolean
   }>(),
-  { title: '' },
+  { title: '', elevated: false },
 )
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -30,6 +32,7 @@ function onEscape(event: KeyboardEvent) {
   <Teleport v-if="open" to="body">
     <div
       class="sheet"
+      :class="{ 'sheet--elevated': elevated }"
       role="dialog"
       aria-modal="true"
       :aria-labelledby="labelledBy"
@@ -59,6 +62,10 @@ function onEscape(event: KeyboardEvent) {
   align-items: flex-end;
   justify-content: center;
   outline: none;
+}
+
+.sheet--elevated {
+  z-index: var(--z-viewer-sheet);
 }
 
 .sheet__backdrop {

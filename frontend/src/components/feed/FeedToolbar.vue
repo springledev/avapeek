@@ -71,7 +71,8 @@ watch(
   },
   { immediate: true },
 )
-const availableTags = computed(() => tagsStore.suggest('', undefined, 200))
+// suggest() returns nothing for an empty query, so list every tag directly.
+const availableTags = computed(() => tagsStore.logicalTags)
 
 function toggleTag(name: string) {
   const current = feedStore.filters.tags
@@ -201,6 +202,11 @@ function clearMonth() {
 
 .toolbar__scroll::-webkit-scrollbar {
   display: none;
+}
+
+/* Chips scroll sideways; shrinking would squash and clip their labels. */
+.toolbar__scroll > * {
+  flex-shrink: 0;
 }
 
 .toolbar__cal {

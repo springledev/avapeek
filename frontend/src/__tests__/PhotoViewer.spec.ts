@@ -135,7 +135,7 @@ function makeDecrypted(id: number, text: string): DecryptedComment {
   }
 }
 
-function mountViewer(photo: Photo) {
+function mountViewer(photo: Photo, options: { attach?: boolean } = {}) {
   const pinia: Pinia = createPinia()
   setActivePinia(pinia)
   useChildStore().children = [makeChild()]
@@ -153,6 +153,7 @@ function mountViewer(photo: Photo) {
       plugins: [pinia],
       stubs: { teleport: true },
     },
+    attachTo: options.attach ? document.body : undefined,
   })
   return { wrapper, pinia }
 }
@@ -220,6 +221,67 @@ describe('PhotoViewer', () => {
     expect(menu.text()).toContain('Download')
     expect(menu.text()).toContain('Edit')
     wrapper.unmount()
+  })
+
+  describe('tags', () => {
+    const taggedPhoto = () =>
+      makePhoto({
+        tags: [
+          { id: 11, child_id: 1, name_encrypted: 'x', iv_name: 'y', name: 'park' },
+          { id: 12, child_id: 1, name_encrypted: 'x', iv_name: 'y', name: 'first day at the big school' },
+        ],
+      })
+
+    beforeEach(() => {
+      vi.mocked(api.get).mockResolvedValue(ok(makeListResponse([])))
+    })
+
+    it('shows a read-only tag strip that opens the tags sheet', async () => {
+      const { wrapper } = mountViewer(taggedPhoto())
+
+      const strip = wrapper.find('.viewer__tags')
+      expect(strip.text()).toContain('park')
+      expect(strip.text()).toContain('2')
+      expect(strip.find('.tag-chip__remove').exists()).toBe(false)
+      expect(wrapper.find('.info-sheet').exists()).toBe(false)
+
+      await strip.trigger('click')
+
+      const sheet = wrapper.find('.info-sheet')
+      expect(sheet.exists()).toBe(true)
+      expect(sheet.findAll('.tag-chip__remove')).toHaveLength(2)
+      wrapper.unmount()
+    })
+
+    it('emits tagRemoved from the sheet and hides the strip when a photo has no tags', async () => {
+      const { wrapper } = mountViewer(taggedPhoto())
+      await wrapper.find('.viewer__tags').trigger('click')
+
+      await wrapper.find('[aria-label="Remove tag park"]').trigger('click')
+      expect(wrapper.emitted('tagRemoved')?.[0]).toEqual([5, 11])
+      wrapper.unmount()
+
+      const empty = mountViewer(makePhoto())
+      expect(empty.wrapper.find('.viewer__tags').exists()).toBe(false)
+      await empty.wrapper.find('[aria-label="More actions"]').trigger('click')
+      const info = empty.wrapper.findAll('[role="menuitem"]').find((el) => el.text() === 'Info')
+      await info?.trigger('click')
+      expect(empty.wrapper.find('.info-sheet').text()).toContain('No tags yet')
+      empty.wrapper.unmount()
+    })
+
+    it('Escape inside the open sheet closes the sheet but not the viewer', async () => {
+      const { wrapper } = mountViewer(taggedPhoto(), { attach: true })
+      await wrapper.find('.viewer__tags').trigger('click')
+      expect(wrapper.find('.info-sheet').exists()).toBe(true)
+
+      await wrapper.find('[role="dialog"]').trigger('keydown', { key: 'Escape' })
+      await nextTick()
+
+      expect(wrapper.find('.info-sheet').exists()).toBe(false)
+      expect(wrapper.emitted('close')).toBeUndefined()
+      wrapper.unmount()
+    })
   })
 
   it('renders cached comments instantly with no loading flash', () => {

@@ -11,6 +11,7 @@ import {
   Heart,
   Pencil,
   Info,
+  Tag,
   AlertTriangle,
   Send,
   Trash2,
@@ -510,6 +511,8 @@ async function removeComment(comment: DecryptedComment) {
 }
 
 function onKeydown(event: KeyboardEvent) {
+  // A focused sheet closes itself; handling it here too would also close the viewer.
+  if ((event.target as HTMLElement | null)?.closest('[role="dialog"]')) return
   if (event.key === 'Escape') {
     if (showMenu.value) {
       showMenu.value = false
@@ -517,6 +520,10 @@ function onKeydown(event: KeyboardEvent) {
     }
     if (showEditSheet.value) {
       showEditSheet.value = false
+      return
+    }
+    if (showInfo.value) {
+      showInfo.value = false
       return
     }
     if (commentsExpanded.value) {
@@ -775,6 +782,22 @@ onBeforeUnmount(() => {
         @touchmove.stop
         @touchend.stop
       >
+        <button
+          v-if="!commentsExpanded && displayTags.length > 0"
+          type="button"
+          class="viewer__tags u-focus-ring"
+          :aria-label="`Tags: ${displayTags.map((t) => t.name).join(', ')}. Edit tags`"
+          @click="showInfo = true"
+        >
+          <span class="viewer__tags-list">
+            <TagChip v-for="tag in displayTags" :key="tag.id" :name="tag.name" />
+          </span>
+          <span class="viewer__tags-edit" aria-hidden="true">
+            <Tag :size="18" />
+            <span v-if="displayTags.length > 1">{{ displayTags.length }}</span>
+          </span>
+        </button>
+
         <div v-if="commentsExpanded" class="viewer__sheet-head">
           <h3 class="viewer__sheet-title">Comments</h3>
           <button
@@ -833,7 +856,12 @@ onBeforeUnmount(() => {
             No comments yet — say something nice.
           </p>
           <ul v-else class="viewer__comment-items">
-            <li v-for="comment in photoComments" :key="comment.id" class="viewer__comment">
+            <li
+              v-for="comment in photoComments"
+              :key="comment.id"
+              class="viewer__comment"
+              :class="{ 'viewer__comment--deletable': canDeleteComment(comment) }"
+            >
               <p class="viewer__comment-head">
                 <span class="viewer__comment-author">{{ comment.author_name }}</span>
                 <time class="viewer__comment-time" :datetime="comment.created_at">
@@ -971,35 +999,9 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div v-if="showInfo" class="viewer__info">
-        <div class="viewer__info-tags">
-          <TagChip
-            v-for="tag in displayTags"
-            :key="tag.id"
-            :name="tag.name"
-            removable
-            @remove="emit('tagRemoved', props.photo.id, tag.id)"
-          />
-          <TagInput
-            :child-ids="props.photo.children.map((c) => c.id)"
-            :exclude="displayTags.map((t) => t.name)"
-            @add="(name: string) => emit('tagAdded', props.photo.id, name)"
-          />
-        </div>
-        <div class="viewer__info-kids">
-          <UiAvatar
-            v-for="child in visibleChildren"
-            :key="child.id"
-            :id="child.id"
-            :name="child.name"
-            :color-hex="child.avatar_color"
-            :size="32"
-          />
-        </div>
-      </div>
     </div>
 
-    <UiSheet :open="showEditSheet" title="Edit photo" @close="showEditSheet = false">
+    <UiSheet :open="showEditSheet" title="Edit photo" elevated @close="showEditSheet = false">
       <div class="edit-sheet">
         <p class="edit-sheet__label">Children</p>
         <div class="edit-sheet__kids">
@@ -1013,6 +1015,47 @@ onBeforeUnmount(() => {
           />
         </div>
       </div>
+    </UiSheet>
+
+    <UiSheet :open="showInfo" title="Photo info" elevated @close="showInfo = false">
+      <div class="info-sheet">
+        <section v-if="visibleChildren.length > 0" class="info-sheet__section">
+          <h3 class="info-sheet__label">In this photo</h3>
+          <ul class="info-sheet__kids">
+            <li v-for="child in visibleChildren" :key="child.id" class="info-sheet__kid">
+              <UiAvatar
+                :id="child.id"
+                :name="child.name"
+                :color-hex="child.avatar_color"
+                :size="40"
+              />
+              <span>{{ child.name }}</span>
+            </li>
+          </ul>
+        </section>
+
+        <section class="info-sheet__section">
+          <h3 class="info-sheet__label">Tags</h3>
+          <TagInput
+            :child-ids="props.photo.children.map((c) => c.id)"
+            :exclude="displayTags.map((t) => t.name)"
+            @add="(name: string) => emit('tagAdded', props.photo.id, name)"
+          />
+          <ul v-if="displayTags.length > 0" class="info-sheet__tags">
+            <li v-for="tag in displayTags" :key="tag.id" class="info-sheet__tag">
+              <TagChip
+                :name="tag.name"
+                removable
+                @remove="emit('tagRemoved', props.photo.id, tag.id)"
+              />
+            </li>
+          </ul>
+          <p v-else class="info-sheet__empty">No tags yet. Add one above.</p>
+        </section>
+      </div>
+      <template #footer>
+        <UiButton variant="subtle" @click="showInfo = false">Done</UiButton>
+      </template>
     </UiSheet>
   </Teleport>
 </template>
@@ -1393,6 +1436,10 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
+.viewer__comment--deletable .viewer__comment-head {
+  padding-right: var(--target-min);
+}
+
 .viewer__comment-time {
   font-size: var(--text-meta);
   color: rgb(255 255 255 / 0.5);
@@ -1405,6 +1452,7 @@ onBeforeUnmount(() => {
   line-height: var(--lh-body);
   color: rgb(255 255 255 / 0.92);
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
 .viewer__comment-delete {
@@ -1571,27 +1619,91 @@ onBeforeUnmount(() => {
   color: #ff9d94;
 }
 
-.viewer__info-tags {
+.viewer__tags {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--target-min);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.viewer__tags-list {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: var(--space-2);
+  overflow: hidden;
+  /* Fade the clipped end so a cut-off chip reads as "more", not as a glitch. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+
+.viewer__tags-list > * {
+  flex-shrink: 0;
+}
+
+.viewer__tags-edit {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  color: rgb(255 255 255 / 0.75);
+  font-size: var(--text-meta);
+  font-weight: 700;
+}
+
+.info-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.info-sheet__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.info-sheet__label {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.info-sheet__kids,
+.info-sheet__tags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  width: min(320px, calc(100vw - 2 * var(--space-4)));
-  margin-bottom: var(--space-3);
-  padding: var(--space-3);
-  border-radius: var(--radius-card);
-  background: rgb(0 0 0 / 0.6);
 }
 
-.viewer__info {
-  position: absolute;
-  bottom: calc(var(--target-min) + var(--space-8) + var(--safe-area-b));
-  left: var(--space-4);
-  z-index: 10;
-}
-
-.viewer__info-kids {
-  display: flex;
+.info-sheet__kid {
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-2);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.info-sheet__tag {
+  max-width: 100%;
+  display: flex;
+}
+
+.info-sheet__empty {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: var(--text-body);
 }
 
 @keyframes menu-in {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { X } from '@lucide/vue'
 import UiAvatar from './UiAvatar.vue'
 
 /**
@@ -58,7 +59,7 @@ const showKidAvatar = computed(() => props.tone === 'kid' && props.kidId !== und
       :aria-label="`Remove ${label} filter`"
       @click="emit('remove')"
     >
-      ✕
+      <X :size="16" aria-hidden="true" />
     </button>
   </div>
 </template>
@@ -107,6 +108,9 @@ const showKidAvatar = computed(() => props.tone === 'kid' && props.kidId !== und
 }
 
 .chip__remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-width: var(--target-min);
   min-height: var(--target-min);
   border: 0;
