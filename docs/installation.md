@@ -138,6 +138,10 @@ server {
 
 Traefik: route `Host(`photos.example.com`)` to a service at `http://<docker-host>:88`, or attach Traefik to the stack network `app-network` and target `caddy:80`.
 
+## Installing as an app
+
+Avapeek is an installable PWA. Browsers only offer installation (and run the service worker) on HTTPS or `localhost`, so a plain-HTTP remote install cannot be installed. On Android Chrome, "Share" to Avapeek from the gallery works once the app is installed; iOS Safari supports Add to Home Screen but not sharing into the app.
+
 ## First account
 
 Open your URL. While the database has no users, registration is open: create the first account. From then on `/api/auth/registration-mode` reports `invite_only` and new accounts can only be created through an invite link. Create a child, then use its invite action to generate a link for each relative. Choose a strong password and **write it down**: there is no password reset (see [security.md](security.md#password-loss)).

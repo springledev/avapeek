@@ -63,10 +63,29 @@ Some values appear in both and must match. After editing `backend/.env`, recreat
 | `SESSION_ENCRYPT` | `true` | no | |
 | `SESSION_PATH`, `SESSION_DOMAIN` | `/`, `null` | no | |
 | `CACHE_STORE` | `redis` | no | |
-| `QUEUE_CONNECTION` | `redis` | no | The core app currently dispatches no queued jobs |
+| `QUEUE_CONNECTION` | `redis` | no | Used by the `queue` service (Web Push batching and delivery). Must stay `redis` for the bundled worker |
 | `BROADCAST_CONNECTION` | `log` | no | Unused |
 
 API tokens are Laravel Sanctum bearer tokens; the optional vars `SANCTUM_STATEFUL_DOMAINS` and `SANCTUM_TOKEN_PREFIX` exist but need no change for the standard setup.
+
+### Web Push notifications
+
+Optional. Push is **off** until both VAPID keys are set: `GET /api/push/config` returns 404, the app hides the notification settings and the server makes no outbound push requests. Generate a key pair with `docker compose exec backend php artisan avapeek:push-keys` (it only prints; paste the lines into `backend/.env`). Keep the private key secret and do not rotate it casually: existing browser subscriptions are bound to the public key and stop working until each device re-subscribes.
+
+| Name | Default | Required | Description |
+| --- | --- | --- | --- |
+| `PUSH_ENABLED` | `true` | no | Set `false` to switch push off even when keys are present |
+| `VAPID_PUBLIC_KEY` | unset | for push | Sent to browsers so they can subscribe |
+| `VAPID_PRIVATE_KEY` | unset | for push | Signs requests to push services. Never exposed |
+| `VAPID_SUBJECT` | `mailto:admin@example.invalid` | for push | Operator contact (`mailto:` or `https://` URL) shown to push services. Use an operator address, not a user's email |
+
+Notes:
+
+- Web Push needs HTTPS in the browser (localhost excepted). On plain-HTTP LAN installs push will not work. On iOS it only works for an installed home-screen app (16.4+).
+- The `queue` service (`php artisan queue:work redis --max-time=3600`) sends the notifications. With `QUEUE_CONNECTION=redis` and the bundled Redis nothing else is needed. Restart it after changing `.env`; it is harmless when push is off.
+- The backend and queue containers must be able to reach push services (Google, Apple, Mozilla, Microsoft) on outbound 443. Endpoints must be `https`, port 443 and must not resolve to private, loopback or link-local addresses; redirects are not followed and requests time out after 10 s.
+- Pending events are kept in the cache for up to 1 hour, so a stopped or backlogged queue worker catches up after a restart; events older than that are dropped silently. A failed job puts its batch back so the retry (3 tries) still sends it.
+- Bursts are batched: events are collected for 60 seconds, then each member gets one generic notification per type (photos, comments). Subscriptions that return 404/410, fail 5 times in a row, or have had no success for 60 days (`avapeek:push-prune`, daily) are deleted.
 
 ### Mail
 

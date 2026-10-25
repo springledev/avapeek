@@ -5,7 +5,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useDarkMode } from '@/composables/useDarkMode'
 import { useNetwork } from '@/composables/useNetwork'
 import AppShell from '@/components/AppShell.vue'
+import OfflineBanner from '@/components/OfflineBanner.vue'
 import { syncEncryptionKeys } from '@/services/key-sync'
+import { resyncPushSubscription } from '@/services/push'
 
 const authStore = useAuthStore()
 const { initDarkMode } = useDarkMode()
@@ -36,6 +38,9 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', onVisibilityChange)
   await authStore.restoreKEK()
   syncKeys()
+  if (authStore.isAuthenticated) {
+    void resyncPushSubscription().catch(() => undefined)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -45,6 +50,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <OfflineBanner />
   <AppShell />
   <Toaster
     richColors
