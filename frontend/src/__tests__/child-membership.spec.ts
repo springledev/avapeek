@@ -29,6 +29,7 @@ vi.mock('@/lib/auth-storage', () => ({
 
 vi.mock('@/lib/cache/decrypted-cache', () => ({
   clearDecryptedCache: vi.fn<() => void>(),
+  setDecryptedCacheUser: vi.fn<(userId: number | null) => void>(),
 }))
 
 vi.mock('@/crypto/keychain', () => ({

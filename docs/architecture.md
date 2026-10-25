@@ -76,6 +76,27 @@ Every photo, comment, tag and key route verifies that the caller belongs to a ch
 
 Tags are per child (`GET`/`POST /api/children/{child}/tags`). The server stores a name as ciphertext (`name_encrypted` + `iv_name`, child DEK) and an opaque id; creation is throttled and capped at 200 tags per child. Photos are filtered with `?tag_ids=` and uploads attach tags with `tag_ids[]`, which must belong to the children the photo is linked to. Attaching a tag is authorized by `PhotoPolicy::attachTag`, deleting one by `TagPolicy`.
 
+## PWA and service worker
+
+The frontend is an installable PWA (`vite-plugin-pwa`, `injectManifest`, source `frontend/src/sw.ts`, registered from `src/lib/pwa-register.ts`). The build emits `sw.js` and `manifest.webmanifest` at the site root (`start_url` `/feed`, `scope` `/`).
+
+- **Precache only.** The worker precaches static build assets (JS, CSS, fonts, icons, `index.html`) and answers navigations with the cached shell, except `/api/`, `/photos/` and `/share-target`. There is **no runtime caching**: API and storage requests always go to the network.
+- The lazy `heic-to` decoder chunk (about 3 MB) is excluded from the precache, so HEIC decoding is not available offline.
+- **Offline mode** is deliberately small: the app shell, an "Offline" banner, and thumbnails already in the decrypted cache. Feed metadata is not persisted.
+- **Updates.** A new build installs in the background and shows an "Update available" toast; Reload activates it and removes the old precache.
+- **Share target.** `POST /share-target` is intercepted by the worker, which stages the shared images in an IndexedDB inbox and redirects (303) to `/upload?shared=1`. See [security.md](security.md) for what this stores.
+- **nginx rules** (`docker/nginx/frontend.conf`): `/sw.js` and `/manifest.webmanifest` are `no-cache` (the manifest is served as `application/manifest+json`); only hashed `/assets/*` are `immutable`; unhashed public files (icons, favicon, fonts) and `index.html` are `no-cache`; a direct `POST /share-target` without a worker gets a relative 303 to `/upload?shared=1` instead of a 405. Caddy needs no change. The `add_header` directive is not inherited into a location that sets its own, so each location repeats its `Cache-Control`.
+
+## Push notifications
+
+Optional Web Push (VAPID, `minishlink/web-push`), off unless `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` are set. No content is involved: no crypto changes, and `frontend/src/crypto` is untouched.
+
+- **Trigger.** `Photo` and `Comment` model observers (after commit) call `PushBatcher::record(type, photo_id, actor_id)`. The first event of a 60 s window schedules one delayed `SendPushNotifications` job per type; later events only append to a cache list.
+- **Resolution at send time.** The job drains the list and `PushRecipientResolver` computes recipients in a constant number of queries: members of any child linked to the photo (`child_photo` + `child_users`, the `PhotoPolicy::view` rule), minus the actor, minus users who muted that type on every shared child (`notification_preferences`; no row means on), minus users without a subscription.
+- **Sending.** `WebPushService` re-validates the endpoint, pins DNS, sends `{type, url: "/recents"}` (TTL 24 h, urgency low) and maintains `failed_attempts`/`last_success_at`. 404/410 deletes the subscription.
+- **Client.** `src/sw.ts` shows a generic notification from `type` (tag `avapeek-photos`/`avapeek-comments`) and focuses or opens `/recents` on click. The settings page manages the per-device subscription and per-child switches. On `pushsubscriptionchange` the worker re-subscribes but cannot authenticate (the token is never given to it), so the app re-registers the subscription at next launch.
+- **Worker.** The `queue` compose service runs `queue:work redis --max-time=3600`.
+
 ## Source layout
 
 See [development.md](development.md#repository-layout).

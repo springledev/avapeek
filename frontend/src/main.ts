@@ -5,6 +5,8 @@ import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth'
 import './assets/main.css'
+import { toast } from 'vue-sonner'
+import { registerServiceWorker } from './lib/pwa-register'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -29,3 +31,12 @@ app.directive('click-outside', {
 useAuthStore().initializeAuth()
 
 app.mount('#app')
+
+registerServiceWorker(({ applyUpdate }) => {
+  toast('Update available', {
+    description: 'A new version of Avapeek is ready.',
+    duration: Infinity,
+    action: { label: 'Reload', onClick: applyUpdate },
+    actionButtonStyle: { minHeight: '48px', minWidth: '48px', padding: '0 16px' },
+  })
+})

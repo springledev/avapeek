@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { api } from '@/services/api'
 import apiService from '@/services/api'
 import { apiErrorMessage } from '@/lib/util'
-import { clearDecryptedCache } from '@/lib/cache/decrypted-cache'
+import { clearDecryptedCache, setDecryptedCacheUser } from '@/lib/cache/decrypted-cache'
+import { clearShareInbox } from '@/lib/share-inbox'
 import {
   getSessionItem,
   setSessionItem,
@@ -76,6 +77,11 @@ export function isMfaRequired(value: unknown): value is MfaRequiredResponse {
 export const useAuthStore = defineStore('auth', () => {
   // State
   const user = ref<User | null>(null)
+  // Namespaces the persisted decrypted cache per user (sync so it is set before any cache use).
+  watch(user, (current) => setDecryptedCacheUser(current?.id ?? null), {
+    flush: 'sync',
+    immediate: true,
+  })
   const encryptionKeys = ref<EncryptionKey[]>([])
   const kek = ref<CryptoKey | null>(null) // Kept in memory only
   const isLoading = ref(false)
@@ -320,6 +326,7 @@ export const useAuthStore = defineStore('auth', () => {
       apiService.clearAuthToken()
       clearSession()
       clearDecryptedCache()
+      clearShareInbox()
       isLoading.value = false
     }
   }
@@ -332,6 +339,7 @@ export const useAuthStore = defineStore('auth', () => {
     const token = getSessionItem('auth_token')
     if (!token) {
       clearDecryptedCache()
+      clearShareInbox()
       clearSession()
       return
     }

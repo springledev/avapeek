@@ -121,6 +121,29 @@ services:
         condition: service_completed_successfully
         required: false
 
+  # --- Queue worker (Web Push notifications) ---
+  queue:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: avapeek-queue
+    restart: unless-stopped
+    env_file:
+      - backend/.env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+    volumes:
+      - ./backend:/app
+      - storage:/app/storage
+      - bootstrap_cache:/app/bootstrap/cache
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=3", "--tries=3", "--max-time=3600"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   pg_data:
   redis_data:

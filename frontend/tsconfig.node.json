@@ -3,6 +3,7 @@
   "extends": "@tsconfig/node24/tsconfig.json",
   "include": [
     "vite.config.*",
+    "pwa.config.*",
     "vitest.config.*",
     "cypress.config.*",
     "playwright.config.*",

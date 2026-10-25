@@ -10,6 +10,7 @@ Artisan::command('inspire', function () {
 
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
 Schedule::command('uploads:prune-intents')->everyFifteenMinutes();
+Schedule::command('avapeek:push-prune')->daily();
 
 Schedule::command('backup:database')
     ->dailyAt('02:30')
