@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\BackupService;
 use App\Services\StorageService;
 use Illuminate\Console\Command;
 use Illuminate\Http\Client\ConnectionException;
@@ -17,7 +18,7 @@ class CheckStorage extends Command
      *
      * @var string
      */
-    protected $signature = 'storage:check';
+    protected $signature = 'storage:check {--backup : Also check the backup disk (write, read, delete)}';
 
     /**
      * The console command description.
@@ -27,6 +28,60 @@ class CheckStorage extends Command
     protected $description = 'Verify the S3 storage configuration: write, presigned GET with CORS, delete';
 
     public function handle(StorageService $storage): int
+    {
+        $result = $this->checkPhotoStorage($storage);
+
+        if ($this->option('backup')) {
+            $this->newLine();
+            $backupResult = $this->checkBackupDisk();
+            $result = $result === self::SUCCESS ? $backupResult : $result;
+        }
+
+        return $result;
+    }
+
+    protected function checkBackupDisk(): int
+    {
+        $disk = Storage::disk('backup');
+        $path = rtrim((string) config('avapeek.backup.prefix'), '/').'/.storage-check-'.Str::uuid().'.txt';
+        $body = 'avapeek-backup-check-'.Str::random(16);
+
+        $this->line('Backup endpoint: '.(config('filesystems.disks.backup.endpoint') ?: '(AWS default)'));
+        $this->line('Backup bucket:   '.config('filesystems.disks.backup.bucket'));
+        if (app(BackupService::class)->sharesPhotoStorage()) {
+            $this->warn('WARNING: the backup disk shares bucket and endpoint with the photos (set BACKUP_AWS_* for a separate destination).');
+        }
+
+        try {
+            if ($disk->put($path, $body) === false) {
+                $this->reportFailure('Writing to the backup disk failed. Check BACKUP_AWS_* (or AWS_* when unset) and bucket permissions.');
+
+                return self::FAILURE;
+            }
+            $this->info('[ok] wrote test object to the backup disk');
+
+            try {
+                if ($disk->get($path) !== $body) {
+                    $this->reportFailure('Reading back from the backup disk returned unexpected content.');
+
+                    return self::FAILURE;
+                }
+                $this->info('[ok] read it back');
+            } finally {
+                $disk->delete($path);
+            }
+        } catch (Throwable $e) {
+            $this->reportFailure($this->explainException($e));
+
+            return self::FAILURE;
+        }
+
+        $this->info('Backup disk check passed.');
+
+        return self::SUCCESS;
+    }
+
+    protected function checkPhotoStorage(StorageService $storage): int
     {
         $origin = rtrim((string) (config('app.frontend_url') ?: config('app.url')), '/');
         $path = '.storage-check/'.Str::uuid().'.txt';
