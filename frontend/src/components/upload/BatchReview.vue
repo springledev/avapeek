@@ -5,6 +5,10 @@ import { useChildStore } from '@/stores/child'
 import UiSheet from '@/components/ui/UiSheet.vue'
 import UiChip from '@/components/ui/UiChip.vue'
 import UiButton from '@/components/ui/UiButton.vue'
+import TagInput from '@/components/TagInput.vue'
+import TagChip from '@/components/TagChip.vue'
+import { useTagsStore } from '@/stores/tags'
+import { normalizeTagName } from '@/lib/tags'
 import CreateChildSheet from '@/components/CreateChildSheet.vue'
 import type { Child } from '@/types/child'
 
@@ -15,10 +19,12 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'upload', files: File[], childIds: number[]): void
+  (e: 'upload', files: File[], childIds: number[], tagNames: string[]): void
 }>()
 
 const childStore = useChildStore()
+const tagsStore = useTagsStore()
+const tagNames = ref<string[]>([])
 
 const selectedChildIds = ref<number[]>(
   childStore.uploadableChildren.length === 1 ? [childStore.uploadableChildren[0]!.id] : [],
@@ -52,6 +58,24 @@ function toggleChild(childId: number) {
   else selectedChildIds.value.push(childId)
 }
 
+function addTagName(name: string) {
+  if (!tagNames.value.some((t) => normalizeTagName(t) === normalizeTagName(name))) {
+    tagNames.value.push(name)
+  }
+}
+
+function removeTagName(name: string) {
+  tagNames.value = tagNames.value.filter((t) => t !== name)
+}
+
+watch(
+  selectedChildIds,
+  (ids) => {
+    void tagsStore.loadAll(ids)
+  },
+  { immediate: true, deep: true },
+)
+
 function removeFile(index: number) {
   const newFiles = [...props.files]
   newFiles.splice(index, 1)
@@ -60,7 +84,7 @@ function removeFile(index: number) {
 
 function startUpload() {
   if (selectedChildIds.value.length === 0) return
-  emit('upload', props.files, [...selectedChildIds.value])
+  emit('upload', props.files, [...selectedChildIds.value], [...tagNames.value])
 }
 
 function formatBytes(bytes: number): string {
@@ -93,6 +117,13 @@ function formatBytes(bytes: number): string {
           :selected="selectedChildIds.includes(child.id)"
           @toggle="toggleChild(child.id)"
         />
+      </div>
+
+      <div v-if="selectedChildIds.length > 0" class="batch__tags">
+        <div v-if="tagNames.length > 0" class="batch__tag-chips">
+          <TagChip v-for="name in tagNames" :key="name" :name="name" removable @remove="removeTagName(name)" />
+        </div>
+        <TagInput :child-ids="selectedChildIds" :exclude="tagNames" placeholder="Add tags (optional)" @add="addTagName" />
       </div>
 
       <div class="batch__grid">
@@ -134,6 +165,18 @@ function formatBytes(bytes: number): string {
 </template>
 
 <style scoped>
+.batch__tags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.batch__tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .batch {
   display: flex;
   flex-direction: column;

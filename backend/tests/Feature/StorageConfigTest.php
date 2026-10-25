@@ -14,12 +14,28 @@ function stubS3Disk(): void
     Storage::disk('s3')->buildTemporaryUrlsUsing(
         fn (string $path) => 'https://bucket.example-storage.test/'.$path.'?X-Amz-Signature=abc'
     );
+    Storage::disk('s3')->buildTemporaryUploadUrlsUsing(
+        fn (string $path) => [
+            'url' => 'https://bucket.example-storage.test/'.$path.'?X-Amz-Signature=put',
+            'headers' => ['Host' => ['bucket.example-storage.test']],
+        ]
+    );
 }
 
 function fakeStorageHttp(array $headers): void
 {
     Http::fake(function ($request) use ($headers) {
         $path = ltrim(parse_url($request->url(), PHP_URL_PATH), '/');
+
+        if ($request->method() === 'OPTIONS') {
+            return Http::response('', 200, $headers + ['Access-Control-Allow-Methods' => 'GET, HEAD, PUT']);
+        }
+
+        if ($request->method() === 'PUT') {
+            Storage::disk('s3')->put($path, $request->body());
+
+            return Http::response('', 200);
+        }
 
         return Http::response(Storage::disk('s3')->get($path), 200, $headers);
     });
@@ -103,6 +119,77 @@ describe('storage:check', function () {
             ->assertSuccessful();
 
         Http::assertSent(fn ($request) => str_starts_with($request->url(), 'http://garage:3900/'));
+    });
+
+    it('sends the PUT with signed headers, no Host header, and a CORS preflight', function () {
+        fakeStorageHttp(['Access-Control-Allow-Origin' => 'https://app.example.test']);
+
+        $this->artisan('storage:check')
+            ->expectsOutputToContain('CORS preflight allows PUT')
+            ->expectsOutputToContain('presigned PUT stored the expected object')
+            ->assertSuccessful();
+
+        Http::assertSent(fn ($request) => $request->method() === 'OPTIONS'
+            && str_contains($request->header('Access-Control-Request-Headers')[0], 'cache-control'));
+        Http::assertSent(fn ($request) => $request->method() === 'PUT'
+            && $request->header('Cache-Control')[0] === 'public, max-age=31536000, immutable'
+            && $request->header('Origin') !== []);
+        expect(Storage::disk('s3')->allFiles())->toBeEmpty();
+    });
+
+    it('fails when the PUT preflight does not allow PUT and direct uploads are on', function () {
+        Http::fake(function ($request) {
+            if ($request->method() === 'PUT' || $request->method() === 'OPTIONS') {
+                return Http::response('', 403);
+            }
+
+            return Http::response(Storage::disk('s3')->get(ltrim(parse_url($request->url(), PHP_URL_PATH), '/')), 200, [
+                'Access-Control-Allow-Origin' => 'https://app.example.test',
+            ]);
+        });
+
+        $this->artisan('storage:check')
+            ->expectsOutputToContain('CORS preflight for PUT was rejected')
+            ->assertFailed();
+
+        expect(Storage::disk('s3')->allFiles())->toBeEmpty();
+    });
+
+    it('only warns about PUT problems when direct uploads are disabled', function () {
+        config(['avapeek.uploads.direct' => false]);
+        Http::fake(function ($request) {
+            if ($request->method() === 'PUT' || $request->method() === 'OPTIONS') {
+                return Http::response('', 403);
+            }
+
+            return Http::response(Storage::disk('s3')->get(ltrim(parse_url($request->url(), PHP_URL_PATH), '/')), 200, [
+                'Access-Control-Allow-Origin' => 'https://app.example.test',
+            ]);
+        });
+
+        $this->artisan('storage:check')
+            ->expectsOutputToContain('UPLOADS_DIRECT is disabled')
+            ->assertSuccessful();
+    });
+
+    it('explains a 403 on PUT through the proxy', function () {
+        config([
+            'filesystems.disks.s3.temporary_url' => 'https://bucket.example-storage.test',
+            'filesystems.disks.s3.endpoint' => 'http://garage:3900',
+        ]);
+        Http::fake(function ($request) {
+            if ($request->method() === 'PUT') {
+                return Http::response('', 403);
+            }
+
+            return Http::response(Storage::disk('s3')->get(ltrim(parse_url($request->url(), PHP_URL_PATH), '/')), 200);
+        });
+
+        $this->artisan('storage:check')
+            ->expectsOutputToContain('s3:PutObject')
+            ->assertFailed();
+
+        Http::assertNotSent(fn ($request) => $request->method() === 'OPTIONS');
     });
 
     it('fails with a CORS hint when the header is missing', function () {

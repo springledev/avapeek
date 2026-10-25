@@ -1,5 +1,13 @@
-export interface PhotoTag {
+/** A tag as returned by the API: the name is ciphertext (child DEK). */
+export interface RawPhotoTag {
   id: number
+  child_id: number
+  name_encrypted: string
+  iv_name: string
+}
+
+/** A photo tag after client-side decryption of its name. */
+export interface PhotoTag extends RawPhotoTag {
   name: string
 }
 
@@ -30,12 +38,18 @@ export interface Photo {
   height: number | null
   exif_encrypted: string | null
   iv_exif: string | null
+  /** Original filename, encrypted with the PEK; null for photos uploaded before names were stored. */
+  name_encrypted?: string | null
+  iv_name?: string | null
   taken_at: string | null
   created_at: string
   tags: PhotoTag[]
   children: PhotoChild[]
   comment_count?: number
 }
+
+/** A photo as the API returns it, before its tag names are decrypted. */
+export type ApiPhoto = Omit<Photo, 'tags'> & { tags: RawPhotoTag[] }
 
 export interface PhotoComment {
   id: number
@@ -74,7 +88,7 @@ export interface PhotoListMeta {
 }
 
 export interface PhotoListResponse {
-  data: Photo[]
+  data: ApiPhoto[]
   meta: PhotoListMeta
 }
 

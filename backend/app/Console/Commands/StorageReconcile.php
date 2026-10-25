@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Photo;
 use App\Models\StorageUsage;
+use App\Models\UploadIntent;
 use App\Services\StorageService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -41,6 +42,12 @@ class StorageReconcile extends Command
             Photo::query()->select(['id', 'original_path', 'thumbnail_path'])->each(function (Photo $photo) use (&$referenced): void {
                 $referenced[$photo->original_path] = true;
                 $referenced[$photo->thumbnail_path] = true;
+            });
+
+            // Keys of in-flight direct uploads are reserved until their intent is pruned.
+            UploadIntent::query()->select(['id', 'original_path', 'thumbnail_path'])->each(function (UploadIntent $intent) use (&$referenced): void {
+                $referenced[$intent->original_path] = true;
+                $referenced[$intent->thumbnail_path] = true;
             });
 
             $cutoff = now()->subMinutes($grace)->getTimestamp();

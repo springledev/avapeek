@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { preloadOriginal } from '@/services/storage'
 import { useFeedStore } from '@/stores/feed'
 import { useChildStore } from '@/stores/child'
+import { useTagsStore } from '@/stores/tags'
 import { usePrefetch } from '@/composables/usePrefetch'
+import { useSetupState } from '@/composables/useSetupState'
+import { useSelection } from '@/composables/useSelection'
 import { Image } from '@lucide/vue'
 import FeedToolbar from '@/components/feed/FeedToolbar.vue'
 import PhotoTile from '@/components/feed/PhotoTile.vue'
@@ -12,13 +16,38 @@ import PhotoViewer from '@/components/PhotoViewer.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import CreateChildSheet from '@/components/CreateChildSheet.vue'
+import BulkActions from '@/components/BulkActions.vue'
 import { MSG } from '@/lib/messages'
+import { apiErrorMessage } from '@/lib/util'
 import type { Photo } from '@/types/photo'
 
 const feedStore = useFeedStore()
 const childStore = useChildStore()
 const showCreateChild = ref(false)
 const { prefetchNextPage } = usePrefetch()
+const setup = useSetupState()
+const route = useRoute()
+const selection = useSelection({ routeKey: () => route.path })
+
+const selectedPhotos = computed(() =>
+  feedStore.photos.filter((photo) => selection.isSelected(photo.id)),
+)
+
+function onTileClick(photo: Photo) {
+  if (selection.isSelecting.value) selection.toggle(photo.id)
+  else openPhoto(photo)
+}
+
+function onBulkRemoved(deleted: number[], detachedCount: number) {
+  const gone = new Set(deleted)
+  feedStore.photos = feedStore.photos.filter((photo) => !gone.has(photo.id))
+  // Detached photos may stay visible through another of the user's kids.
+  if (detachedCount > 0) feedStore.fetchPhotos()
+}
+
+const showFinishSetup = computed(
+  () => childStore.childrenLoaded && !setup.isComplete.value && !setup.isDismissed.value,
+)
 
 const selectedPhoto = ref<Photo | null>(null)
 const selectedPhotoIndex = ref(0)
@@ -163,33 +192,24 @@ async function deletePhoto(photoId: number) {
 }
 
 async function addTag(photoId: number, tagName: string) {
-  void tagName
-  const { api } = await import('@/services/api')
+  const photo = feedStore.photos.find((p) => p.id === photoId)
+  if (!photo) return
   const { toast } = await import('vue-sonner')
   try {
-    await api.post(`/photos/${photoId}/tags`, { tag_ids: [] })
-    toast.success('Tag added')
+    await useTagsStore().attach(photo, tagName)
   } catch (err: unknown) {
-    const message =
-      err instanceof Error && 'response' in err
-        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-        : undefined
-    toast.error(message || 'Failed to add tag')
+    toast.error(apiErrorMessage(err, 'Failed to add tag'))
   }
 }
 
 async function removeTag(photoId: number, tagId: number) {
-  const { api } = await import('@/services/api')
+  const photo = feedStore.photos.find((p) => p.id === photoId)
+  if (!photo) return
   const { toast } = await import('vue-sonner')
   try {
-    await api.delete(`/photos/${photoId}/tags/${tagId}`)
-    toast.success('Tag removed')
+    await useTagsStore().detach(photo, tagId)
   } catch (err: unknown) {
-    const message =
-      err instanceof Error && 'response' in err
-        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-        : undefined
-    toast.error(message || 'Failed to remove tag')
+    toast.error(apiErrorMessage(err, 'Failed to remove tag'))
   }
 }
 
@@ -212,7 +232,36 @@ async function updateDate(photoId: number, takenAt: string) {
 
 <template>
   <div>
-    <h1 class="feed-title">Photos</h1>
+    <div class="feed-head">
+      <h1 class="feed-title">Photos</h1>
+      <UiButton
+        v-if="feedStore.photos.length > 0"
+        variant="ghost"
+        data-test="select-toggle"
+        @click="selection.isSelecting.value ? selection.clear() : selection.start()"
+      >
+        {{ selection.isSelecting.value ? MSG.selectCancel : MSG.selectPhotos }}
+      </UiButton>
+    </div>
+
+    <section v-if="showFinishSetup" class="finish-setup" data-test="finish-setup-card">
+      <div>
+        <h2 class="finish-setup__title">{{ MSG.setupFinishTitle }}</h2>
+        <p class="finish-setup__body">{{ MSG.setupFinishBody }}</p>
+      </div>
+      <div class="finish-setup__actions">
+        <router-link
+          :to="{ path: '/setup', query: { step: setup.firstIncompleteStep.value } }"
+          class="feed-add-photos"
+          data-test="finish-setup-continue"
+        >
+          {{ MSG.setupFinishAction }}
+        </router-link>
+        <UiButton variant="ghost" data-test="finish-setup-dismiss" @click="setup.dismiss()">
+          {{ MSG.setupDismiss }}
+        </UiButton>
+      </div>
+    </section>
 
     <FeedToolbar />
 
@@ -262,13 +311,31 @@ async function updateDate(photoId: number, takenAt: string) {
 
     <div v-else>
       <div v-for="group in groupedPhotos" :key="group.key" class="feed-group">
-        <h2 class="feed-group__heading">{{ group.label }}</h2>
+        <div class="feed-group__head">
+          <h2 class="feed-group__heading">{{ group.label }}</h2>
+          <button
+            v-if="selection.isSelecting.value"
+            type="button"
+            class="feed-group__select u-focus-ring"
+            data-test="select-group"
+            @click="selection.toggleMany(group.photos.map((p) => p.id))"
+          >
+            {{
+              selection.allSelected(group.photos.map((p) => p.id))
+                ? MSG.deselectAllIn(group.label)
+                : MSG.selectAllIn(group.label)
+            }}
+          </button>
+        </div>
         <div class="u-grid">
           <PhotoTile
             v-for="photo in group.photos"
             :key="photo.id"
             :photo="photo"
-            @click="openPhoto(photo)"
+            :selectable="selection.isSelecting.value"
+            :selected="selection.isSelected(photo.id)"
+            @click="onTileClick(photo)"
+            @longpress="selection.toggle(photo.id)"
           />
         </div>
       </div>
@@ -280,6 +347,8 @@ async function updateDate(photoId: number, takenAt: string) {
 
     <CreateChildSheet :open="showCreateChild" @close="showCreateChild = false" />
 
+    <BulkActions :photos="selectedPhotos" @clear="selection.clear()" @removed="onBulkRemoved" />
+
     <PhotoViewer
       v-if="selectedPhoto"
       :photo="selectedPhoto"
@@ -288,7 +357,6 @@ async function updateDate(photoId: number, takenAt: string) {
       :can-delete="canDelete"
       :can-edit="canEdit"
       :child-birth-date="null"
-      :all-tags="[]"
       :prev-photo="prevPhotoObj"
       :next-photo="nextPhotoObj"
       @close="closePhoto"
@@ -303,12 +371,71 @@ async function updateDate(photoId: number, takenAt: string) {
 </template>
 
 <style scoped>
+.feed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
 .feed-title {
   font-size: var(--text-title);
   font-weight: 800;
   line-height: var(--lh-title);
   color: var(--color-ink);
+  margin: 0;
+}
+
+.feed-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+
+.feed-group__select {
+  min-height: var(--target-min);
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--color-accent-ink);
+  font-family: inherit;
+  font-size: var(--text-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.finish-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   margin: 0 0 var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+
+.finish-setup__title {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.finish-setup__body {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+}
+
+.finish-setup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .feed-add-photos {
@@ -338,7 +465,7 @@ async function updateDate(photoId: number, takenAt: string) {
   font-size: var(--text-body);
   font-weight: 700;
   color: var(--color-ink-soft);
-  margin: 0 0 var(--space-3);
+  margin: 0;
 }
 
 .tile-skeleton {

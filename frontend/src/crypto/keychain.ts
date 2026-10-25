@@ -230,6 +230,40 @@ export async function unwrapPEK(
 }
 
 /**
+ * Re-wraps a DEK-wrapped PEK from one child's DEK to another's, e.g. when
+ * sharing a photo with another kid. Input and output use wrapPEKWithDEK's
+ * format; the output gets a fresh random 12-byte IV (ivPek is never reused).
+ * The raw PEK bytes exist only inside this function, no CryptoKey is created
+ * for the PEK, and the buffer is zeroed before returning. A wrong source DEK
+ * or tampered input rejects with the AES-GCM authentication error.
+ */
+export async function rewrapPEK(
+  wrappedPek: string,
+  ivPek: string,
+  sourceDek: CryptoKey,
+  targetDek: CryptoKey,
+): Promise<{ encrypted_pek: string; iv_pek: string }> {
+  const pekBytes = new Uint8Array(
+    await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: base64ToArrayBuffer(ivPek) },
+      sourceDek,
+      base64ToArrayBuffer(wrappedPek),
+    ),
+  )
+
+  try {
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, targetDek, pekBytes)
+    return {
+      encrypted_pek: arrayBufferToBase64(encrypted),
+      iv_pek: arrayBufferToBase64(iv.buffer as ArrayBuffer),
+    }
+  } finally {
+    pekBytes.fill(0)
+  }
+}
+
+/**
  * Re-wraps a KEK-wrapped DEK under a new KEK. Used when the password (and so
  * the KEK) changes; the DEK itself never changes, so photos stay readable.
  * Input and output are base64(iv || ciphertext); the output gets a fresh random IV.

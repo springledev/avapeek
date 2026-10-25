@@ -148,7 +148,6 @@ function mountViewer(photo: Photo) {
       canDelete: true,
       canEdit: true,
       childBirthDate: null,
-      allTags: [],
     },
     global: {
       plugins: [pinia],
@@ -240,7 +239,6 @@ describe('PhotoViewer', () => {
         canDelete: true,
         canEdit: true,
         childBirthDate: null,
-        allTags: [],
       },
       global: { plugins: [pinia], stubs: { teleport: true } },
     })

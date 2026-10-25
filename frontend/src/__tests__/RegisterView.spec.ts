@@ -185,6 +185,36 @@ describe('RegisterView', () => {
     expect(router.currentRoute.value.path).toBe('/welcome')
   })
 
+  it('routes to /setup when registering without an invite', async () => {
+    vi.mocked(api.get).mockResolvedValue(ok({ data: { mode: 'open' } }))
+    vi.mocked(api.post).mockResolvedValue(
+      ok({
+        user: {
+          id: 2,
+          email: 'ana@example.com',
+          display_name: 'Ana',
+          master_key_salt: 'salt',
+          public_key: 'pub',
+        },
+        token: 'token-456',
+        accepted_child: null,
+      }),
+    )
+
+    const { wrapper, router } = await mountRegisterView('/register')
+    await router.isReady()
+    router.addRoute({ path: '/setup', name: 'setup', component: { template: '<div>setup</div>' } })
+
+    await wrapper.find('#register-name').setValue('Ana')
+    await wrapper.find('#register-email').setValue('ana@example.com')
+    await wrapper.find('#register-password').setValue('supersecret')
+    await wrapper.find('#register-password-confirmation').setValue('supersecret')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(router.currentRoute.value.path).toBe('/setup')
+  })
+
   it('shows the invite gate instead of the form when the invite has expired', async () => {
     vi.mocked(api.get).mockImplementation((url: string) => {
       if (url === '/auth/registration-mode') {

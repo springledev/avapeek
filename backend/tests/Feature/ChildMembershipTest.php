@@ -273,16 +273,16 @@ describe('POST /api/children/{child}/leave', function () {
         $this->actingAs($this->owner, 'sanctum')->getJson("/api/photos/{$photo->id}")->assertOk();
     });
 
-    it('keeps tags created by a leaver undeletable by remaining admins', function () {
-        $tag = Tag::factory()->create(['created_by' => $this->member->id]);
+    it('lets remaining owners delete tags created by a leaver', function () {
+        $tag = Tag::factory()->create(['child_id' => $this->child->id, 'created_by' => $this->member->id]);
         $photo = Photo::factory()->create(['uploaded_by' => $this->member->id]);
         $photo->children()->attach($this->child->id, ['encrypted_pek' => 't', 'iv_pek' => 'test_test_test_test!']);
         $photo->tags()->attach($tag->id);
 
         $this->actingAs($this->member, 'sanctum')->postJson("/api/children/{$this->child->id}/leave")->assertOk();
 
-        $this->actingAs($this->owner, 'sanctum')->deleteJson("/api/tags/{$tag->id}")->assertForbidden();
-        $this->assertDatabaseHas('tags', ['id' => $tag->id]);
+        $this->actingAs($this->owner, 'sanctum')->deleteJson("/api/tags/{$tag->id}")->assertNoContent();
+        $this->assertDatabaseMissing('tags', ['id' => $tag->id]);
     });
 });
 

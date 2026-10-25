@@ -34,6 +34,8 @@ class Photo extends Model
         'height',
         'exif_encrypted',
         'iv_exif',
+        'name_encrypted',
+        'iv_name',
         'taken_at',
     ];
 

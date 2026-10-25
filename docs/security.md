@@ -23,6 +23,7 @@ password + master_key_salt
 - **KEK (Key Encryption Key)** is derived in the browser from the password and a random per-user salt (`users.master_key_salt`). It is never sent to the server.
 - **User key pair** (RSA-OAEP 2048, SHA-256). The public key is stored in the clear (`users.public_key`); the private key is stored wrapped by the KEK. It is used to hand a child's DEK to another member.
 - **DEK (Data Encryption Key)** is a random AES-256 key per child ("family"). Each member holds a copy wrapped under their own KEK (`wrap_type = kek`). While an invite is being completed, the DEK can briefly be stored wrapped with the invitee's RSA public key (`wrap_type` other than `kek`); the invitee's browser re-wraps it under its own KEK on first login.
+- **Tag names** are encrypted with the child's DEK (AES-256-GCM, fresh random IV per tag, stored as `tags.name_encrypted` + `tags.iv_name`). Tags are per child, so a member only receives ciphertext of tags whose child they belong to.
 - **PEK (Photo Encryption Key)** is a random AES-256 key per photo. It is wrapped by the child's DEK and stored per child in the `child_photo` pivot (so a photo can be shared with several children, each wrapping the same PEK with its own DEK).
 - **Wrap format.** Every AES-GCM key wrap (private key, DEK, PEK) uses a fresh random 12-byte IV per wrap. KEK-wrapped private keys and DEKs are stored as `base64(iv || ciphertext)`; a wrapped DEK is 60 bytes (12-byte IV + 32-byte key + 16-byte tag). Older fixed-IV (48-byte) DEK wraps are not accepted. PEKs are stored as ciphertext with a separate `iv_pek` column.
 - Content (photo bytes, thumbnail, LQIP, EXIF JSON, comment text) is encrypted with AES-GCM using the PEK and a fresh random IV per object, stored alongside as `iv_*` columns.
@@ -31,7 +32,7 @@ Password change re-wraps the private key and every DEK under the new KEK in the 
 
 ## What the server sees
 
-**Never plaintext:** photo and thumbnail bytes, LQIP placeholders, EXIF data (`exif_encrypted`), comment text (`body_encrypted`), the passwords' derived key, DEKs, PEKs, private keys.
+**Never plaintext:** photo and thumbnail bytes, LQIP placeholders, EXIF data (`exif_encrypted`), original filenames (`name_encrypted`, PEK), comment text (`body_encrypted`), the passwords' derived key, DEKs, PEKs, private keys.
 
 **Plaintext metadata (today):**
 
@@ -44,12 +45,12 @@ Password change re-wraps the private key and every DEK under the new KEK in the 
 | `taken_at` timestamp of each photo (used for sorting, filters and the server-side month/day match for `GET /api/memories`, interpreted in the viewer's IANA time zone) | `photos.taken_at` |
 | Original size in bytes, pixel width and height, MIME type | `photos` |
 | Number and timing of comments, and who wrote them | `comments` |
-| **Tag names** (plaintext) and which photos carry them. Tags are scoped to families: a user only sees and reuses tags created by people they share a child with, or that are on photos they can access; names stay unencrypted | `tags`, `photo_tags` |
+| Tag metadata (names are encrypted, see above): which child a tag belongs to, how many tags a child has, which photos share a tag, how many tags a photo has, who created a tag and when, and the ciphertext length (approximate name length). The server can no longer read, list, match or filter on tag names; deduplication, suggestions and search run in the browser | `tags`, `photo_tags` |
 | Invite tokens, roles, expiry | `invites` |
 | Access patterns: IP addresses and request timing in web server logs | infrastructure |
 | Total storage used | `storage_usage` |
 
-Anyone with the database can therefore tell that a family has N photos taken on certain dates, of certain sizes, and read the tag names and child names. They cannot see what the photos show.
+Anyone with the database can therefore tell that a family has N photos taken on certain dates, of certain sizes, and read the child names. Tag names are ciphertext, but the tag structure listed above is visible. They cannot see what the photos show.
 
 ## Threat model
 
@@ -75,9 +76,13 @@ Does **not** protect against:
 - **No binding of ciphertext to its photo.** AES-GCM is used without additional authenticated data (AAD) tying a ciphertext to its photo id, so the server could swap blobs between photos and the client would not detect it.
 - **No key rotation when a member is removed.** Removing a member deletes their wrapped key copies from the server, but the DEK does not change. Anyone who already downloaded ciphertext and had decrypted or cached the keys keeps the ability to read those photos, and the DEK still protects future uploads they could theoretically obtain ciphertext of. A forward-secrecy design (new DEK, re-wrap remaining PEKs client-side) is planned but not implemented. Treat removal as revoking access to the app, not as cryptographic erasure.
 - **Leaving a family does not rotate the key either.** A member who leaves, and a member who is removed, lose their wrapped key copies on the server and their access in the app, but the DEK is unchanged. Anyone who already held the DEK or downloaded ciphertext can still decrypt what they have. Key rotation is tracked as B11 and is not part of role management.
-- Tag names and several metadata fields are plaintext (see above). Encrypting tags is on the roadmap.
+- Several metadata fields are plaintext (see above). Tag names are encrypted, but tag structure (which photos share a tag, tags per photo, ciphertext length) is not hidden. The server cannot see names, so it cannot prevent two members racing to create the same tag; the client merges same-named tags into one in the UI. Tags are not re-encrypted when a DEK rotates (part of the planned forward-secrecy work).
 - PBKDF2 rather than a memory-hard function (the source notes an Argon2id upgrade as a possibility).
 - Presigned download URLs are short-lived bearer links; anyone holding one can fetch that ciphertext until it expires. The ciphertext is useless without the key.
+- Presigned upload (PUT) URLs are short-lived (15 minute) bearer **write** links to one server-chosen key. They are not size-limited by the signature; the server checks the object size on completion, deletes mismatches, and prunes unused slots. Until a URL expires, its holder (the uploading user) could overwrite their own just-completed blob; AES-GCM makes such tampering detectable on decrypt, and keys are per-upload so it cannot touch another user's data.
+- **Exports put plaintext on your disk.** "Download all photos" (child settings) and the single-photo download save decrypted originals, and the export adds a `manifest.json` that can contain GPS EXIF, comments with author names and tag names. Avapeek cannot protect those files afterwards. Decryption and zip assembly happen only in the browser; nothing about the export is sent back to the server, and the export listing endpoints return ciphertext only (the requested child's wrapped PEK and tags). The export deliberately bypasses the decrypted cache (IndexedDB `avapeek-decrypted`), so nothing it decrypts persists in the browser after the tab closes. Any member of a child can export it; the listing endpoints are rate limited (30 requests per minute per user) and membership-scoped. Browsers without the File System Access API buffer each zip part in memory before saving it.
+- The original filename is stored encrypted with the photo key (`photos.name_encrypted` + `iv_name`); photos uploaded before this field existed have none and get a generated name on download. The proxy upload sends the file under a neutral part name, so the real name is not visible in the multipart body.
+- **Sharing to another kid trusts the client's wrap.** The browser re-wraps the photo key under the target kid's key (`rewrapPEK`); the key is only ever in memory for that step and the server receives just the new wrap. The server checks the wrap's shape (base64, 48 and 12 bytes) but cannot check that it decrypts, so a member could submit a garbage wrap and make that photo undecryptable for the target kid's other members. This matches how uploads already trust client wraps. It is limited by: only members of the target kid can do it, the user must be able to view the photo, and an existing link is never overwritten (so a wrap that already works cannot be replaced).
 - No audit log, no admin recovery of any kind.
 
 ## Password loss

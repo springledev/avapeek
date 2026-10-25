@@ -14,16 +14,10 @@ export function usePrefetch() {
     prefetching = true
 
     try {
-      const params: Record<string, string> = {}
-      const { filters } = feedStore
-      if (filters.childIds.length > 0) params.children = filters.childIds.join(',')
-      if (filters.tags.length > 0) params.tags = filters.tags.join(',')
-      if (filters.dateFrom) params.date_from = filters.dateFrom
-      if (filters.dateTo) params.date_to = filters.dateTo
-      params.page = String(feedStore.page + 1)
+      const params = feedStore.buildParams(feedStore.page + 1)
 
       const response = await api.get('/photos', { params })
-      const data = response.data.data as Photo[]
+      const data = response.data.data as Photo[] // thumbnail fields only; tags are not decrypted here
 
       await warmCache(
         data.map((photo) => ({

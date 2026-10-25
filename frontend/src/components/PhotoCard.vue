@@ -6,6 +6,7 @@ import { decryptBlob, blobToObjectURL } from '@/crypto/encrypt'
 import { base64ToArrayBuffer } from '@/lib/util'
 import { api } from '@/services/api'
 import TagChip from '@/components/TagChip.vue'
+import { dedupeTagsByName } from '@/lib/tags'
 import type { Photo } from '@/types/photo'
 
 const props = defineProps<{
@@ -119,7 +120,7 @@ onBeforeUnmount(() => {
     <div v-if="photo.tags && photo.tags.length > 0" class="photo-card-footer">
       <div class="photo-card-tags">
         <TagChip
-          v-for="tag in photo.tags.slice(0, 2)"
+          v-for="tag in dedupeTagsByName(photo.tags).slice(0, 2)"
           :key="tag.id"
           :name="tag.name"
         />

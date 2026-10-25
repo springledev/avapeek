@@ -9,9 +9,12 @@ use App\Models\Tag;
 trait FormatsPhotos
 {
     /**
+     * @param  array<int, int>  $viewerChildIds  the requesting user's child ids; only their tags are
+     *                                           returned, as other children's tag names are undecryptable
+     *                                           for the viewer. Passed per request: no controller state.
      * @return array<string, mixed>
      */
-    protected function formatPhoto(Photo $photo): array
+    protected function formatPhoto(Photo $photo, array $viewerChildIds): array
     {
         return [
             'id' => $photo->id,
@@ -30,13 +33,20 @@ trait FormatsPhotos
             'height' => $photo->height,
             'exif_encrypted' => $photo->exif_encrypted,
             'iv_exif' => $photo->iv_exif,
+            'name_encrypted' => $photo->name_encrypted,
+            'iv_name' => $photo->iv_name,
             'taken_at' => $photo->taken_at?->toISOString(),
             'created_at' => $photo->created_at?->toISOString(),
             'comment_count' => $photo->comments_count ?? $photo->comments()->count(),
-            'tags' => $photo->tags?->map(fn (Tag $tag) => [
-                'id' => $tag->id,
-                'name' => $tag->name,
-            ]),
+            'tags' => $photo->tags
+                ?->whereIn('child_id', $viewerChildIds)
+                ->map(fn (Tag $tag) => [
+                    'id' => $tag->id,
+                    'child_id' => $tag->child_id,
+                    'name_encrypted' => $tag->name_encrypted,
+                    'iv_name' => $tag->iv_name,
+                ])
+                ->values(),
             'children' => $photo->children?->map(fn (Child $child) => [
                 'id' => $child->id,
                 'name' => $child->name,

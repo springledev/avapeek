@@ -114,8 +114,22 @@ See [installation: backups](installation.md#backups). The `scheduler` container 
 | `BACKUP_RETENTION_DAYS` | `14` | no | Dumps older than this are deleted after a successful upload; the newest 3 are always kept. `0` disables app-side deletes |
 | `BACKUP_AGE_RECIPIENT` | unset | no | Public `age1...` recipient. When set, dumps are encrypted with `age` before upload (`.dump.age`). Never put the private identity on the server |
 
+### Uploads
+
+| Name | Default | Required | Description |
+| --- | --- | --- | --- |
+| `UPLOADS_DIRECT` | `true` | no | Browsers upload encrypted blobs straight to object storage with presigned PUT URLs. Set to `false` to stream uploads through the PHP backend instead (`POST /api/photos/upload`) |
+
+**Upgrading operators on an external S3 provider** (AWS S3, B2, R2): direct uploads are on by default and need bucket CORS to allow `PUT` (`AllowedMethods`: `GET`, `HEAD`, `PUT`; `AllowedHeaders` covering `Content-Type` and `Cache-Control`, or `*`). Update the CORS rule (see [storage.md](storage.md)) and run `php artisan storage:check`, or set `UPLOADS_DIRECT=false`. If you run your own reverse proxy in front of the bundled Garage setup, it may need a larger request body limit for `/photos/*`.
+
+Things to know about direct uploads:
+
+- The quota check of the proxy `POST /api/photos/upload` does not count live direct-upload reservations (it only compares completed usage with the limit). Direct uploads count both completed usage and other live reservations. With a mixed workload the limit can therefore be exceeded briefly; `storage:reconcile` corrects the recorded usage.
+- If `POST /api/photos/upload-intent` answers 404 (direct uploads disabled, or a transient 404 from a proxy or deploy in between), the browser switches to the proxy upload and stops trying direct uploads until the page is reloaded.
+- Each user may hold at most 20 live (unexpired, 15 minute) upload intents; beyond that `upload-intent` answers 429.
+
 ## Behaviour that is not configurable via env
 
-- Rate limits (per minute unless noted): API 60, login 5, register 3, MFA 10, password-confirm 10, upload 30, invites 10 per hour.
-- Upload size is capped at 64 MB per request (`docker/php/uploads.ini`).
+- Rate limits (per minute unless noted): API 60, login 5, register 3, MFA 10, password-confirm 10, upload 30 (also applied to completing a direct upload), upload-intent 60, invites 10 per hour.
+- Photos are capped at 50 MB (ciphertext) plus a 5 MB thumbnail. The 64 MB per-request PHP cap (`docker/php/uploads.ini`) applies only to the proxy fallback (`UPLOADS_DIRECT=false`).
 - Registration is open only until the first account exists; afterwards it is invite-only.

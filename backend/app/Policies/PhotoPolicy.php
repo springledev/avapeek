@@ -2,8 +2,10 @@
 
 namespace App\Policies;
 
+use App\Models\Child;
 use App\Models\Comment;
 use App\Models\Photo;
+use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Support\Collection;
@@ -99,6 +101,37 @@ class PhotoPolicy
         return $this->administrableChildIds($user, $photo)->isNotEmpty()
             ? Response::allow()
             : Response::deny('You do not have permission to delete this photo.');
+    }
+
+    /**
+     * A tag may be attached when the user can view the photo, the tag's child is one of the
+     * children the photo is linked to, and the user is a member of that child.
+     */
+    public function attachTag(User $user, Photo $photo, Tag $tag): Response
+    {
+        $view = $this->view($user, $photo);
+        if ($view->denied()) {
+            return $view;
+        }
+
+        return $this->rolesByChild($user, $photo)->has($tag->child_id)
+            ? Response::allow()
+            : Response::deny('This tag cannot be attached to this photo.');
+    }
+
+    /**
+     * Any member of the target child (any role) may link a photo they can view into it.
+     */
+    public function share(User $user, Photo $photo, Child $target): Response
+    {
+        $view = $this->view($user, $photo);
+        if ($view->denied()) {
+            return $view;
+        }
+
+        return $user->children()->whereKey($target->id)->exists()
+            ? Response::allow()
+            : Response::deny('You are not a member of this child.');
     }
 
     public function deleteComment(User $user, Photo $photo, Comment $comment): Response

@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use App\Models\StorageUsage;
+use App\Models\UploadIntent;
+use Closure;
+use Illuminate\Support\Facades\DB;
 
 class QuotaService
 {
@@ -38,6 +41,35 @@ class QuotaService
         $limit = $this->getStorageLimit();
 
         return $limit === null || ($this->getTotalUsage() + $additionalBytes) <= $limit;
+    }
+
+    /**
+     * Atomically reserve upload capacity. Under a lock on the global usage row,
+     * checks used + live reservations + requested against the limit and, when it
+     * fits, runs $create (which must persist the reservation) and returns its
+     * result. Returns null when over quota. No cap when the limit is unknown.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $create
+     * @return T|null
+     */
+    public function reserve(int $bytes, Closure $create): mixed
+    {
+        return DB::transaction(function () use ($bytes, $create) {
+            $usage = StorageUsage::global();
+            $locked = StorageUsage::query()->whereKey($usage->getKey())->lockForUpdate()->first();
+
+            $limit = $this->getStorageLimit();
+            if ($limit !== null) {
+                $reserved = (int) UploadIntent::unexpired()->sum('reserved_bytes');
+                if (((int) $locked->used_bytes + $reserved + $bytes) > $limit) {
+                    return null;
+                }
+            }
+
+            return $create();
+        });
     }
 
     public function addUsage(int $bytes): void
