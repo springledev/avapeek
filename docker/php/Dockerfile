@@ -9,6 +9,11 @@ RUN install-php-extensions \
     intl \
     redis
 
+# Backups (backup:database / backup:verify). pg_dump's major version must be >= the
+# server's: keep postgresql18-client in step with the postgres image in the compose
+# files (postgres:18.x-alpine). age is for optional BACKUP_AGE_RECIPIENT encryption.
+RUN apk add --no-cache postgresql18-client age
+
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 COPY --from=composer:2.10.3 /usr/bin/composer /usr/bin/composer

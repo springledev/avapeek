@@ -9,3 +9,15 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
+
+Schedule::command('backup:database')
+    ->dailyAt('02:30')
+    ->timezone('UTC')
+    ->onOneServer()
+    ->withoutOverlapping();
+
+Schedule::command('backup:verify --quick --allow-empty')
+    ->weeklyOn(0, '03:30')
+    ->timezone('UTC')
+    ->onOneServer()
+    ->withoutOverlapping();

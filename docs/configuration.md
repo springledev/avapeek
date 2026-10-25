@@ -100,6 +100,20 @@ Full provider-specific instructions are in [storage.md](storage.md).
 
 With neither set the limit is "unknown": uploads are not capped by Avapeek and the UI shows usage without a limit.
 
+### Database backups
+
+See [installation: backups](installation.md#backups). The `scheduler` container runs `backup:database` daily at 02:30 UTC.
+
+| Name | Default | Required | Description |
+| --- | --- | --- | --- |
+| `BACKUP_AWS_BUCKET` | unset | no | Bucket for database dumps. **All-or-nothing:** when set, the backup disk uses only the `BACKUP_AWS_*` values below; when empty or unset it uses the photo `AWS_*` settings (and the command warns that backups share a failure domain with the photos) |
+| `BACKUP_AWS_ACCESS_KEY_ID` / `BACKUP_AWS_SECRET_ACCESS_KEY` | unset | with `BACKUP_AWS_BUCKET` | Credentials for the backup bucket. A write/list-only key plus a provider lifecycle rule is the safest setup |
+| `BACKUP_AWS_DEFAULT_REGION` | unset | with `BACKUP_AWS_BUCKET` | Region of the backup bucket |
+| `BACKUP_AWS_ENDPOINT` | unset | provider-dependent | Endpoint of the backup provider (empty for AWS S3) |
+| `BACKUP_AWS_USE_PATH_STYLE_ENDPOINT` | `false` | provider-dependent | `true` for Garage, `false` for AWS, B2, R2 |
+| `BACKUP_RETENTION_DAYS` | `14` | no | Dumps older than this are deleted after a successful upload; the newest 3 are always kept. `0` disables app-side deletes |
+| `BACKUP_AGE_RECIPIENT` | unset | no | Public `age1...` recipient. When set, dumps are encrypted with `age` before upload (`.dump.age`). Never put the private identity on the server |
+
 ## Behaviour that is not configurable via env
 
 - Rate limits (per minute unless noted): API 60, login 5, register 3, MFA 10, password-confirm 10, upload 30, invites 10 per hour.
