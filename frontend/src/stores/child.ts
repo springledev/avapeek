@@ -5,6 +5,7 @@ import { apiErrorMessage } from '@/lib/util'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedStore } from '@/stores/feed'
 import { useRecentsStore } from '@/stores/recents'
+import { clearDecryptedCache } from '@/lib/cache/decrypted-cache'
 import {
   generateDEK,
   wrapDEK,
@@ -12,7 +13,7 @@ import {
   importPublicKey,
   rewrapDEKForPublicKey,
 } from '@/crypto/keychain'
-import type { Child, ChildDetail, InviteResponse } from '@/types/child'
+import type { Child, ChildDetail, ChildMember, InviteResponse } from '@/types/child'
 import type { EncryptionKey } from '@/types/auth'
 
 export const useChildStore = defineStore('child', () => {
@@ -380,6 +381,80 @@ export const useChildStore = defineStore('child', () => {
     })
   }
 
+  /**
+   * Owner only: set a member's role. Plain API call, no key material involved.
+   */
+  async function setMemberRole(
+    childId: number,
+    userId: number,
+    role: 'admin' | 'member',
+  ): Promise<Pick<ChildMember, 'id' | 'display_name' | 'role' | 'relationship'>> {
+    try {
+      const response = await api.patch<{
+        data: Pick<ChildMember, 'id' | 'display_name' | 'role' | 'relationship'>
+      }>(`/children/${childId}/members/${userId}`, { role })
+      return response.data.data
+    } catch (err) {
+      console.error('Failed to change member role:', err)
+      error.value = apiErrorMessage(err, 'Failed to change role.')
+      throw err
+    }
+  }
+
+  /**
+   * Owner only: hand ownership to another member. The caller becomes an admin.
+   * Needs the account password, like other sensitive changes.
+   */
+  async function transferOwnership(
+    childId: number,
+    userId: number,
+    currentPassword: string,
+  ): Promise<void> {
+    try {
+      await api.post(`/children/${childId}/transfer-ownership`, {
+        user_id: userId,
+        current_password: currentPassword,
+      })
+      const idx = children.value.findIndex((c) => c.id === childId)
+      const existing = idx >= 0 ? children.value[idx] : undefined
+      if (idx >= 0 && existing) children.value[idx] = { ...existing, role: 'admin' }
+    } catch (err) {
+      console.error('Failed to transfer ownership:', err)
+      error.value = apiErrorMessage(err, 'Failed to transfer ownership.')
+      throw err
+    }
+  }
+
+  /**
+   * Leave a child. The server drops this user's wrapped keys; the browser drops
+   * its in-memory keys and decrypted cache. The DEK itself is not rotated.
+   */
+  async function leaveChild(childId: number): Promise<void> {
+    try {
+      await api.post(`/children/${childId}/leave`)
+    } catch (err) {
+      console.error('Failed to leave child:', err)
+      error.value = apiErrorMessage(err, 'Failed to leave.')
+      throw err
+    }
+
+    const authStore = useAuthStore()
+    authStore.setEncryptionKeys(authStore.encryptionKeys.filter((k) => k.child_id !== childId))
+    clearDEKCache()
+    clearDecryptedCache()
+    children.value = children.value.filter((c) => c.id !== childId)
+    if (currentChildId.value === childId) currentChildId.value = null
+    if (currentChildDetail.value?.id === childId) currentChildDetail.value = null
+    if (keyPendingChild.value?.id === childId) keyPendingChild.value = null
+
+    const feedStore = useFeedStore()
+    const recentsStore = useRecentsStore()
+    feedStore.filters.childIds = feedStore.filters.childIds.filter((id) => id !== childId)
+    feedStore.fetchPhotos().catch(() => {})
+    recentsStore.fetchRecents().catch(() => {})
+    recentsStore.fetchUnseenCount().catch(() => {})
+  }
+
   function setCurrentChild(childId: number | null): void {
     currentChildId.value = childId
   }
@@ -418,6 +493,9 @@ export const useChildStore = defineStore('child', () => {
     deleteChild,
     createInvite,
     grantAccess,
+    setMemberRole,
+    transferOwnership,
+    leaveChild,
     setCurrentChild,
     clearDEKCache,
     clearError,

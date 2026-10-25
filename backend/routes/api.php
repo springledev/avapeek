@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ChildController;
+use App\Http\Controllers\Api\ChildMembershipController;
 use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\EncryptionKeysController;
 use App\Http\Controllers\Api\InviteController;
@@ -104,7 +105,16 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         // Invites (admin only)
         Route::middleware('child.admin')->group(function () {
             Route::post('/children/{child}/invite', [InviteController::class, 'store'])->middleware('throttle:invite');
-            Route::delete('/children/{child}/members/{user}', [ChildController::class, 'removeMember']);
+            Route::delete('/children/{child}/members/{user}', [ChildMembershipController::class, 'removeMember']);
+        });
+
+        Route::post('/children/{child}/leave', [ChildMembershipController::class, 'leave']);
+
+        // Owner only
+        Route::middleware('child.owner')->group(function () {
+            Route::patch('/children/{child}/members/{user}', [ChildMembershipController::class, 'updateRole']);
+            Route::post('/children/{child}/transfer-ownership', [ChildMembershipController::class, 'transferOwnership'])
+                ->middleware('throttle:password-confirm');
         });
     });
 

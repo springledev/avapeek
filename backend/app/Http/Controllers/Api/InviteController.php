@@ -27,6 +27,16 @@ class InviteController extends Controller
             'relationship' => ['nullable', 'string', 'max:30'],
         ]);
 
+        if ($validated['role'] === 'admin') {
+            $callerRole = $request->user()->children()
+                ->where('child_id', $child->id)
+                ->first()?->pivot->role;
+
+            if ($callerRole !== 'owner') {
+                return response()->json(['message' => 'Only the owner can invite an admin.'], 403);
+            }
+        }
+
         $invite = Invite::create([
             'child_id' => $child->id,
             'token' => Str::random(64),
