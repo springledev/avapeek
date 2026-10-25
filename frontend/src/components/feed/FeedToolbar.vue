@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFeedStore } from '@/stores/feed'
 import { useChildStore } from '@/stores/child'
-import { Calendar } from '@lucide/vue'
+import { useTagsStore } from '@/stores/tags'
+import { Calendar, Tag } from '@lucide/vue'
 import UiChip from '@/components/ui/UiChip.vue'
 import UiSheet from '@/components/ui/UiSheet.vue'
 
@@ -23,23 +24,62 @@ const showMonthSheet = computed({
 })
 
 const selectedChildIds = computed(() => feedStore.filters.childIds)
-const selectedMonth = computed(() => {
-  if (!feedStore.filters.dateFrom) return null
-  const d = new Date(feedStore.filters.dateFrom)
-  return d.toLocaleString('default', { month: 'long', year: 'numeric' })
-})
+const selectedTags = computed(() => feedStore.filters.tags)
+
+function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+function monthLabel(key: string): string {
+  const [year, month] = key.split('-').map(Number)
+  return new Date(year!, month! - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' })
+}
+
+function dateString(date: Date): string {
+  return `${monthKey(date)}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+const selectedMonthKey = computed(() => feedStore.filters.dateFrom?.slice(0, 7) ?? null)
+const selectedMonth = computed(() =>
+  selectedMonthKey.value ? monthLabel(selectedMonthKey.value) : null,
+)
+
+// Remembered across refetches so the list doesn't collapse to the chosen month.
+const knownMonthKeys = ref(new Set<string>())
+watch(
+  () => feedStore.photos,
+  (photos) => {
+    for (const photo of photos) {
+      if (photo.taken_at) knownMonthKeys.value.add(monthKey(new Date(photo.taken_at)))
+    }
+  },
+  { immediate: true, deep: false },
+)
 
 const availableMonths = computed(() => {
-  const months = new Set<string>()
-  for (const photo of feedStore.photos) {
-    if (photo.taken_at) {
-      months.add(
-        new Date(photo.taken_at).toLocaleString('default', { month: 'long', year: 'numeric' }),
-      )
-    }
-  }
-  return [...months].sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+  const keys = new Set(knownMonthKeys.value)
+  if (selectedMonthKey.value) keys.add(selectedMonthKey.value)
+  return [...keys].sort().reverse().map((key) => ({ key, label: monthLabel(key) }))
 })
+
+const tagsStore = useTagsStore()
+const showTagSheet = ref(false)
+watch(
+  () => childStore.children.map((c) => c.id),
+  (ids) => {
+    void tagsStore.loadAll(ids)
+  },
+  { immediate: true },
+)
+const availableTags = computed(() => tagsStore.suggest('', undefined, 200))
+
+function toggleTag(name: string) {
+  const current = feedStore.filters.tags
+  feedStore.setTagFilter(
+    current.includes(name) ? current.filter((t) => t !== name) : [...current, name],
+  )
+  feedStore.fetchPhotos()
+}
 
 function toggleChild(childId: number) {
   const current = [...feedStore.filters.childIds]
@@ -56,10 +96,10 @@ function removeChild(childId: number) {
   feedStore.fetchPhotos()
 }
 
-function selectMonth(month: string) {
-  const d = new Date(month)
-  const from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]!
-  const to = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0]!
+function selectMonth(key: string) {
+  const [year, month] = key.split('-').map(Number)
+  const from = dateString(new Date(year!, month! - 1, 1))
+  const to = dateString(new Date(year!, month!, 0))
   feedStore.setDateRange(from, to)
   feedStore.fetchPhotos()
   showMonthSheet.value = false
@@ -98,20 +138,49 @@ function clearMonth() {
       >
         <Calendar class="toolbar__cal" :size="16" aria-hidden="true" />
       </UiChip>
+
+      <UiChip
+        v-for="name in selectedTags"
+        :key="name"
+        :label="name"
+        tone="tag"
+        selected
+        remover
+        @toggle="showTagSheet = true"
+        @remove="toggleTag(name)"
+      />
+      <UiChip v-if="availableTags.length > 0" label="Tags" tone="tag" @toggle="showTagSheet = true">
+        <Tag class="toolbar__cal" :size="16" aria-hidden="true" />
+      </UiChip>
     </div>
   </div>
+
+  <UiSheet :open="showTagSheet" title="Filter by tag" @close="showTagSheet = false">
+    <div class="month-list">
+      <button
+        v-for="tag in availableTags"
+        :key="tag.key"
+        type="button"
+        class="month-list__item u-focus-ring"
+        :class="{ 'month-list__item--selected': selectedTags.includes(tag.name) }"
+        @click="toggleTag(tag.name)"
+      >
+        {{ tag.name }}
+      </button>
+    </div>
+  </UiSheet>
 
   <UiSheet :open="showMonthSheet" title="Pick a month" @close="showMonthSheet = false">
     <div class="month-list">
       <button
         v-for="month in availableMonths"
-        :key="month"
+        :key="month.key"
         type="button"
         class="month-list__item u-focus-ring"
-        :class="{ 'month-list__item--selected': selectedMonth === month }"
-        @click="selectMonth(month)"
+        :class="{ 'month-list__item--selected': selectedMonthKey === month.key }"
+        @click="selectMonth(month.key)"
       >
-        {{ month }}
+        {{ month.label }}
       </button>
     </div>
   </UiSheet>
