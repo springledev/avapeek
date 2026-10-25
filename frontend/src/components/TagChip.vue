@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { X } from '@lucide/vue'
+
 defineProps<{
   name: string
   clickable?: boolean
@@ -14,7 +16,7 @@ const emit = defineEmits<{
 <template>
   <span
     class="tag-chip"
-    :class="{ 'tag-chip--clickable': clickable }"
+    :class="{ 'tag-chip--clickable': clickable, 'tag-chip--removable': removable }"
     @click="clickable && emit('click')"
   >
     <span class="tag-chip__label">{{ name }}</span>
@@ -25,7 +27,7 @@ const emit = defineEmits<{
       :aria-label="`Remove tag ${name}`"
       @click.stop="emit('remove')"
     >
-      ✕
+      <X :size="16" aria-hidden="true" />
     </button>
   </span>
 </template>
@@ -34,6 +36,7 @@ const emit = defineEmits<{
 .tag-chip {
   display: inline-flex;
   align-items: center;
+  max-width: 100%;
   border-radius: var(--radius-pill);
   background: var(--color-accent-soft);
   color: var(--color-accent-ink);
@@ -47,18 +50,32 @@ const emit = defineEmits<{
 }
 
 .tag-chip__label {
+  min-width: 0;
   padding: var(--space-1) var(--space-3);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag-chip--removable {
+  min-height: var(--target-min);
+}
+
+.tag-chip--removable .tag-chip__label {
+  padding-left: var(--space-4);
+  font-size: var(--text-body);
 }
 
 .tag-chip__remove {
+  flex-shrink: 0;
   align-self: stretch;
-  min-width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--target-min);
   border: 0;
-  border-left: 1px solid var(--color-border);
   background: transparent;
   color: inherit;
-  font-size: var(--text-meta);
   cursor: pointer;
 }
 </style>
