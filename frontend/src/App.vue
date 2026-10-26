@@ -67,11 +67,10 @@ onBeforeUnmount(() => {
   <OfflineBanner />
   <AppShell />
   <Toaster
-    richColors
     closeButton
     position="top-right"
-    :toast-options="{
-      class: 'dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700',
-    }"
+    :offset="{ top: 'calc(var(--safe-area-t) + var(--space-4))', right: 'var(--space-4)' }"
+    :mobile-offset="{ top: 'var(--space-3)', left: 'var(--space-3)', right: 'var(--space-3)' }"
+    :visible-toasts="3"
   />
 </template>

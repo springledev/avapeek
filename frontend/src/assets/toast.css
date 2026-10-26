@@ -1,0 +1,102 @@
+/**
+ * vue-sonner restyle: Warm Memory Box tokens only. Imported after
+ * `vue-sonner/style.css` (main.ts) so these rules win on equal specificity.
+ * Dark mode needs no extra rules: the tokens flip with `html.dark`.
+ */
+
+[data-sonner-toaster][data-sonner-theme] {
+  --width: min(24rem, calc(100vw - 2 * var(--space-4)));
+  --border-radius: var(--radius-card);
+  --normal-bg: var(--color-surface);
+  --normal-text: var(--color-ink);
+  --normal-border: var(--color-border);
+  --success-bg: var(--color-surface);
+  --success-text: var(--color-ink);
+  --success-border: color-mix(in srgb, var(--color-success) 45%, var(--color-border));
+  --error-bg: var(--color-surface);
+  --error-text: var(--color-ink);
+  --error-border: color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
+  --warning-bg: var(--color-surface);
+  --warning-text: var(--color-ink);
+  --warning-border: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  --info-bg: var(--color-surface);
+  --info-text: var(--color-ink);
+  --info-border: color-mix(in srgb, var(--color-info) 45%, var(--color-border));
+  font-family: var(--font-family);
+  z-index: var(--z-toast);
+}
+
+[data-sonner-toast][data-styled='true'] {
+  min-height: var(--target-min);
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-family);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-2);
+  transition:
+    transform var(--dur-standard) var(--ease-soft),
+    opacity var(--dur-standard) var(--ease-soft),
+    height var(--dur-standard) var(--ease-soft);
+}
+
+[data-sonner-toast][data-styled='true'] [data-title] {
+  font-weight: 700;
+  line-height: var(--lh-body);
+}
+
+[data-sonner-toast][data-styled='true'] [data-description] {
+  color: var(--color-ink-soft);
+  font-size: var(--text-body);
+}
+
+[data-sonner-toast][data-type='success'] [data-icon] {
+  color: var(--color-success);
+}
+[data-sonner-toast][data-type='error'] [data-icon] {
+  color: var(--color-danger);
+}
+[data-sonner-toast][data-type='warning'] [data-icon] {
+  color: var(--color-accent-ink);
+}
+[data-sonner-toast][data-type='info'] [data-icon] {
+  color: var(--color-info);
+}
+
+[data-sonner-toast][data-styled='true'] [data-button] {
+  min-height: var(--target-min);
+  padding: 0 var(--space-4);
+  font-family: var(--font-family);
+  font-weight: 700;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  border-radius: var(--radius-pill);
+}
+[data-sonner-toast][data-styled='true'] [data-button][data-cancel] {
+  background: var(--color-surface-2);
+  color: var(--color-ink);
+}
+
+[data-sonner-toast] [data-close-button] {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border: 1px solid var(--color-border);
+}
+
+[data-sonner-toast]:focus-visible,
+[data-sonner-toast] [data-button]:focus-visible,
+[data-sonner-toast] [data-close-button]:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-sonner-toaster],
+  [data-sonner-toast] {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}

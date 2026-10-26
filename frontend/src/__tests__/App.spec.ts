@@ -43,4 +43,17 @@ describe('App', () => {
 
     expect(wrapper.exists()).toBe(true)
   })
+
+  it('configures the Toaster with design-token offsets and no richColors', () => {
+    const wrapper = mount(App, {
+      global: {
+        plugins: [createPinia(), createRouter({ history: createWebHistory(), routes: [] })],
+        stubs: { AppShell: true, Toaster: true },
+      },
+    })
+    const toaster = wrapper.findComponent({ name: 'Toaster' })
+    expect(toaster.attributes('position')).toBe('top-right')
+    expect(toaster.attributes('richcolors')).not.toBe('true')
+    expect(toaster.attributes('offset')).toBeDefined()
+  })
 })
