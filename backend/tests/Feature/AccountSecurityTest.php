@@ -4,6 +4,7 @@ use App\Models\Child;
 use App\Models\ChildUser;
 use App\Models\EncryptionKey;
 use App\Models\User;
+use Database\Factories\UserFactory;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -26,14 +27,13 @@ function userWithOneAlbumKey(): array
 }
 
 describe('PUT /api/user/password', function () {
-    it('saves the new password together with the re-wrapped keys', function () {
+    it('saves the new auth hash together with the re-wrapped keys', function () {
         ['user' => $user, 'child' => $child] = userWithOneAlbumKey();
 
         $this->actingAs($user, 'sanctum')
             ->putJson('/api/user/password', [
-                'current_password' => 'password',
-                'new_password' => 'New-password-1',
-                'new_password_confirmation' => 'New-password-1',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
+                'new_auth_hash' => str_repeat('b', 64),
                 'encryption_keys' => [
                     ['child_id' => $child->id, 'key_version' => 1, 'encrypted_dek' => 'new-dek'],
                 ],
@@ -44,7 +44,7 @@ describe('PUT /api/user/password', function () {
             ->assertJsonPath('encryption_keys.0.encrypted_dek', 'new-dek');
 
         $fresh = $user->fresh();
-        expect(Hash::check('New-password-1', $fresh->password_hash))->toBeTrue();
+        expect(Hash::check(str_repeat('b', 64), $fresh->password_hash))->toBeTrue();
         expect($fresh->encrypted_private_key)->toBe('new-private');
         $this->assertDatabaseHas('encryption_keys', ['user_id' => $user->id, 'encrypted_dek' => 'new-dek']);
     });
@@ -54,9 +54,8 @@ describe('PUT /api/user/password', function () {
 
         $this->actingAs($user, 'sanctum')
             ->putJson('/api/user/password', [
-                'current_password' => 'password',
-                'new_password' => 'New-password-1',
-                'new_password_confirmation' => 'New-password-1',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
+                'new_auth_hash' => str_repeat('b', 64),
                 'encryption_keys' => [],
                 'encrypted_private_key' => 'new-private',
             ])
@@ -64,7 +63,7 @@ describe('PUT /api/user/password', function () {
             ->assertJsonValidationErrors(['encryption_keys']);
 
         $fresh = $user->fresh();
-        expect(Hash::check('password', $fresh->password_hash))->toBeTrue();
+        expect(Hash::check(UserFactory::AUTH_HASH, $fresh->password_hash))->toBeTrue();
         expect($fresh->encrypted_private_key)->toBe('old-private');
     });
 
@@ -73,9 +72,8 @@ describe('PUT /api/user/password', function () {
 
         $this->actingAs($user, 'sanctum')
             ->putJson('/api/user/password', [
-                'current_password' => 'password',
-                'new_password' => 'New-password-1',
-                'new_password_confirmation' => 'New-password-1',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
+                'new_auth_hash' => str_repeat('b', 64),
                 'encryption_keys' => [
                     ['child_id' => $child->id, 'key_version' => 1, 'encrypted_dek' => 'new-dek'],
                     ['child_id' => 9999, 'key_version' => 1, 'encrypted_dek' => 'other'],
@@ -91,9 +89,8 @@ describe('PUT /api/user/password', function () {
 
         $this->actingAs($user, 'sanctum')
             ->putJson('/api/user/password', [
-                'current_password' => 'password',
-                'new_password' => 'New-password-1',
-                'new_password_confirmation' => 'New-password-1',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
+                'new_auth_hash' => str_repeat('b', 64),
                 'encryption_keys' => [
                     ['child_id' => $child->id, 'key_version' => 1, 'encrypted_dek' => 'new-dek'],
                 ],
@@ -107,18 +104,71 @@ describe('PUT /api/user/password', function () {
 
         $this->actingAs($user, 'sanctum')
             ->putJson('/api/user/password', [
-                'current_password' => 'wrong',
-                'new_password' => 'New-password-1',
-                'new_password_confirmation' => 'New-password-1',
+                'current_auth_hash' => str_repeat('f', 64),
+                'new_auth_hash' => str_repeat('b', 64),
                 'encryption_keys' => [
                     ['child_id' => $child->id, 'key_version' => 1, 'encrypted_dek' => 'new-dek'],
                 ],
                 'encrypted_private_key' => 'new-private',
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
+            ->assertJsonValidationErrors(['current_auth_hash']);
 
         $this->assertDatabaseHas('encryption_keys', ['user_id' => $user->id, 'encrypted_dek' => 'old-dek']);
+    });
+
+    it('stops accepting the old auth hash', function () {
+        ['user' => $user, 'child' => $child] = userWithOneAlbumKey();
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/user/password', [
+                'current_auth_hash' => UserFactory::AUTH_HASH,
+                'new_auth_hash' => str_repeat('b', 64),
+                'encryption_keys' => [
+                    ['child_id' => $child->id, 'key_version' => 1, 'encrypted_dek' => 'new-dek'],
+                ],
+                'encrypted_private_key' => 'new-private',
+            ])
+            ->assertOk();
+
+        $this->postJson('/api/auth/login', ['email' => $user->email, 'auth_hash' => UserFactory::AUTH_HASH])
+            ->assertStatus(422);
+        $this->postJson('/api/auth/login', ['email' => $user->email, 'auth_hash' => str_repeat('b', 64)])
+            ->assertOk();
+    });
+
+    it('rejects a new auth hash equal to the current one', function () {
+        ['user' => $user, 'child' => $child] = userWithOneAlbumKey();
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/user/password', [
+                'current_auth_hash' => UserFactory::AUTH_HASH,
+                'new_auth_hash' => UserFactory::AUTH_HASH,
+                'encryption_keys' => [
+                    ['child_id' => $child->id, 'key_version' => 1, 'encrypted_dek' => 'new-dek'],
+                ],
+                'encrypted_private_key' => 'new-private',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['new_auth_hash']);
+    });
+
+    it('requires a well-formed new auth hash and never accepts a plaintext new password', function () {
+        ['user' => $user, 'child' => $child] = userWithOneAlbumKey();
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/user/password', [
+                'current_auth_hash' => UserFactory::AUTH_HASH,
+                'new_password' => 'New-password-1',
+                'encryption_keys' => [
+                    ['child_id' => $child->id, 'key_version' => 1, 'encrypted_dek' => 'new-dek'],
+                ],
+                'encrypted_private_key' => 'new-private',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['new_auth_hash']);
+
+        expect(Hash::check(UserFactory::AUTH_HASH, $user->fresh()->password_hash))->toBeTrue();
     });
 
     it('signs out other sessions but keeps the current one', function () {
@@ -128,9 +178,8 @@ describe('PUT /api/user/password', function () {
 
         $this->withToken($current)
             ->putJson('/api/user/password', [
-                'current_password' => 'password',
-                'new_password' => 'New-password-1',
-                'new_password_confirmation' => 'New-password-1',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
+                'new_auth_hash' => str_repeat('b', 64),
                 'encryption_keys' => [
                     ['child_id' => $child->id, 'key_version' => 1, 'encrypted_dek' => 'new-dek'],
                 ],
@@ -150,14 +199,13 @@ describe('PUT /api/user/profile', function () {
         $this->actingAs($user, 'sanctum')
             ->putJson('/api/user/profile', [
                 'display_name' => 'New Name',
-                'current_password' => 'password',
-                'new_password' => 'New-password-1',
-                'new_password_confirmation' => 'New-password-1',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
+                'new_auth_hash' => str_repeat('b', 64),
             ])
             ->assertStatus(200)
             ->assertJsonPath('user.display_name', 'New Name');
 
-        expect(Hash::check('password', $user->fresh()->password_hash))->toBeTrue();
+        expect(Hash::check(UserFactory::AUTH_HASH, $user->fresh()->password_hash))->toBeTrue();
     });
 });
 
@@ -175,7 +223,7 @@ describe('PUT /api/user/keypair', function () {
 
         $this->actingAs($user, 'sanctum')
             ->putJson('/api/user/keypair', [
-                'current_password' => 'password',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
                 'public_key' => 'new-public',
                 'encrypted_private_key' => 'new-private',
             ])
@@ -191,7 +239,7 @@ describe('PUT /api/user/keypair', function () {
 
         $this->actingAs($user, 'sanctum')
             ->putJson('/api/user/keypair', [
-                'current_password' => 'password',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
                 'public_key' => 'attacker-public',
                 'encrypted_private_key' => 'attacker-private',
             ])
@@ -205,12 +253,12 @@ describe('PUT /api/user/keypair', function () {
 
         $this->actingAs($user, 'sanctum')
             ->putJson('/api/user/keypair', [
-                'current_password' => 'wrong',
+                'current_auth_hash' => str_repeat('f', 64),
                 'public_key' => 'new-public',
                 'encrypted_private_key' => 'new-private',
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
+            ->assertJsonValidationErrors(['current_auth_hash']);
     });
 });
 
@@ -220,7 +268,7 @@ describe('session length', function () {
 
         $token = $this->postJson('/api/auth/login', [
             'email' => $user->email,
-            'password' => 'password',
+            'auth_hash' => UserFactory::AUTH_HASH,
             'remember' => true,
         ])->assertStatus(200)->json('token');
 
@@ -232,7 +280,7 @@ describe('session length', function () {
 
         $token = $this->postJson('/api/auth/login', [
             'email' => $user->email,
-            'password' => 'password',
+            'auth_hash' => UserFactory::AUTH_HASH,
             'remember' => false,
         ])->assertStatus(200)->json('token');
 
@@ -257,7 +305,7 @@ describe('session length', function () {
 
         $this->postJson('/api/auth/login', [
             'email' => $user->email,
-            'password' => 'password',
+            'auth_hash' => UserFactory::AUTH_HASH,
         ])
             ->assertStatus(200)
             ->assertJsonPath('user.encrypted_private_key', 'old-private')

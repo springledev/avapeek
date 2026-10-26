@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Route;
 
 // Authentication routes (no auth required)
 Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:register');
+Route::post('/auth/prelogin', [AuthController::class, 'prelogin'])->middleware('throttle:prelogin');
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
 Route::get('/auth/registration-mode', [AuthController::class, 'registrationMode']);
 

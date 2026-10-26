@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/services/api'
-import { apiErrorMessage } from '@/lib/util'
+import { apiErrorMessage, safeErrorSummary } from '@/lib/util'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedStore } from '@/stores/feed'
 import { useRecentsStore } from '@/stores/recents'
@@ -449,15 +449,14 @@ export const useChildStore = defineStore('child', () => {
     currentPassword: string,
   ): Promise<void> {
     try {
-      await api.post(`/children/${childId}/transfer-ownership`, {
-        user_id: userId,
-        current_password: currentPassword,
-      })
+      await useAuthStore().withPasswordProof(currentPassword, (proof) =>
+        api.post(`/children/${childId}/transfer-ownership`, { user_id: userId, ...proof }),
+      )
       const idx = children.value.findIndex((c) => c.id === childId)
       const existing = idx >= 0 ? children.value[idx] : undefined
       if (idx >= 0 && existing) children.value[idx] = { ...existing, role: 'admin' }
     } catch (err) {
-      console.error('Failed to transfer ownership:', err)
+      console.error('Failed to transfer ownership:', safeErrorSummary(err))
       error.value = apiErrorMessage(err, 'Failed to transfer ownership.')
       throw err
     }

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { api } from '@/services/api'
 import apiService from '@/services/api'
-import { apiErrorMessage } from '@/lib/util'
+import { apiErrorMessage, safeErrorSummary } from '@/lib/util'
 import { clearDecryptedCache, setDecryptedCacheUser } from '@/lib/cache/decrypted-cache'
 import { clearShareInbox } from '@/lib/share-inbox'
 import {
@@ -14,16 +14,19 @@ import {
   setStaySignedIn,
 } from '@/lib/auth-storage'
 import type { Photo } from '@/types/photo'
+import { MIN_PASSWORD_LENGTH, newPasswordError } from '@/lib/password-rules'
 import type {
   User,
   EncryptionKey,
   LoginRequest,
+  PasswordProof,
+  PreloginResponse,
   RegisterRequest,
   AuthResponse,
   MfaRequiredResponse,
 } from '@/types/auth'
+import { deriveKekAndAuthHash } from '@/crypto/auth-hash'
 import {
-  deriveKEK,
   generateSalt,
   generateKeyPair,
   exportPublicKey,
@@ -43,7 +46,6 @@ export interface MfaChallengeRequest {
   method: MfaMethod
   code?: string
   passkeyResponse?: Record<string, unknown>
-  password?: string
   staySignedIn?: boolean
 }
 
@@ -58,6 +60,21 @@ export class WrongPasswordError extends Error {
   constructor() {
     super('The current password is incorrect.')
     this.name = 'WrongPasswordError'
+  }
+}
+
+/** Key and auth hash of a password that passed step one of an MFA sign-in. */
+interface PendingLogin {
+  mfaToken: string
+  kek: CryptoKey
+  authHash: string
+}
+
+/** Thrown when the new password breaks a rule the server can't check (it never sees passwords). */
+export class NewPasswordError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'NewPasswordError'
   }
 }
 
@@ -87,6 +104,9 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
   let kekRestore: Promise<void> | null = null
+  // Held in memory between the password step and the MFA step, so the password isn't kept
+  // around and the 600k-iteration derivation isn't repeated.
+  let pendingLogin: PendingLogin | null = null
 
   // Getters
   const isAuthenticated = computed(() => !!user.value)
@@ -123,14 +143,19 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
 
     try {
+      // The server doesn't check password strength: it never sees the password.
+      if (password.length < MIN_PASSWORD_LENGTH) {
+        throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`)
+      }
+
       // Generate cryptographic materials
       const salt = generateSalt()
       const keyPair = await generateKeyPair()
-      const derivedKEK = await deriveKEK(password, salt)
+      const { kek: derivedKEK, authHash } = await deriveKekAndAuthHash(password, salt)
 
       const registerData: RegisterRequest = {
         email,
-        password,
+        auth_hash: authHash,
         display_name: displayName,
         master_key_salt: salt,
         public_key: await exportPublicKey(keyPair.publicKey),
@@ -154,7 +179,7 @@ export const useAuthStore = defineStore('auth', () => {
 
       return accepted_child ?? null
     } catch (err) {
-      console.error('Registration error:', err)
+      console.error('Registration error:', safeErrorSummary(err))
       error.value = apiErrorMessage(err, 'Registration failed. Please try again.')
       throw err
     } finally {
@@ -164,6 +189,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   /**
    * Logs in an existing user and retrieves their encryption keys.
+   *
+   * The password is turned into a key in the browser and only the auth hash derived from
+   * that key is sent.
    */
   async function login(
     email: string,
@@ -172,13 +200,19 @@ export const useAuthStore = defineStore('auth', () => {
   ): Promise<void | MfaRequiredResponse> {
     isLoading.value = true
     error.value = null
+    pendingLogin = null
 
     try {
-      const loginData: LoginRequest = { email, password, remember: staySignedIn }
+      const { data: prelogin } = await api.post<PreloginResponse>('/auth/prelogin', { email })
+      const { master_key_salt: salt } = prelogin.data
+      const { kek: derivedKEK, authHash } = await deriveKekAndAuthHash(password, salt)
+
+      const loginData: LoginRequest = { email, auth_hash: authHash, remember: staySignedIn }
       const response = await api.post<AuthResponse | MfaRequiredResponse>('/auth/login', loginData)
       const data = response.data
 
       if (isMfaRequired(data)) {
+        pendingLogin = { mfaToken: data.mfa_token, kek: derivedKEK, authHash }
         return {
           mfa_required: true,
           mfa_token: data.mfa_token,
@@ -187,9 +221,9 @@ export const useAuthStore = defineStore('auth', () => {
       }
 
       setStaySignedIn(staySignedIn)
-      await storeAuthSession(data, password)
+      await storeAuthSession(data, derivedKEK, authHash)
     } catch (err) {
-      console.error('Login error:', err)
+      console.error('Login error:', safeErrorSummary(err))
       error.value = apiErrorMessage(err, 'Login failed. Please check your credentials.')
       throw err
     } finally {
@@ -197,13 +231,15 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function storeAuthSession(data: AuthResponse, password: string): Promise<void> {
+  async function storeAuthSession(
+    data: AuthResponse,
+    derivedKEK: CryptoKey,
+    authHash: string,
+  ): Promise<void> {
     const { user: userData, token, encryption_keys } = data
 
     apiService.setAuthToken(token)
     setUser(userData)
-
-    const derivedKEK = await deriveKEK(password, userData.master_key_salt)
     await setKEK(derivedKEK)
 
     if (encryption_keys) {
@@ -211,7 +247,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     if (!userData.encrypted_private_key) {
-      await createMissingKeyPair(password, derivedKEK)
+      await createMissingKeyPair(derivedKEK, authHash)
     }
   }
 
@@ -220,19 +256,27 @@ export const useAuthStore = defineStore('auth', () => {
    * nobody could share an album with them. Give them a fresh key pair; the
    * password is only available at sign-in, which is why this runs here.
    */
-  async function createMissingKeyPair(password: string, derivedKEK: CryptoKey): Promise<void> {
+  async function createMissingKeyPair(derivedKEK: CryptoKey, authHash: string): Promise<void> {
     try {
       const keyPair = await generateKeyPair()
+      const proof: PasswordProof = { current_auth_hash: authHash }
       const response = await api.put<{ user: User }>('/user/keypair', {
-        current_password: password,
+        ...proof,
         public_key: await exportPublicKey(keyPair.publicKey),
         encrypted_private_key: await wrapPrivateKey(keyPair.privateKey, derivedKEK),
       })
       setUser(response.data.user)
     } catch (err) {
       // Best effort: sign-in still works, and this is retried at the next sign-in.
-      console.error('Failed to create key pair:', err)
+      console.error('Failed to create key pair:', safeErrorSummary(err))
     }
+  }
+
+  /**
+   * Drops the key held for a pending MFA step (e.g. when the user goes back to the password step).
+   */
+  function discardPendingLogin(): void {
+    pendingLogin = null
   }
 
   /**
@@ -243,7 +287,6 @@ export const useAuthStore = defineStore('auth', () => {
     method,
     code,
     passkeyResponse,
-    password,
     staySignedIn = true,
   }: MfaChallengeRequest): Promise<void> {
     isLoading.value = true
@@ -251,8 +294,9 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       // Checked before the request: a successful challenge consumes the single-use mfa_token.
-      if (!password) {
-        throw new Error('Password is required to restore encryption keys.')
+      const pending = pendingLogin
+      if (!pending || pending.mfaToken !== mfaToken) {
+        throw new Error('Your sign-in step timed out. Please sign in again.')
       }
 
       const payload: Record<string, unknown> = { mfa_token: mfaToken, method }
@@ -266,9 +310,10 @@ export const useAuthStore = defineStore('auth', () => {
       const response = await api.post<AuthResponse>('/auth/mfa/challenge', payload)
 
       setStaySignedIn(staySignedIn)
-      await storeAuthSession(response.data, password)
+      pendingLogin = null
+      await storeAuthSession(response.data, pending.kek, pending.authHash)
     } catch (err) {
-      console.error('MFA challenge error:', err)
+      console.error('MFA challenge error:', safeErrorSummary(err))
       error.value = apiErrorMessage(err, 'MFA verification failed. Please try again.')
       throw err
     } finally {
@@ -316,7 +361,7 @@ export const useAuthStore = defineStore('auth', () => {
       // Call logout API
       await api.post('/auth/logout')
     } catch (err) {
-      console.error('Logout error:', err)
+      console.error('Logout error:', safeErrorSummary(err))
       // Continue with local cleanup even if API call fails
     } finally {
       // Clear all auth data
@@ -405,6 +450,25 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
+   * Runs a request that needs the account password (security settings, ownership transfer).
+   *
+   * The typed password is turned into an auth hash here and only the hash is sent.
+   */
+  async function withPasswordProof<T>(
+    password: string,
+    send: (proof: PasswordProof) => Promise<T>,
+  ): Promise<T> {
+    const current = user.value
+    if (!current) {
+      throw new Error('You need to be signed in to confirm your password.')
+    }
+
+    const { authHash } = await deriveKekAndAuthHash(password, current.master_key_salt)
+
+    return send({ current_auth_hash: authHash })
+  }
+
+  /**
    * Changes the password without losing access to any photos.
    *
    * The KEK comes from the password, so every album key and the private key
@@ -424,9 +488,18 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
 
     try {
+      // The server never sees either password, so the rules are checked here.
+      const ruleError = newPasswordError(newPassword, newPasswordConfirmation, currentPassword)
+      if (ruleError) {
+        throw new NewPasswordError(ruleError)
+      }
+
       const salt = user.value.master_key_salt
-      const oldKEK = await deriveKEK(currentPassword, salt)
-      const newKEK = await deriveKEK(newPassword, salt)
+      const { kek: oldKEK, authHash: oldAuthHash } = await deriveKekAndAuthHash(
+        currentPassword,
+        salt,
+      )
+      const { kek: newKEK, authHash: newAuthHash } = await deriveKekAndAuthHash(newPassword, salt)
 
       // Fresh copy, so a key added on another device isn't left behind.
       const { data: keyList } = await api.get<{ data: EncryptionKey[] }>('/encryption-keys')
@@ -457,9 +530,8 @@ export const useAuthStore = defineStore('auth', () => {
       const response = await api.put<{ user: User; encryption_keys: EncryptionKey[] }>(
         '/user/password',
         {
-          current_password: currentPassword,
-          new_password: newPassword,
-          new_password_confirmation: newPasswordConfirmation,
+          current_auth_hash: oldAuthHash,
+          new_auth_hash: newAuthHash,
           encryption_keys: rewrappedKeys,
           encrypted_private_key: rewrappedPrivateKey,
         },
@@ -470,7 +542,7 @@ export const useAuthStore = defineStore('auth', () => {
       await setKEK(newKEK)
     } catch (err) {
       error.value =
-        err instanceof WrongPasswordError
+        err instanceof WrongPasswordError || err instanceof NewPasswordError
           ? err.message
           : apiErrorMessage(err, 'Failed to change password.')
       throw err
@@ -501,6 +573,8 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     login,
     mfaChallenge,
+    discardPendingLogin,
+    withPasswordProof,
     logout,
     initializeAuth,
     restoreKEK,

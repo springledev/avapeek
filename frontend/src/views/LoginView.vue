@@ -171,7 +171,6 @@ async function submitMfa() {
       mfaToken: mfaState.value.mfa_token,
       method: mfaMethod.value,
       code: mfaCode.value.trim(),
-      password: password.value,
       staySignedIn: staySignedIn.value,
     })
     await finishSignIn()
@@ -208,7 +207,6 @@ async function submitPasskey(mfaToken: string) {
       mfaToken,
       method: 'passkey',
       passkeyResponse,
-      password: password.value,
       staySignedIn: staySignedIn.value,
     })
     await finishSignIn()
@@ -224,6 +222,7 @@ function switchMethod(method: MfaMethod) {
 }
 
 function goBack() {
+  authStore.discardPendingLogin()
   step.value = 1
   mfaState.value = null
   mfaCode.value = ''

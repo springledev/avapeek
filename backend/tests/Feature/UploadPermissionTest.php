@@ -252,7 +252,7 @@ describe('invites and payloads', function () {
 
         $this->postJson('/api/auth/register', [
             'email' => 'new@example.com',
-            'password' => 'correct-horse-battery',
+            'auth_hash' => str_repeat('a', 64),
             'display_name' => 'New',
             'master_key_salt' => str_repeat('a', 64),
             'public_key' => '{}',

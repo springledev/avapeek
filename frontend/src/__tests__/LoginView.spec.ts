@@ -39,6 +39,12 @@ vi.mock('@/crypto/keychain', () => ({
   importKEK: vi.fn<(jwk: string) => Promise<CryptoKey>>(),
 }))
 
+vi.mock('@/crypto/auth-hash', () => ({
+  deriveKekAndAuthHash: vi.fn<(password: string, salt: string) => Promise<{ kek: CryptoKey; authHash: string }>>(
+    async (password: string) => ({ kek: { type: 'secret' } as CryptoKey, authHash: `auth-hash-of-${password}` }),
+  ),
+}))
+
 vi.mock('@/lib/cache/decrypted-cache', () => ({
   clearDecryptedCache: vi.fn<() => void>(),
   setDecryptedCacheUser: vi.fn<(userId: number | null) => void>(),
@@ -50,7 +56,7 @@ vi.mock('@simplewebauthn/browser', () => ({
 
 import { api } from '@/services/api'
 import { setStaySignedIn } from '@/lib/auth-storage'
-import { deriveKEK, exportKEK } from '@/crypto/keychain'
+import { exportKEK } from '@/crypto/keychain'
 import { startAuthentication } from '@simplewebauthn/browser'
 import { useAuthStore } from '@/stores/auth'
 
@@ -93,6 +99,16 @@ async function mountLoginView(path = '/login', beforeMount?: () => void) {
   return { wrapper, router }
 }
 
+/** Answers pre-login, and everything else with the handler. */
+function mockPost(handler: (url: string, data?: unknown) => Promise<unknown>) {
+  vi.mocked(api.post).mockImplementation((url: string, data?: unknown) => {
+    if (url === '/auth/prelogin') {
+      return Promise.resolve(ok({ data: { master_key_salt: 'salt' } }))
+    }
+    return handler(url, data)
+  })
+}
+
 async function signInWithPassword(wrapper: Awaited<ReturnType<typeof mountLoginView>>['wrapper']) {
   await wrapper.find('#login-email').setValue('ana@example.com')
   await wrapper.find('#login-password').setValue('secret')
@@ -108,12 +124,11 @@ describe('LoginView', () => {
     vi.mocked(startAuthentication).mockReset()
 
     vi.mocked(api.get).mockResolvedValue(ok({ data: { mode: 'invite_only' } }))
-    vi.mocked(deriveKEK).mockResolvedValue({ type: 'secret' } as unknown as CryptoKey)
     vi.mocked(exportKEK).mockResolvedValue('kek-jwk')
   })
 
   it('lets a passkey-only account finish sign-in with its passkey', async () => {
-    vi.mocked(api.post).mockImplementation((url: string) => {
+    mockPost((url: string) => {
       if (url === '/auth/login') {
         return Promise.resolve(
           ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['passkey'] }),
@@ -140,6 +155,12 @@ describe('LoginView', () => {
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
+    expect(api.post).toHaveBeenCalledWith('/auth/prelogin', { email: 'ana@example.com' })
+    expect(api.post).toHaveBeenCalledWith('/auth/login', {
+      email: 'ana@example.com',
+      auth_hash: 'auth-hash-of-secret',
+      remember: false,
+    })
     expect(startAuthentication).toHaveBeenCalledWith({ optionsJSON: { challenge: 'abc' } })
     expect(api.post).toHaveBeenCalledWith('/auth/mfa/challenge', {
       mfa_token: 'mfa-token',
@@ -150,8 +171,33 @@ describe('LoginView', () => {
     expect(router.currentRoute.value.path).toBe('/')
   })
 
+  it('never sends the typed password to the server, including during MFA', async () => {
+    mockPost((url: string) => {
+      if (url === '/auth/login') {
+        return Promise.resolve(
+          ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['totp'] }),
+        )
+      }
+      return Promise.resolve(ok(authResponse))
+    })
+
+    const { wrapper } = await mountLoginView()
+    await signInWithPassword(wrapper)
+    await wrapper.find('#mfa-code').setValue('123456')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(api.post).toHaveBeenCalledWith('/auth/mfa/challenge', {
+      mfa_token: 'mfa-token',
+      method: 'totp',
+      code: '123456',
+    })
+    expect(JSON.stringify(vi.mocked(api.post).mock.calls)).not.toContain('"secret"')
+  })
+
+
   it('returns to the password step when the MFA session has expired', async () => {
-    vi.mocked(api.post).mockImplementation((url: string) => {
+    mockPost((url: string) => {
       if (url === '/auth/login') {
         return Promise.resolve(
           ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['totp'] }),
@@ -182,7 +228,7 @@ describe('LoginView', () => {
   })
 
   it('keeps the user on the code step for a wrong code', async () => {
-    vi.mocked(api.post).mockImplementation((url: string) => {
+    mockPost((url: string) => {
       if (url === '/auth/login') {
         return Promise.resolve(
           ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['totp'] }),
@@ -218,8 +264,8 @@ describe('LoginView', () => {
   })
 
   it('keeps only digits in the authenticator code, even when typing a letter', async () => {
-    vi.mocked(api.post).mockResolvedValue(
-      ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['totp'] }),
+    mockPost(() =>
+      Promise.resolve(ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['totp'] })),
     )
     const { wrapper } = await mountLoginView()
     await signInWithPassword(wrapper)
@@ -236,8 +282,8 @@ describe('LoginView', () => {
   })
 
   it('explains the recovery code format', async () => {
-    vi.mocked(api.post).mockResolvedValue(
-      ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['totp'] }),
+    mockPost(() =>
+      Promise.resolve(ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['totp'] })),
     )
     const { wrapper } = await mountLoginView()
     await signInWithPassword(wrapper)
@@ -250,7 +296,7 @@ describe('LoginView', () => {
   })
 
   it('shows the server reason when the account is locked out of codes', async () => {
-    vi.mocked(api.post).mockImplementation((url: string) => {
+    mockPost((url: string) => {
       if (url === '/auth/login') {
         return Promise.resolve(
           ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['totp'] }),

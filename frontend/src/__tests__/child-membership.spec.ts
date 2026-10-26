@@ -46,6 +46,12 @@ vi.mock('@/crypto/encrypt', () => ({
   decryptBlob: vi.fn<() => Promise<unknown>>(),
 }))
 
+vi.mock('@/crypto/auth-hash', () => ({
+  deriveKekAndAuthHash: vi.fn<(password: string, salt: string) => Promise<{ kek: CryptoKey; authHash: string }>>(
+    async (password: string) => ({ kek: {} as CryptoKey, authHash: `auth-hash-of-${password}` }),
+  ),
+}))
+
 vi.mock('vue-sonner', () => ({
   toast: {
     success: vi.fn<(message: string) => void>(),
@@ -204,7 +210,7 @@ describe('child membership', () => {
 
       expect(api.post).toHaveBeenCalledWith('/children/7/transfer-ownership', {
         user_id: 2,
-        current_password: 'hunter2',
+        current_auth_hash: 'auth-hash-of-hunter2',
       })
       expect(childStore.children[0]?.role).toBe('admin')
       assertNoCrypto()
@@ -419,8 +425,9 @@ describe('child membership', () => {
 
       expect(api.post).toHaveBeenCalledWith('/children/7/transfer-ownership', {
         user_id: 3,
-        current_password: 'hunter2',
+        current_auth_hash: 'auth-hash-of-hunter2',
       })
+      expect(JSON.stringify(vi.mocked(api.post).mock.calls)).not.toContain('"hunter2"')
       expect(childStore.children[0]?.role).toBe('admin')
       assertNoCrypto()
     })
@@ -432,7 +439,7 @@ describe('child membership', () => {
           isAxiosError: true,
           response: {
             status: 422,
-            data: { errors: { current_password: ['The current password is incorrect.'] } },
+            data: { errors: { current_auth_hash: ['The current password is incorrect.'] } },
           },
         }),
       )

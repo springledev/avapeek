@@ -27,8 +27,11 @@ vi.mock('@/lib/auth-storage', () => ({
   getStaySignedIn: vi.fn<() => boolean>(),
 }))
 
+vi.mock('@/crypto/auth-hash', () => ({
+  deriveKekAndAuthHash: vi.fn<(password: string, salt: string) => Promise<{ kek: CryptoKey; authHash: string }>>(),
+}))
+
 vi.mock('@/crypto/keychain', () => ({
-  deriveKEK: vi.fn<(password: string, salt: string) => Promise<CryptoKey>>(),
   generateSalt: vi.fn<() => string>(),
   generateKeyPair: vi.fn<() => Promise<{ publicKey: CryptoKey; privateKey: CryptoKey }>>(),
   exportPublicKey: vi.fn<(key: CryptoKey) => Promise<string>>(),
@@ -59,8 +62,8 @@ import {
   getSessionItem,
   removePendingInviteToken,
 } from '@/lib/auth-storage'
+import { deriveKekAndAuthHash } from '@/crypto/auth-hash'
 import {
-  deriveKEK,
   exportKEK,
   generateSalt,
   generateKeyPair,
@@ -74,6 +77,7 @@ import {
   useAuthStore,
   isMfaRequired,
   WrongPasswordError,
+  NewPasswordError,
   type MfaRequiredResponse,
 } from '@/stores/auth'
 import type { User, AuthResponse } from '@/types/auth'
@@ -111,6 +115,29 @@ function makeAuthResponse(overrides: Partial<AuthResponse> = {}): AuthResponse {
 
 const fakeKEK = { type: 'secret' } as unknown as CryptoKey
 
+/** The mocked derivation: the auth hash is visibly derived from the password it came from. */
+function authHashOf(password: string): string {
+  return `auth-hash-of-${password}`
+}
+
+/** Answers pre-login, and every other POST with the handler. */
+function mockPost(handler: (url: string, data?: unknown) => unknown) {
+  vi.mocked(api.post).mockImplementation((url: string, data?: unknown) => {
+    if (url === '/auth/prelogin') {
+      return Promise.resolve(ok({ data: { master_key_salt: 'deadbeef' } }))
+    }
+    return Promise.resolve(handler(url, data))
+  })
+}
+
+/** Everything the store ever sent to the server, as one string. */
+function allSentPayloads(): string {
+  return JSON.stringify([
+    ...vi.mocked(api.post).mock.calls,
+    ...vi.mocked(api.put).mock.calls,
+  ])
+}
+
 describe('auth store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -122,14 +149,17 @@ describe('auth store', () => {
     vi.mocked(setSessionItem).mockReset()
     vi.mocked(getSessionItem).mockReset()
     vi.mocked(removePendingInviteToken).mockReset()
-    vi.mocked(deriveKEK).mockReset()
+    vi.mocked(deriveKekAndAuthHash).mockReset()
     vi.mocked(exportKEK).mockReset()
     vi.mocked(generateSalt).mockReset()
     vi.mocked(generateKeyPair).mockReset()
     vi.mocked(exportPublicKey).mockReset()
     vi.mocked(apiService.setAuthToken).mockReset()
 
-    vi.mocked(deriveKEK).mockResolvedValue(fakeKEK)
+    vi.mocked(deriveKekAndAuthHash).mockImplementation(async (password: string) => ({
+      kek: fakeKEK,
+      authHash: authHashOf(password),
+    }))
     vi.mocked(exportKEK).mockResolvedValue('kek-jwk')
     vi.mocked(generateSalt).mockReturnValue('saltsalt')
     vi.mocked(generateKeyPair).mockResolvedValue({
@@ -159,24 +189,30 @@ describe('auth store', () => {
     })
   })
 
-  it('logs in and stores the session in active storage', async () => {
-    vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
+  it('logs a v2 account in with only the auth hash and stores the session', async () => {
+    mockPost(() => ok(makeAuthResponse()))
 
     const store = useAuthStore()
-    const result = await store.login('ana@example.com', 'secret', false)
+    const result = await store.login('ana@example.com', 'secret-password', false)
 
     expect(isMfaRequired(result)).toBe(false)
+    expect(api.post).toHaveBeenCalledWith('/auth/prelogin', { email: 'ana@example.com' })
+    expect(deriveKekAndAuthHash).toHaveBeenCalledTimes(1)
+    expect(deriveKekAndAuthHash).toHaveBeenCalledWith('secret-password', 'deadbeef')
+    expect(api.post).toHaveBeenCalledWith('/auth/login', {
+      email: 'ana@example.com',
+      auth_hash: authHashOf('secret-password'),
+      remember: false,
+    })
+    expect(allSentPayloads()).not.toContain('"secret-password"')
     expect(setStaySignedIn).toHaveBeenCalledWith(false)
     expect(apiService.setAuthToken).toHaveBeenCalledWith('token-123')
-    expect(deriveKEK).toHaveBeenCalledWith('secret', 'deadbeef')
     expect(setSessionItem).toHaveBeenCalledWith('kek', 'kek-jwk')
-    expect(setSessionItem).toHaveBeenCalledWith(
-      'user',
-      JSON.stringify(makeUser()),
-    )
+    expect(setSessionItem).toHaveBeenCalledWith('user', JSON.stringify(makeUser()))
     expect(setSessionItem).toHaveBeenCalledWith('encryption_keys', '[]')
     expect(store.user?.email).toBe('ana@example.com')
   })
+
 
   it('returns MFA required instead of storing a session', async () => {
     const mfaPayload: MfaRequiredResponse = {
@@ -184,10 +220,10 @@ describe('auth store', () => {
       mfa_token: 'mfa-token',
       mfa_methods: ['totp', 'passkey'],
     }
-    vi.mocked(api.post).mockResolvedValue(ok(mfaPayload))
+    mockPost(() => ok(mfaPayload))
 
     const store = useAuthStore()
-    const result = await store.login('ana@example.com', 'secret', true)
+    const result = await store.login('ana@example.com', 'secret-password', true)
 
     expect(isMfaRequired(result)).toBe(true)
     expect(result).toEqual(mfaPayload)
@@ -196,15 +232,19 @@ describe('auth store', () => {
     expect(store.user).toBeNull()
   })
 
-  it('completes an MFA challenge and stores the session', async () => {
-    vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
+  it('completes an MFA challenge with the key from the password step, without the password', async () => {
+    mockPost((url: string) =>
+      url === '/auth/login'
+        ? ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['totp'] })
+        : ok(makeAuthResponse()),
+    )
 
     const store = useAuthStore()
+    await store.login('ana@example.com', 'secret-password', false)
     await store.mfaChallenge({
       mfaToken: 'mfa-token',
       method: 'totp',
       code: '123456',
-      password: 'secret',
       staySignedIn: false,
     })
 
@@ -213,32 +253,67 @@ describe('auth store', () => {
       method: 'totp',
       code: '123456',
     })
+    expect(allSentPayloads()).not.toContain('"secret-password"')
+    // The key was derived once, at the password step.
+    expect(deriveKekAndAuthHash).toHaveBeenCalledTimes(1)
     expect(setStaySignedIn).toHaveBeenCalledWith(false)
     expect(apiService.setAuthToken).toHaveBeenCalledWith('token-123')
     expect(setSessionItem).toHaveBeenCalledWith('kek', 'kek-jwk')
+    expect(store.kek).toEqual(fakeKEK)
     expect(store.user?.email).toBe('ana@example.com')
   })
 
-  it('throws when mfaChallenge is called without a password', async () => {
+  it('refuses an MFA challenge when no password step came first', async () => {
     vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
 
     const store = useAuthStore()
     await expect(
       store.mfaChallenge({ mfaToken: 'mfa-token', method: 'totp', code: '123456' }),
-    ).rejects.toThrow('Password is required')
+    ).rejects.toThrow('sign in again')
     // The single-use mfa_token must not be spent on a request that can't finish.
     expect(api.post).not.toHaveBeenCalled()
   })
 
-  it('sends the passkey response for a passkey challenge', async () => {
-    vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
+  it('refuses an MFA challenge for a token other than the one from the password step', async () => {
+    mockPost(() => ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['totp'] }))
 
     const store = useAuthStore()
+    await store.login('ana@example.com', 'secret-password')
+    vi.mocked(api.post).mockClear()
+
+    await expect(
+      store.mfaChallenge({ mfaToken: 'other-token', method: 'totp', code: '123456' }),
+    ).rejects.toThrow('sign in again')
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('forgets the pending key once the user goes back to the password step', async () => {
+    mockPost(() => ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['totp'] }))
+
+    const store = useAuthStore()
+    await store.login('ana@example.com', 'secret-password')
+    store.discardPendingLogin()
+    vi.mocked(api.post).mockClear()
+
+    await expect(
+      store.mfaChallenge({ mfaToken: 'mfa-token', method: 'totp', code: '123456' }),
+    ).rejects.toThrow('sign in again')
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('sends the passkey response for a passkey challenge', async () => {
+    mockPost((url: string) =>
+      url === '/auth/login'
+        ? ok({ mfa_required: true, mfa_token: 'mfa-token', mfa_methods: ['passkey'] })
+        : ok(makeAuthResponse()),
+    )
+
+    const store = useAuthStore()
+    await store.login('ana@example.com', 'secret-password')
     await store.mfaChallenge({
       mfaToken: 'mfa-token',
       method: 'passkey',
       passkeyResponse: { id: 'cred' },
-      password: 'secret',
     })
 
     expect(api.post).toHaveBeenCalledWith('/auth/mfa/challenge', {
@@ -249,12 +324,24 @@ describe('auth store', () => {
     expect(setStaySignedIn).toHaveBeenCalledWith(true)
   })
 
-  it('registers a new user and clears the pending invite token', async () => {
+  it('registers with only an auth hash and clears the pending invite token', async () => {
     vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
 
     const store = useAuthStore()
-    const result = await store.register('ana@example.com', 'secret', 'Ana', 'invite-123', true)
+    const result = await store.register('ana@example.com', 'secret-password', 'Ana', 'invite-123', true)
 
+    expect(deriveKekAndAuthHash).toHaveBeenCalledTimes(1)
+    expect(deriveKekAndAuthHash).toHaveBeenCalledWith('secret-password', 'saltsalt')
+    expect(api.post).toHaveBeenCalledWith(
+      '/auth/register',
+      expect.objectContaining({
+        email: 'ana@example.com',
+        auth_hash: authHashOf('secret-password'),
+        invite_token: 'invite-123',
+      }),
+    )
+    expect(allSentPayloads()).not.toContain('"secret-password"')
+    expect(allSentPayloads()).not.toContain('"password"')
     expect(setStaySignedIn).toHaveBeenCalledWith(true)
     expect(apiService.setAuthToken).toHaveBeenCalledWith('token-123')
     expect(removePendingInviteToken).toHaveBeenCalled()
@@ -262,23 +349,31 @@ describe('auth store', () => {
     expect(result).toBeNull()
   })
 
+  it('does not register a password the server would have refused', async () => {
+    const store = useAuthStore()
+    await expect(store.register('ana@example.com', 'short', 'Ana')).rejects.toThrow('at least 8')
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
   it('returns the accepted child when registration auto-accepts an invite', async () => {
     const acceptedChild = { child_id: 7, child_name: 'Wren', child_slug: 'wren' }
     vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse({ accepted_child: acceptedChild })))
 
     const store = useAuthStore()
-    const result = await store.register('ana@example.com', 'secret', 'Ana', 'invite-123', true)
+    const result = await store.register('ana@example.com', 'secret-password', 'Ana', 'invite-123', true)
 
     expect(result).toEqual(acceptedChild)
   })
 
   it('surfaces API errors on login failure', async () => {
-    vi.mocked(api.post).mockRejectedValue({
-      response: { data: { message: 'Invalid credentials' } },
-    })
+    vi.mocked(api.post).mockImplementation((url: string) =>
+      url === '/auth/prelogin'
+        ? Promise.resolve(ok({ data: { master_key_salt: 'deadbeef' } }))
+        : Promise.reject({ response: { data: { message: 'Invalid credentials' } } }),
+    )
 
     const store = useAuthStore()
-    await expect(store.login('ana@example.com', 'secret')).rejects.toBeDefined()
+    await expect(store.login('ana@example.com', 'secret-password')).rejects.toBeDefined()
     expect(store.error).toBe('Invalid credentials')
   })
 
@@ -307,14 +402,14 @@ describe('auth store', () => {
   })
 
   it('sends the stay-signed-in choice so the server can expire the token', async () => {
-    vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
+    mockPost(() => ok(makeAuthResponse()))
 
     const store = useAuthStore()
-    await store.login('ana@example.com', 'secret', false)
+    await store.login('ana@example.com', 'secret-password', false)
 
     expect(api.post).toHaveBeenCalledWith('/auth/login', {
       email: 'ana@example.com',
-      password: 'secret',
+      auth_hash: authHashOf('secret-password'),
       remember: false,
     })
   })
@@ -323,7 +418,7 @@ describe('auth store', () => {
     vi.mocked(api.post).mockResolvedValue(ok(makeAuthResponse()))
 
     const store = useAuthStore()
-    await store.register('ana@example.com', 'secret', 'Ana', undefined, false)
+    await store.register('ana@example.com', 'secret-password', 'Ana', undefined, false)
 
     expect(wrapPrivateKey).toHaveBeenCalledWith({ type: 'private' }, fakeKEK)
     expect(api.post).toHaveBeenCalledWith(
@@ -337,29 +432,42 @@ describe('auth store', () => {
   })
 
   it('creates a key pair at sign-in for accounts that never stored one', async () => {
-    vi.mocked(api.post).mockResolvedValue(
-      ok(makeAuthResponse({ user: makeUser({ encrypted_private_key: null }) })),
-    )
+    mockPost(() => ok(makeAuthResponse({ user: makeUser({ encrypted_private_key: null }) })))
     vi.mocked(api.put).mockResolvedValue(ok({ user: makeUser() }))
 
     const store = useAuthStore()
-    await store.login('ana@example.com', 'secret')
+    await store.login('ana@example.com', 'secret-password')
 
     expect(api.put).toHaveBeenCalledWith('/user/keypair', {
-      current_password: 'secret',
+      current_auth_hash: authHashOf('secret-password'),
       public_key: 'public-key-jwk',
       encrypted_private_key: 'wrapped-private-key',
     })
+    expect(allSentPayloads()).not.toContain('"secret-password"')
     expect(store.user?.encrypted_private_key).toBe('wrapped-private-key')
+  })
+
+  describe('withPasswordProof', () => {
+    it('sends only the auth hash', async () => {
+      const store = useAuthStore()
+      store.user = makeUser()
+      const send = vi.fn<(proof: unknown) => Promise<string>>().mockResolvedValue('done')
+
+      await expect(store.withPasswordProof('secret-password', send)).resolves.toBe('done')
+
+      expect(deriveKekAndAuthHash).toHaveBeenCalledWith('secret-password', 'deadbeef')
+      expect(send).toHaveBeenCalledWith({ current_auth_hash: authHashOf('secret-password') })
+    })
   })
 
   describe('changePassword', () => {
     const newKEK = { type: 'secret', which: 'new' } as unknown as CryptoKey
 
     beforeEach(() => {
-      vi.mocked(deriveKEK).mockImplementation(async (password: string) =>
-        password === 'new-password' ? newKEK : fakeKEK,
-      )
+      vi.mocked(deriveKekAndAuthHash).mockImplementation(async (password: string) => ({
+        kek: password === 'new-password' ? newKEK : fakeKEK,
+        authHash: authHashOf(password),
+      }))
       vi.mocked(api.get).mockResolvedValue(
         ok({
           data: [
@@ -392,14 +500,36 @@ describe('auth store', () => {
       expect(rewrapDEK).toHaveBeenCalledWith('dek-1', fakeKEK, newKEK)
       expect(rewrapPrivateKey).toHaveBeenCalledWith('wrapped-private-key', fakeKEK, newKEK)
       expect(api.put).toHaveBeenCalledWith('/user/password', {
-        current_password: 'old-password',
-        new_password: 'new-password',
-        new_password_confirmation: 'new-password',
+        current_auth_hash: authHashOf('old-password'),
+        new_auth_hash: authHashOf('new-password'),
         encryption_keys: [{ child_id: 1, key_version: 1, encrypted_dek: 'dek-1-new' }],
         encrypted_private_key: 'private-new',
       })
+      expect(allSentPayloads()).not.toContain('"old-password"')
+      expect(allSentPayloads()).not.toContain('"new-password"')
       expect(store.kek).toEqual(newKEK)
       expect(store.encryptionKeys).toEqual(savedKeys)
+    })
+
+
+    it.each([
+      ['too short', 'short', 'short', 'at least 8'],
+      ['mismatched', 'new-password', 'new-passwore', "don't match"],
+      ['unchanged', 'old-password', 'old-password', 'must be different'],
+    ])('rejects a %s new password before deriving anything', async (_name, next, confirm, message) => {
+      const store = useAuthStore()
+      store.user = makeUser()
+
+      const result = store.changePassword({
+        currentPassword: 'old-password',
+        newPassword: next,
+        newPasswordConfirmation: confirm,
+      })
+
+      await expect(result).rejects.toBeInstanceOf(NewPasswordError)
+      await expect(result).rejects.toThrow(message)
+      expect(deriveKekAndAuthHash).not.toHaveBeenCalled()
+      expect(api.put).not.toHaveBeenCalled()
     })
 
     it('stops before calling the server when the current password is wrong', async () => {
