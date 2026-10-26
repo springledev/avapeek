@@ -31,7 +31,6 @@ vi.mock('@/lib/auth-storage', () => ({
 }))
 
 vi.mock('@/crypto/keychain', () => ({
-  deriveKEK: vi.fn<(password: string, salt: string) => Promise<CryptoKey>>(),
   generateSalt: vi.fn<() => string>(),
   generateKeyPair: vi.fn<() => Promise<{ publicKey: CryptoKey; privateKey: CryptoKey }>>(),
   exportPublicKey: vi.fn<(key: CryptoKey) => Promise<string>>(),
@@ -44,6 +43,12 @@ vi.mock('@/crypto/keychain', () => ({
   rewrapPrivateKey: vi.fn<(wrapped: string, oldKek: CryptoKey, newKek: CryptoKey) => Promise<string>>(),
 }))
 
+vi.mock('@/crypto/auth-hash', () => ({
+  deriveKekAndAuthHash: vi.fn<(password: string, salt: string) => Promise<{ kek: CryptoKey; authHash: string }>>(
+    async (password: string) => ({ kek: { type: 'secret' } as CryptoKey, authHash: `auth-hash-of-${password}` }),
+  ),
+}))
+
 vi.mock('@/lib/cache/decrypted-cache', () => ({
   clearDecryptedCache: vi.fn<() => void>(),
   setDecryptedCacheUser: vi.fn<(userId: number | null) => void>(),
@@ -52,7 +57,6 @@ vi.mock('@/lib/cache/decrypted-cache', () => ({
 import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import {
-  deriveKEK,
   exportKEK,
   generateSalt,
   generateKeyPair,
@@ -94,7 +98,6 @@ describe('RegisterView', () => {
     vi.mocked(api.get).mockReset()
     vi.mocked(api.post).mockReset()
 
-    vi.mocked(deriveKEK).mockResolvedValue({ type: 'secret' } as unknown as CryptoKey)
     vi.mocked(exportKEK).mockResolvedValue('kek-jwk')
     vi.mocked(generateSalt).mockReturnValue('saltsalt')
     vi.mocked(generateKeyPair).mockResolvedValue({
@@ -183,6 +186,11 @@ describe('RegisterView', () => {
     await flushPromises()
 
     expect(authStore.error).toBeNull()
+    expect(api.post).toHaveBeenCalledWith(
+      '/auth/register',
+      expect.objectContaining({ email: 'ana@example.com', auth_hash: 'auth-hash-of-supersecret' }),
+    )
+    expect(JSON.stringify(vi.mocked(api.post).mock.calls)).not.toContain('"supersecret"')
     expect(router.currentRoute.value.path).toBe('/welcome')
   })
 

@@ -26,7 +26,7 @@ describe('POST /api/auth/register — first user bootstrap', function () {
     it('allows the first user to register without an invite token', function () {
         $response = $this->postJson('/api/auth/register', [
             'email' => 'first@example.com',
-            'password' => 'Password1!',
+            'auth_hash' => str_repeat('a', 64),
             'display_name' => 'First User',
             'master_key_salt' => str_repeat('a', 64),
             'public_key' => 'test-public-key',
@@ -57,7 +57,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
 
         $response = $this->postJson('/api/auth/register', [
             'email' => 'new@example.com',
-            'password' => 'Password1!',
+            'auth_hash' => str_repeat('a', 64),
             'display_name' => 'New User',
             'master_key_salt' => str_repeat('a', 64),
             'public_key' => 'test-public-key',
@@ -79,7 +79,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
 
         $response = $this->postJson('/api/auth/register', [
             'email' => 'invited@example.com',
-            'password' => 'Password1!',
+            'auth_hash' => str_repeat('a', 64),
             'display_name' => 'Invited User',
             'master_key_salt' => str_repeat('b', 64),
             'public_key' => 'invited-public-key',
@@ -99,7 +99,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
 
         $response = $this->postJson('/api/auth/register', [
             'email' => 'accepted@example.com',
-            'password' => 'Password1!',
+            'auth_hash' => str_repeat('a', 64),
             'display_name' => 'Accepted User',
             'master_key_salt' => str_repeat('c', 64),
             'public_key' => 'accepted-public-key',
@@ -117,7 +117,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
 
         $response = $this->postJson('/api/auth/register', [
             'email' => 'revoked@example.com',
-            'password' => 'Password1!',
+            'auth_hash' => str_repeat('a', 64),
             'display_name' => 'Revoked User',
             'master_key_salt' => str_repeat('d', 64),
             'public_key' => 'revoked-public-key',
@@ -133,7 +133,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
 
         $response = $this->postJson('/api/auth/register', [
             'email' => 'expired@example.com',
-            'password' => 'Password1!',
+            'auth_hash' => str_repeat('a', 64),
             'display_name' => 'Expired User',
             'master_key_salt' => str_repeat('e', 64),
             'public_key' => 'expired-public-key',
@@ -149,7 +149,7 @@ describe('POST /api/auth/register — invite-only mode', function () {
 
         $response = $this->postJson('/api/auth/register', [
             'email' => 'invalid@example.com',
-            'password' => 'Password1!',
+            'auth_hash' => str_repeat('a', 64),
             'display_name' => 'Invalid User',
             'master_key_salt' => str_repeat('f', 64),
             'public_key' => 'invalid-public-key',
@@ -175,7 +175,7 @@ describe('POST /api/auth/register — invite acceptance side effects', function 
 
         $response = $this->postJson('/api/auth/register', [
             'email' => 'sideeffect@example.com',
-            'password' => 'Password1!',
+            'auth_hash' => str_repeat('a', 64),
             'display_name' => 'Side Effect User',
             'master_key_salt' => str_repeat('0', 64),
             'public_key' => 'sideeffect-public-key',
@@ -206,7 +206,7 @@ describe('POST /api/auth/register — invite acceptance side effects', function 
 
         $response = $this->postJson('/api/auth/register', [
             'email' => 'acceptset@example.com',
-            'password' => 'Password1!',
+            'auth_hash' => str_repeat('a', 64),
             'display_name' => 'Accept Set User',
             'master_key_salt' => str_repeat('1', 64),
             'public_key' => 'acceptset-public-key',
@@ -239,7 +239,7 @@ describe('POST /api/auth/register — invite acceptance side effects', function 
 
         $response = $this->postJson('/api/auth/register', [
             'email' => 'returnchild@example.com',
-            'password' => 'Password1!',
+            'auth_hash' => str_repeat('a', 64),
             'display_name' => 'Return Child User',
             'master_key_salt' => str_repeat('2', 64),
             'public_key' => 'returnchild-public-key',

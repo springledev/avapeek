@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { getPendingInviteToken, removePendingInviteToken } from '@/lib/auth-storage'
 import { api } from '@/services/api'
 import { apiErrorMessage } from '@/lib/util'
+import { MIN_PASSWORD_LENGTH } from '@/lib/password-rules'
 import type { InvitePreview } from '@/types/child'
 import UiButton from '@/components/ui/UiButton.vue'
 import AuthCard from '@/components/AuthCard.vue'
@@ -81,8 +82,6 @@ const subtitle = computed(() =>
     ? `Create an account to see ${invitePreview.value.child_name}'s photos.`
     : 'Join Avapeek and start sharing photos securely',
 )
-
-const MIN_PASSWORD_LENGTH = 8
 
 /**
  * Only rates passwords that meet the minimum, so an accepted password is

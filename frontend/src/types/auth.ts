@@ -33,7 +33,8 @@ export interface EncryptionKey {
  */
 export interface RegisterRequest {
   email: string
-  password: string
+  /** Derived from the KEK; the password itself is never sent. */
+  auth_hash: string
   display_name: string
   master_key_salt: string
   public_key: string
@@ -43,13 +44,25 @@ export interface RegisterRequest {
 }
 
 /**
- * Login request payload.
+ * Pre-login answer: what the client needs before it can derive its auth hash.
+ */
+export interface PreloginResponse {
+  data: { master_key_salt: string }
+}
+
+/**
+ * Login request payload: the auth hash, never the password.
  */
 export interface LoginRequest {
   email: string
-  password: string
+  auth_hash: string
   remember: boolean
 }
+
+/**
+ * Proof of the current password for sensitive requests: the auth hash, never the password.
+ */
+export type PasswordProof = { current_auth_hash: string }
 
 /**
  * Authentication response from register/login.

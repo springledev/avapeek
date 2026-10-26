@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import type { AxiosResponse } from 'axios'
 
 vi.mock('@/services/api', () => ({
@@ -8,6 +9,12 @@ vi.mock('@/services/api', () => ({
     post: vi.fn<(url: string, data?: unknown) => Promise<unknown>>(),
     delete: vi.fn<(url: string, config?: unknown) => Promise<unknown>>(),
   },
+}))
+
+vi.mock('@/crypto/auth-hash', () => ({
+  deriveKekAndAuthHash: vi.fn<(password: string, salt: string) => Promise<{ kek: CryptoKey; authHash: string }>>(
+    async (password: string) => ({ kek: {} as CryptoKey, authHash: `auth-hash-of-${password}` }),
+  ),
 }))
 
 vi.mock('vue-sonner', () => ({
@@ -28,6 +35,7 @@ vi.mock('@simplewebauthn/browser', () => ({
 import { api } from '@/services/api'
 import { toast } from 'vue-sonner'
 import { startRegistration } from '@simplewebauthn/browser'
+import { useAuthStore } from '@/stores/auth'
 import SecuritySettingsView from '@/views/SecuritySettingsView.vue'
 
 function ok<T>(data: T): AxiosResponse<T> {
@@ -43,6 +51,14 @@ function methodsResponse(methods: string[], passkeys: Array<{ id: string; name: 
 }
 
 async function mountView() {
+  setActivePinia(createPinia())
+  useAuthStore().user = {
+    id: 1,
+    email: 'ana@example.com',
+    display_name: 'Ana',
+    master_key_salt: 'salt',
+    public_key: 'pub',
+  }
   const wrapper = mount(SecuritySettingsView, { global: { stubs: { teleport: true } } })
   await flushPromises()
   return wrapper
@@ -86,9 +102,13 @@ describe('SecuritySettingsView', () => {
 
     await confirmPassword(wrapper, 'secret')
 
-    expect(api.post).toHaveBeenCalledWith('/auth/mfa/totp/setup', { current_password: 'secret' })
+    expect(api.post).toHaveBeenCalledWith('/auth/mfa/totp/setup', {
+      current_auth_hash: 'auth-hash-of-secret',
+    })
+    expect(JSON.stringify(vi.mocked(api.post).mock.calls)).not.toContain('"secret"')
     expect(wrapper.text()).toContain('SECRET')
   })
+
 
   it('shows a wrong password inline instead of as a toast', async () => {
     vi.mocked(api.get).mockResolvedValue(methodsResponse([]))
@@ -97,7 +117,7 @@ describe('SecuritySettingsView', () => {
         status: 422,
         data: {
           message: 'The current password is incorrect.',
-          errors: { current_password: ['The current password is incorrect.'] },
+          errors: { current_auth_hash: ['The current password is incorrect.'] },
         },
       },
     })
