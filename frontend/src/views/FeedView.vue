@@ -98,7 +98,7 @@ const hasActiveFilters = computed(
 )
 
 onMounted(async () => {
-  if (feedStore.photos.length === 0) {
+  if (feedStore.photos.length === 0 && !feedStore.isLoading) {
     await feedStore.fetchPhotos()
   }
 })
