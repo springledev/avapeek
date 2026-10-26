@@ -80,10 +80,45 @@
   color: var(--color-ink);
 }
 
-[data-sonner-toast] [data-close-button] {
-  background: var(--color-surface);
+/* Sonner pins a 20px button to the corner with its own (light theme) colours. */
+[data-sonner-toast][data-styled='true'] {
+  padding-right: var(--target-min);
+}
+
+[data-sonner-toast][data-styled='true'] [data-close-button] {
+  left: auto;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--target-min);
+  height: var(--target-min);
+  background: transparent;
+  color: var(--color-ink-soft);
+  border: 0;
+  border-radius: var(--radius-pill);
+}
+
+[data-sonner-toast][data-styled='true'] [data-close-button]:hover {
+  background: var(--color-surface-2);
   color: var(--color-ink);
-  border: 1px solid var(--color-border);
+}
+
+[data-sonner-toast][data-styled='true'] [data-close-button] svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+[data-sonner-toast][data-styled='true'][data-type='success'] {
+  border-color: var(--success-border);
+}
+[data-sonner-toast][data-styled='true'][data-type='error'] {
+  border-color: var(--error-border);
+}
+[data-sonner-toast][data-styled='true'][data-type='warning'] {
+  border-color: var(--warning-border);
+}
+[data-sonner-toast][data-styled='true'][data-type='info'] {
+  border-color: var(--info-border);
 }
 
 [data-sonner-toast]:focus-visible,
