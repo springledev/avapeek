@@ -8,6 +8,7 @@ use App\Models\WebAuthnCredential;
 use App\Services\AuthSessionService;
 use App\Services\MfaTokenService;
 use App\Services\MfaWebAuthnService;
+use App\Services\PasswordProofService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -38,6 +39,7 @@ class MfaController extends Controller
         private MfaTokenService $mfaTokens,
         private AuthSessionService $authSession,
         private Google2FA $google2fa,
+        private PasswordProofService $passwordProofs,
     ) {}
 
     /**
@@ -137,13 +139,11 @@ class MfaController extends Controller
      */
     public function setupTotp(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'current_password' => ['required', 'string'],
-        ]);
+        $validated = $request->validate(PasswordProofService::rules());
 
         $user = $request->user();
 
-        $this->ensureCurrentPassword($user, $validated['current_password']);
+        $this->passwordProofs->assertValid($user, $validated);
 
         if ($user->totp_confirmed_at !== null) {
             throw ValidationException::withMessages([
@@ -227,13 +227,11 @@ class MfaController extends Controller
      */
     public function disableTotp(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'current_password' => ['required', 'string'],
-        ]);
+        $validated = $request->validate(PasswordProofService::rules());
 
         $user = $request->user();
 
-        $this->ensureCurrentPassword($user, $validated['current_password']);
+        $this->passwordProofs->assertValid($user, $validated);
 
         $user->totp_secret_encrypted = null;
         $user->totp_confirmed_at = null;
@@ -277,13 +275,11 @@ class MfaController extends Controller
      */
     public function registerPasskeyOptions(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'current_password' => ['required', 'string'],
-        ]);
+        $validated = $request->validate(PasswordProofService::rules());
 
         $user = $request->user();
 
-        $this->ensureCurrentPassword($user, $validated['current_password']);
+        $this->passwordProofs->assertValid($user, $validated);
         $options = $this->webAuthnService->buildRegistrationOptions($user);
 
         Cache::put(
@@ -362,9 +358,7 @@ class MfaController extends Controller
      */
     public function removePasskey(Request $request, WebAuthnCredential $credential): JsonResponse
     {
-        $validated = $request->validate([
-            'current_password' => ['required', 'string'],
-        ]);
+        $validated = $request->validate(PasswordProofService::rules());
 
         $user = $request->user();
 
@@ -372,7 +366,7 @@ class MfaController extends Controller
             abort(403, 'This passkey does not belong to your account.');
         }
 
-        $this->ensureCurrentPassword($user, $validated['current_password']);
+        $this->passwordProofs->assertValid($user, $validated);
 
         $credential->delete();
 
@@ -393,13 +387,11 @@ class MfaController extends Controller
      */
     public function regenerateRecoveryCodes(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'current_password' => ['required', 'string'],
-        ]);
+        $validated = $request->validate(PasswordProofService::rules());
 
         $user = $request->user();
 
-        $this->ensureCurrentPassword($user, $validated['current_password']);
+        $this->passwordProofs->assertValid($user, $validated);
 
         $recoveryCodes = $this->generateRecoveryCodes($user);
 
@@ -570,20 +562,6 @@ class MfaController extends Controller
         $user->save();
 
         return $codes;
-    }
-
-    /**
-     * Abort with a validation error unless the password matches the user's.
-     *
-     * @throws ValidationException
-     */
-    private function ensureCurrentPassword(User $user, string $password): void
-    {
-        if (! Hash::check($password, $user->password_hash)) {
-            throw ValidationException::withMessages([
-                'current_password' => ['The current password is incorrect.'],
-            ]);
-        }
     }
 
     /**

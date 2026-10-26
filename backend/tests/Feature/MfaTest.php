@@ -4,6 +4,7 @@ use App\Models\User;
 use App\Models\WebAuthnCredential;
 use App\Services\MfaTokenService;
 use App\Services\MfaWebAuthnService;
+use Database\Factories\UserFactory;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
@@ -19,7 +20,7 @@ describe('MFA login flow', function () {
 
         $response = $this->postJson('/api/auth/login', [
             'email' => $user->email,
-            'password' => 'password',
+            'auth_hash' => UserFactory::AUTH_HASH,
         ]);
 
         $response->assertStatus(200)
@@ -36,7 +37,7 @@ describe('MFA login flow', function () {
 
         $response = $this->postJson('/api/auth/login', [
             'email' => $user->email,
-            'password' => 'password',
+            'auth_hash' => UserFactory::AUTH_HASH,
         ]);
 
         $response->assertStatus(200)
@@ -268,7 +269,7 @@ describe('MFA login flow', function () {
 
         $mfaToken = $this->postJson('/api/auth/login', [
             'email' => $user->email,
-            'password' => 'password',
+            'auth_hash' => UserFactory::AUTH_HASH,
             'remember' => false,
         ])->json('mfa_token');
 
@@ -312,7 +313,7 @@ describe('MFA login flow', function () {
             'totp_confirmed_at' => now(),
         ]);
 
-        $this->postJson('/api/auth/login', ['email' => $user->email, 'password' => 'password'])
+        $this->postJson('/api/auth/login', ['email' => $user->email, 'auth_hash' => UserFactory::AUTH_HASH])
             ->assertStatus(200);
 
         $mfaToken = app(MfaTokenService::class)->create($user, true);
@@ -355,7 +356,7 @@ describe('TOTP setup', function () {
         $user = User::factory()->create();
 
         $response = $this->actingAs($user, 'sanctum')
-            ->postJson('/api/auth/mfa/totp/setup', ['current_password' => 'password']);
+            ->postJson('/api/auth/mfa/totp/setup', ['current_auth_hash' => UserFactory::AUTH_HASH]);
 
         $response->assertStatus(200)
             ->assertJsonStructure(['secret', 'otpauth_uri']);
@@ -391,7 +392,7 @@ describe('TOTP setup', function () {
         ]);
 
         $response = $this->actingAs($user, 'sanctum')
-            ->postJson('/api/auth/mfa/totp/setup', ['current_password' => 'password']);
+            ->postJson('/api/auth/mfa/totp/setup', ['current_auth_hash' => UserFactory::AUTH_HASH]);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['totp']);
@@ -405,7 +406,7 @@ describe('TOTP setup', function () {
         $user = User::factory()->create();
 
         $this->actingAs($user, 'sanctum')
-            ->postJson('/api/auth/mfa/totp/setup', ['current_password' => 'wrong-password'])
+            ->postJson('/api/auth/mfa/totp/setup', ['current_auth_hash' => str_repeat('f', 64)])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['current_password']);
 
@@ -469,7 +470,7 @@ describe('TOTP setup', function () {
 
         $response = $this->actingAs($user, 'sanctum')
             ->deleteJson('/api/auth/mfa/totp', [
-                'current_password' => 'password',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
             ]);
 
         $response->assertStatus(200)
@@ -486,7 +487,7 @@ describe('TOTP setup', function () {
 
         $response = $this->actingAs($user, 'sanctum')
             ->deleteJson('/api/auth/mfa/totp', [
-                'current_password' => 'wrong-password',
+                'current_auth_hash' => str_repeat('f', 64),
             ]);
 
         $response->assertStatus(422)
@@ -534,7 +535,7 @@ describe('Recovery codes', function () {
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson('/api/auth/mfa/recovery-codes', [
-                'current_password' => 'password',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
             ]);
 
         $response->assertStatus(200)
@@ -590,7 +591,7 @@ describe('Passkey setup', function () {
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson('/api/auth/mfa/passkeys/register/options', [
-                'current_password' => 'password',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
             ]);
 
         $response->assertStatus(200)
@@ -603,7 +604,7 @@ describe('Passkey setup', function () {
 
         $this->actingAs($user, 'sanctum')
             ->postJson('/api/auth/mfa/passkeys/register/options', [
-                'current_password' => 'wrong-password',
+                'current_auth_hash' => str_repeat('f', 64),
             ])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['current_password']);
@@ -633,7 +634,7 @@ describe('Passkey setup', function () {
         $user = User::factory()->create();
 
         $options = $this->actingAs($user, 'sanctum')
-            ->postJson('/api/auth/mfa/passkeys/register/options', ['current_password' => 'password'])
+            ->postJson('/api/auth/mfa/passkeys/register/options', ['current_auth_hash' => UserFactory::AUTH_HASH])
             ->json('options');
 
         $this->actingAs($user, 'sanctum')
@@ -651,7 +652,7 @@ describe('Passkey setup', function () {
         $user = User::factory()->create();
 
         $options = $this->actingAs($user, 'sanctum')
-            ->postJson('/api/auth/mfa/passkeys/register/options', ['current_password' => 'password'])
+            ->postJson('/api/auth/mfa/passkeys/register/options', ['current_auth_hash' => UserFactory::AUTH_HASH])
             ->json('options');
 
         $this->actingAs($user, 'sanctum')
@@ -665,7 +666,7 @@ describe('Passkey setup', function () {
         $user = User::factory()->create();
 
         $options = $this->actingAs($user, 'sanctum')
-            ->postJson('/api/auth/mfa/passkeys/register/options', ['current_password' => 'password'])
+            ->postJson('/api/auth/mfa/passkeys/register/options', ['current_auth_hash' => UserFactory::AUTH_HASH])
             ->json('options');
 
         $this->actingAs($user, 'sanctum')
@@ -682,7 +683,7 @@ describe('Passkey setup', function () {
         // Prime cache with options so validation proceeds to WebAuthn verification.
         $this->actingAs($user, 'sanctum')
             ->postJson('/api/auth/mfa/passkeys/register/options', [
-                'current_password' => 'password',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
             ]);
 
         $response = $this->actingAs($user, 'sanctum')
@@ -700,7 +701,7 @@ describe('Passkey setup', function () {
 
         $response = $this->actingAs($user, 'sanctum')
             ->deleteJson("/api/auth/mfa/passkeys/{$passkey->id}", [
-                'current_password' => 'password',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
             ]);
 
         $response->assertStatus(200)
@@ -716,7 +717,7 @@ describe('Passkey setup', function () {
 
         $response = $this->actingAs($user, 'sanctum')
             ->deleteJson("/api/auth/mfa/passkeys/{$passkey->id}", [
-                'current_password' => 'password',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
             ]);
 
         $response->assertStatus(403);
