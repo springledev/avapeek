@@ -449,10 +449,9 @@ export const useChildStore = defineStore('child', () => {
     currentPassword: string,
   ): Promise<void> {
     try {
-      await api.post(`/children/${childId}/transfer-ownership`, {
-        user_id: userId,
-        current_password: currentPassword,
-      })
+      await useAuthStore().withPasswordProof(currentPassword, (proof) =>
+        api.post(`/children/${childId}/transfer-ownership`, { user_id: userId, ...proof }),
+      )
       const idx = children.value.findIndex((c) => c.id === childId)
       const existing = idx >= 0 ? children.value[idx] : undefined
       if (idx >= 0 && existing) children.value[idx] = { ...existing, role: 'admin' }

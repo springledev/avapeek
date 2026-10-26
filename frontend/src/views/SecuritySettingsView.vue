@@ -16,6 +16,7 @@ import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/typ
 import { api } from '@/services/api'
 import { toast } from 'vue-sonner'
 import { apiErrorMessage } from '@/lib/util'
+import { useAuthStore } from '@/stores/auth'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiSheet from '@/components/ui/UiSheet.vue'
 import PasswordConfirmSheet from '@/components/PasswordConfirmSheet.vue'
@@ -115,10 +116,12 @@ async function fetchMethods() {
   }
 }
 
+const authStore = useAuthStore()
+
 async function startTotpSetup(password: string) {
-  const { data } = await api.post<{ secret: string; otpauth_uri: string }>('/auth/mfa/totp/setup', {
-    current_password: password,
-  })
+  const { data } = await authStore.withPasswordProof(password, (proof) =>
+    api.post<{ secret: string; otpauth_uri: string }>('/auth/mfa/totp/setup', proof),
+  )
   totpSecret.value = data.secret
   qrDataUrl.value = await QRCode.toDataURL(data.otpauth_uri)
   confirmCode.value = ''
@@ -278,29 +281,33 @@ async function onPasswordConfirm(password: string) {
         break
       case 'add-passkey':
         {
-          const { data } = await api.post<{ options: PublicKeyCredentialCreationOptionsJSON }>(
-            '/auth/mfa/passkeys/register/options',
-            { current_password: password },
+          const { data } = await authStore.withPasswordProof(password, (proof) =>
+            api.post<{ options: PublicKeyCredentialCreationOptionsJSON }>(
+              '/auth/mfa/passkeys/register/options',
+              proof,
+            ),
           )
           passkeyOptions.value = data.options
           passkeySheetOpen.value = true
         }
         break
       case 'disable-totp':
-        await api.delete('/auth/mfa/totp', { data: { current_password: password } })
+        await authStore.withPasswordProof(password, (proof) =>
+          api.delete('/auth/mfa/totp', { data: proof }),
+        )
         toast.success('Authenticator turned off.')
         break
       case 'remove-passkey':
-        await api.delete(`/auth/mfa/passkeys/${action.id}`, {
-          data: { current_password: password },
-        })
+        await authStore.withPasswordProof(password, (proof) =>
+          api.delete(`/auth/mfa/passkeys/${action.id}`, { data: proof }),
+        )
         toast.success('Passkey removed.')
         break
       case 'regenerate-recovery':
         {
-          const { data } = await api.post<{ recovery_codes: string[] }>('/auth/mfa/recovery-codes', {
-            current_password: password,
-          })
+          const { data } = await authStore.withPasswordProof(password, (proof) =>
+            api.post<{ recovery_codes: string[] }>('/auth/mfa/recovery-codes', proof),
+          )
           recoveryCodes.value = data.recovery_codes
           recoverySheetReason.value = 'replaced'
           recoverySheetOpen.value = true
