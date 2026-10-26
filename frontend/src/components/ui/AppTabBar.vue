@@ -4,6 +4,7 @@ import { LayoutGrid, Plus, Settings, Clock, LogOut } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth'
 import { signOut } from '@/lib/sign-out'
 import { useRecentsStore } from '@/stores/recents'
+import AppLogo from '@/components/ui/AppLogo.vue'
 
 const authStore = useAuthStore()
 const recentsStore = useRecentsStore()
@@ -22,6 +23,9 @@ async function handleLogout() {
 
 <template>
   <nav class="tabbar" aria-label="Main">
+    <RouterLink to="/feed" class="tabbar__brand u-focus-ring" aria-label="Avapeek home">
+      <AppLogo :size="32" wordmark />
+    </RouterLink>
     <ul class="tabbar__list">
       <li v-for="item in items" :key="item.to" class="tabbar__item">
         <RouterLink :to="item.to" class="tabbar__link u-focus-ring">
@@ -119,6 +123,7 @@ async function handleLogout() {
   line-height: 1;
 }
 
+.tabbar__brand,
 .tabbar__user {
   display: none;
 }
@@ -136,11 +141,22 @@ async function handleLogout() {
     border-right: 1px solid var(--color-border);
     padding-bottom: 0;
     box-shadow: none;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tabbar__brand {
+    display: flex;
+    align-items: center;
+    min-height: var(--target-min);
+    margin: var(--space-4) var(--space-2) 0;
+    padding: 0 var(--space-2);
+    text-decoration: none;
   }
 
   .tabbar__list {
     flex-direction: column;
-    height: 100%;
+    flex: 1;
     padding: var(--space-4) 0;
   }
 

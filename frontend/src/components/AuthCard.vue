@@ -1,5 +1,10 @@
+<script setup lang="ts">
+import AppLogo from '@/components/ui/AppLogo.vue'
+</script>
+
 <template>
   <div class="auth-page">
+    <AppLogo class="auth-page__logo" :size="44" wordmark />
     <div class="auth-card">
       <slot />
     </div>
@@ -9,8 +14,10 @@
 <style scoped>
 .auth-page {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-6);
   min-height: 100dvh;
   padding: var(--space-4);
   background: var(--color-bg);
