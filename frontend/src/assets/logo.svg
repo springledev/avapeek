@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Avapeek</title>
+  <defs>
+    <clipPath id="window"><rect x="146" y="116" width="220" height="214" rx="12"/></clipPath>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#e87a2e"/>
+  <g transform="translate(256 256) scale(1.12) rotate(-6) translate(-256 -251)">
+    <rect x="116" y="96" width="280" height="330" rx="22" fill="#2e1a0a" opacity=".18"/>
+    <rect x="116" y="86" width="280" height="330" rx="22" fill="#faf6f1"/>
+    <rect x="146" y="116" width="220" height="214" rx="12" fill="#2e2016"/>
+    <g clip-path="url(#window)">
+      <circle cx="256" cy="352" r="104" fill="#ffb067"/>
+      <path d="M248 250 q-6 -26 18 -30" fill="none" stroke="#ffb067" stroke-width="14" stroke-linecap="round"/>
+      <circle cx="220" cy="298" r="23" fill="#faf6f1"/>
+      <circle cx="292" cy="298" r="23" fill="#faf6f1"/>
+      <circle cx="226" cy="290" r="11.5" fill="#2e2016"/>
+      <circle cx="298" cy="290" r="11.5" fill="#2e2016"/>
+    </g>
+  </g>
+</svg>
