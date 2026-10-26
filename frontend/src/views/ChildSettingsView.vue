@@ -330,10 +330,11 @@ async function leaveFamily() {
     return
   }
 
+  const childName = child.value?.name
   try {
     await childStore.leaveChild(childId.value)
     closeMemberSheet()
-    toast.success("You've left the kid.")
+    toast.success(childName ? `You've left ${childName}.` : "You've left.")
     router.push('/settings/children')
   } catch (err: unknown) {
     toast.error(apiErrorMessage(err, "Couldn't leave — try again"))
