@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MSG } from '@/lib/messages'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import {
@@ -62,13 +63,13 @@ async function revokeInvite(id: number) {
   try {
     await api.delete(`/invites/${id}`)
     pendingInvites.value = pendingInvites.value.filter((i) => i.id !== id)
-    toast.success('Invite revoked.')
+    toast.success(MSG.inviteRevoked)
   } catch (err: unknown) {
     const message =
       err instanceof Error && 'response' in err
         ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
         : undefined
-    toast.error(message || 'Failed to revoke invite.')
+    toast.error(message || MSG.inviteRevokeFailed)
   }
 }
 

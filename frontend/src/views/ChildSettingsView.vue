@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MSG } from '@/lib/messages'
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useChildStore } from '@/stores/child'
@@ -85,7 +86,7 @@ async function saveEdit() {
       birthDate: editBirthDate.value || null,
     })
     showEditSheet.value = false
-    toast.success('Profile updated.')
+    toast.success(MSG.profileUpdated)
   } catch (err: unknown) {
     editError.value = firstValidationError(err) || apiErrorMessage(err, 'Failed to update profile.')
   } finally {
@@ -153,14 +154,14 @@ async function createInvite() {
       inviteRole.value === 'admin' || inviteCanUpload.value,
     )
     inviteResult.value = response
-    toast.success('Invite link created!')
+    toast.success('Invite link created.')
     await fetchPendingInvites()
   } catch (err: unknown) {
     const message =
       err instanceof Error && 'response' in err
         ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
         : undefined
-    toast.error(message || 'Failed to create invite.')
+    toast.error(message || "Couldn't create invite — try again")
   }
 }
 
@@ -168,13 +169,13 @@ async function revokeInvite(inviteId: number) {
   try {
     await api.delete(`/invites/${inviteId}`)
     pendingChildInvites.value = pendingChildInvites.value.filter((i) => i.id !== inviteId)
-    toast.success('Invite revoked.')
+    toast.success(MSG.inviteRevoked)
   } catch (err: unknown) {
     const message =
       err instanceof Error && 'response' in err
         ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
         : undefined
-    toast.error(message || 'Failed to revoke invite.')
+    toast.error(message || MSG.inviteRevokeFailed)
   }
 }
 
@@ -238,7 +239,7 @@ async function removeSelectedMember() {
     closeMemberSheet()
     toast.success(`${member.display_name} has been removed.`)
   } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, 'Failed to remove member.'))
+    toast.error(apiErrorMessage(err, "Couldn't remove that member — try again"))
   }
 }
 
@@ -262,7 +263,7 @@ async function changeSelectedRole(role: 'admin' | 'member') {
       `${member.display_name} is now ${updated.role === 'admin' ? 'an admin' : 'a member'}.`,
     )
   } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, 'Failed to change role.'))
+    toast.error(apiErrorMessage(err, "Couldn't change that role — try again"))
   }
 }
 
@@ -282,7 +283,7 @@ async function changeSelectedUpload(canUpload: boolean) {
         : `${member.display_name} is now view only.`,
     )
   } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, 'Failed to change permission.'))
+    toast.error(apiErrorMessage(err, "Couldn't change that permission — try again"))
   }
 }
 
@@ -313,7 +314,7 @@ async function confirmTransfer(password: string) {
     await fetchMembers()
   } catch (err: unknown) {
     transferError.value =
-      firstValidationError(err) || apiErrorMessage(err, 'Failed to transfer ownership.')
+      firstValidationError(err) || apiErrorMessage(err, "Couldn't transfer ownership — try again")
     toast.error(transferError.value)
   } finally {
     isTransferring.value = false
@@ -332,17 +333,17 @@ async function leaveFamily() {
   try {
     await childStore.leaveChild(childId.value)
     closeMemberSheet()
-    toast.success('You have left.')
+    toast.success("You've left the kid.")
     router.push('/settings/children')
   } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, 'Failed to leave.'))
+    toast.error(apiErrorMessage(err, "Couldn't leave — try again"))
   }
 }
 
 function copyInviteLink() {
   if (inviteResult.value?.url) {
     navigator.clipboard.writeText(inviteResult.value.url)
-    toast.success('Link copied to clipboard!')
+    toast.success('Link copied to clipboard.')
   }
 }
 

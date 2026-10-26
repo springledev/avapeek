@@ -111,7 +111,7 @@ async function fetchMethods() {
     const { data } = await api.get<MfaMethodsResponse>('/auth/mfa/methods')
     methods.value = data
   } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, 'Failed to load security settings.'))
+    toast.error(apiErrorMessage(err, "Couldn't load security settings — try again"))
   }
 }
 
@@ -152,7 +152,7 @@ async function confirmTotp() {
       closeTotpSheet()
     }
   } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, "That code didn't work. Try the newest code in your app."))
+    toast.error(apiErrorMessage(err, "That code didn't work — try the newest code in your app."))
   } finally {
     totpLoading.value = false
   }
@@ -314,7 +314,7 @@ async function onPasswordConfirm(password: string) {
     if (inlineError) {
       passwordError.value = inlineError
     } else {
-      toast.error(apiErrorMessage(err, 'Something went wrong. Please try again.'))
+      toast.error(apiErrorMessage(err, 'Something went wrong — try again'))
     }
   } finally {
     passwordLoading.value = false
@@ -326,7 +326,7 @@ function copyCodes() {
   navigator.clipboard
     .writeText(text)
     .then(() => toast.success('Recovery codes copied.'))
-    .catch(() => toast.error('Failed to copy recovery codes.'))
+    .catch(() => toast.error("Couldn't copy recovery codes — try again"))
 }
 
 function downloadCodes() {

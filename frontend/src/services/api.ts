@@ -33,7 +33,7 @@ class ApiService {
       (response) => response,
       async (error) => {
         if (error.code === 'ERR_NETWORK') {
-          toast.error('Connection failed. Check your internet connection.')
+          toast.error("Couldn't connect — check your internet and try again")
           return Promise.reject(error)
         }
 
@@ -51,22 +51,22 @@ class ApiService {
         }
 
         if (error.response?.status === 403) {
-          toast.error("You don't have permission to perform this action.")
+          toast.error("You don't have permission to do that.")
           return Promise.reject(error)
         }
 
         if (error.response?.status === 429) {
-          toast.error('Too many requests. Please wait and try again.')
+          toast.error('Too many tries — wait a moment and try again')
           return Promise.reject(error)
         }
 
         if (error.response?.status === 413) {
-          toast.error(error.response.data?.message || 'File too large.')
+          toast.error(error.response.data?.message || "That file is too large — try a smaller one")
           return Promise.reject(error)
         }
 
         if (error.response?.status && error.response.status >= 500) {
-          toast.error('Something went wrong. Please try again.')
+          toast.error('Something went wrong — try again')
           return Promise.reject(error)
         }
 

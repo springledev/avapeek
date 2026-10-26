@@ -88,4 +88,14 @@ export const MSG = {
       .filter(Boolean)
       .join(', '),
   bulkActionFailed: "That didn't work — try again",
+  removedFromKids: "Removed from your kids. Others it's shared with can still see it.",
+  photoDeleted: 'Photo deleted.',
+  photoDeleteFailed: "Couldn't delete that photo — try again",
+  tagAddFailed: "Couldn't add that tag — try again",
+  tagRemoveFailed: "Couldn't remove that tag — try again",
+  dateUpdated: 'Date updated.',
+  dateUpdateFailed: "Couldn't update that date — try again",
+  profileUpdated: 'Profile updated.',
+  inviteRevoked: 'Invite revoked.',
+  inviteRevokeFailed: "Couldn't revoke that invite — try again",
 } as const

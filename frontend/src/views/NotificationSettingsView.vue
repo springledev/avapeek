@@ -38,7 +38,7 @@ async function onToggleType(childId: number, key: 'notify_photos' | 'notify_comm
     const saved = await setPreferences(childId, next)
     preferences.value = new Map(preferences.value).set(childId, saved)
   } catch {
-    toast.error('Could not save that change. Please try again.')
+    toast.error("Couldn't save that change — try again")
   } finally {
     savingChildId.value = null
   }
