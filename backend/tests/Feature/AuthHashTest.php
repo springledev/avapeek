@@ -46,27 +46,17 @@ function proofEndpoint(string $name, User $user): array
 const PROOF_ENDPOINTS = ['totp setup', 'totp disable', 'passkey options', 'passkey remove', 'recovery codes', 'key pair', 'transfer ownership'];
 
 describe('POST /api/auth/prelogin', function () {
-    it('returns the salt and scheme of a known v2 account', function () {
+    it('returns the salt of a known account', function () {
         $user = User::factory()->create();
 
         $this->postJson('/api/auth/prelogin', ['email' => $user->email])
             ->assertOk()
-            ->assertExactJson(['data' => ['master_key_salt' => $user->master_key_salt, 'auth_scheme' => 'v2']]);
-    });
-
-    it('reports legacy accounts', function () {
-        $user = User::factory()->legacy()->create();
-
-        $this->postJson('/api/auth/prelogin', ['email' => $user->email])
-            ->assertOk()
-            ->assertJsonPath('data.auth_scheme', 'legacy')
-            ->assertJsonPath('data.master_key_salt', $user->master_key_salt);
+            ->assertExactJson(['data' => ['master_key_salt' => $user->master_key_salt]]);
     });
 
     it('returns a stable fake salt in the same shape for unknown emails', function () {
         $first = $this->postJson('/api/auth/prelogin', ['email' => 'nobody@example.com'])
             ->assertOk()
-            ->assertJsonPath('data.auth_scheme', 'v2')
             ->json('data');
         $again = $this->postJson('/api/auth/prelogin', ['email' => ' NoBody@example.com'])->json('data');
         $other = $this->postJson('/api/auth/prelogin', ['email' => 'someone@example.com'])->json('data');
@@ -107,14 +97,12 @@ describe('POST /api/auth/register with an auth hash', function () {
         ], $overrides);
     }
 
-    it('stores a bcrypt hash of the auth hash and marks the account v2', function () {
+    it('stores a bcrypt hash of the auth hash', function () {
         $this->postJson('/api/auth/register', registrationPayload())
             ->assertCreated()
-            ->assertJsonPath('user.auth_scheme', 'v2')
             ->assertJsonMissingPath('user.password_hash');
 
         $user = User::where('email', 'first@example.com')->firstOrFail();
-        expect($user->auth_scheme)->toBe('v2');
         expect($user->password_hash)->not->toBe(str_repeat('a', 64));
         expect(Hash::check(str_repeat('a', 64), $user->password_hash))->toBeTrue();
     });
@@ -161,12 +149,11 @@ describe('POST /api/auth/register with an auth hash', function () {
 });
 
 describe('POST /api/auth/login', function () {
-    it('logs a v2 account in with its auth hash', function () {
+    it('logs an account in with its auth hash', function () {
         $user = User::factory()->create();
 
         $this->postJson('/api/auth/login', ['email' => $user->email, 'auth_hash' => UserFactory::AUTH_HASH])
             ->assertOk()
-            ->assertJsonPath('user.auth_scheme', 'v2')
             ->assertJsonStructure(['token', 'encryption_keys']);
     });
 
@@ -187,44 +174,23 @@ describe('POST /api/auth/login', function () {
         expect($unknown->json())->toBe($wrong->json());
     });
 
-    it('rejects a plaintext password from a v2 account without downgrading it', function () {
+    it('never accepts a plaintext password as a credential', function () {
         $user = User::factory()->create();
 
-        $this->postJson('/api/auth/login', [
-            'email' => $user->email,
-            'password' => UserFactory::AUTH_HASH,
-            'new_auth_hash' => newAuthHash(),
-        ])
+        $this->postJson('/api/auth/login', ['email' => $user->email, 'password' => 'password'])
             ->assertStatus(422)
-            ->assertJsonPath('errors.email.0', 'The provided credentials are incorrect.');
+            ->assertJsonValidationErrors(['auth_hash'])
+            ->assertJsonMissingPath('token');
 
-        $this->postJson('/api/auth/login', [
-            'email' => $user->email,
-            'password' => 'password',
-            'new_auth_hash' => newAuthHash(),
-        ])->assertStatus(422);
-
-        $fresh = $user->fresh();
-        expect($fresh->auth_scheme)->toBe('v2');
-        expect(Hash::check(UserFactory::AUTH_HASH, $fresh->password_hash))->toBeTrue();
-    });
-
-    it('rejects an auth hash from a legacy account', function () {
-        $user = User::factory()->legacy()->create();
-
-        $this->postJson('/api/auth/login', ['email' => $user->email, 'auth_hash' => UserFactory::AUTH_HASH])
+        $this->postJson('/api/auth/login', ['email' => $user->email, 'password' => UserFactory::AUTH_HASH])
             ->assertStatus(422)
-            ->assertJsonPath('errors.email.0', 'The provided credentials are incorrect.');
-    });
+            ->assertJsonMissingPath('token');
 
-    it('requires new_auth_hash alongside a plaintext password', function () {
-        $user = User::factory()->legacy()->create();
-
-        $this->postJson('/api/auth/login', ['email' => $user->email, 'password' => UserFactory::LEGACY_PASSWORD])
+        $this->postJson('/api/auth/login', ['email' => $user->email, 'auth_hash' => 'password'])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['new_auth_hash']);
+            ->assertJsonValidationErrors(['auth_hash']);
 
-        expect($user->fresh()->auth_scheme)->toBe('legacy');
+        expect(Hash::check(UserFactory::AUTH_HASH, $user->fresh()->password_hash))->toBeTrue();
     });
 
     it('requires a credential', function () {
@@ -232,77 +198,19 @@ describe('POST /api/auth/login', function () {
 
         $this->postJson('/api/auth/login', ['email' => $user->email])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['auth_hash', 'password']);
-    });
-
-    it('migrates a legacy account on the first password login and then refuses the plaintext', function () {
-        $user = User::factory()->legacy()->create();
-
-        $this->postJson('/api/auth/login', [
-            'email' => $user->email,
-            'password' => UserFactory::LEGACY_PASSWORD,
-            'new_auth_hash' => newAuthHash(),
-        ])
-            ->assertOk()
-            ->assertJsonPath('user.auth_scheme', 'v2')
-            ->assertJsonStructure(['token']);
-
-        $fresh = $user->fresh();
-        expect($fresh->auth_scheme)->toBe('v2');
-        expect(Hash::check(newAuthHash(), $fresh->password_hash))->toBeTrue();
-        expect(Hash::check(UserFactory::LEGACY_PASSWORD, $fresh->password_hash))->toBeFalse();
-
-        $this->postJson('/api/auth/login', [
-            'email' => $user->email,
-            'password' => UserFactory::LEGACY_PASSWORD,
-            'new_auth_hash' => newAuthHash(),
-        ])->assertStatus(422);
-
-        $this->postJson('/api/auth/login', ['email' => $user->email, 'auth_hash' => newAuthHash()])->assertOk();
-    });
-
-    it('does not migrate a legacy account when the password is wrong', function () {
-        $user = User::factory()->legacy()->create();
-        $originalHash = $user->password_hash;
-
-        $this->postJson('/api/auth/login', [
-            'email' => $user->email,
-            'password' => 'not-the-password',
-            'new_auth_hash' => newAuthHash(),
-        ])->assertStatus(422);
-
-        $fresh = $user->fresh();
-        expect($fresh->auth_scheme)->toBe('legacy');
-        expect($fresh->password_hash)->toBe($originalHash);
-    });
-
-    it('migrates a legacy account with MFA as soon as the password is proven', function () {
-        $user = User::factory()->legacy()->create();
-        WebAuthnCredential::factory()->create(['user_id' => $user->id]);
-
-        $this->postJson('/api/auth/login', [
-            'email' => $user->email,
-            'password' => UserFactory::LEGACY_PASSWORD,
-            'new_auth_hash' => newAuthHash(),
-        ])
-            ->assertOk()
-            ->assertJsonPath('mfa_required', true)
-            ->assertJsonMissingPath('token');
-
-        expect($user->fresh()->auth_scheme)->toBe('v2');
+            ->assertJsonValidationErrors(['auth_hash']);
     });
 
     it('never returns or logs the auth hash or password', function () {
         Log::spy();
-        $user = User::factory()->legacy()->create();
+        $user = User::factory()->create();
 
         $response = $this->postJson('/api/auth/login', [
             'email' => $user->email,
-            'password' => UserFactory::LEGACY_PASSWORD,
-            'new_auth_hash' => newAuthHash(),
+            'auth_hash' => UserFactory::AUTH_HASH,
         ])->assertOk();
 
-        expect($response->getContent())->not->toContain(newAuthHash())
+        expect($response->getContent())->not->toContain(UserFactory::AUTH_HASH)
             ->not->toContain($user->fresh()->password_hash);
         Log::shouldNotHaveReceived('info');
         Log::shouldNotHaveReceived('warning');
@@ -311,7 +219,7 @@ describe('POST /api/auth/login', function () {
 });
 
 describe('password-confirmed endpoints', function () {
-    it('accept the auth hash of a v2 account', function (string $endpoint) {
+    it('accept the auth hash', function (string $endpoint) {
         $user = User::factory()->create(['encrypted_private_key' => null]);
         [$method, $url, $body] = proofEndpoint($endpoint, $user);
 
@@ -319,30 +227,28 @@ describe('password-confirmed endpoints', function () {
             ->json($method, $url, $body + ['current_auth_hash' => UserFactory::AUTH_HASH]);
 
         expect($response->status())->toBeIn([200, 201]);
-        expect($user->fresh()->auth_scheme)->toBe('v2');
     })->with(PROOF_ENDPOINTS);
 
-    it('reject a wrong auth hash with a current_password error', function (string $endpoint) {
+    it('reject a wrong auth hash with a current_auth_hash error', function (string $endpoint) {
         $user = User::factory()->create(['encrypted_private_key' => null]);
         [$method, $url, $body] = proofEndpoint($endpoint, $user);
 
         $this->actingAs($user, 'sanctum')
             ->json($method, $url, $body + ['current_auth_hash' => str_repeat('f', 64)])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
+            ->assertJsonValidationErrors(['current_auth_hash']);
     })->with(PROOF_ENDPOINTS);
 
-    it('reject a v2 account that sends a plaintext password', function (string $endpoint) {
+    it('reject a plaintext current_password on its own', function (string $endpoint) {
         $user = User::factory()->create(['encrypted_private_key' => null]);
         [$method, $url, $body] = proofEndpoint($endpoint, $user);
 
         $this->actingAs($user, 'sanctum')
-            ->json($method, $url, $body + ['current_password' => UserFactory::AUTH_HASH, 'new_auth_hash' => newAuthHash()])
+            ->json($method, $url, $body + ['current_password' => 'password'])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
+            ->assertJsonValidationErrors(['current_auth_hash']);
 
         $fresh = $user->fresh();
-        expect($fresh->auth_scheme)->toBe('v2');
         expect(Hash::check(UserFactory::AUTH_HASH, $fresh->password_hash))->toBeTrue();
     })->with(PROOF_ENDPOINTS);
 
@@ -353,44 +259,6 @@ describe('password-confirmed endpoints', function () {
         $this->actingAs($user, 'sanctum')
             ->json($method, $url, $body)
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_auth_hash', 'current_password']);
-    })->with(PROOF_ENDPOINTS);
-
-    it('migrate a legacy account that proves its plaintext password', function (string $endpoint) {
-        $user = User::factory()->legacy()->create(['encrypted_private_key' => null]);
-        [$method, $url, $body] = proofEndpoint($endpoint, $user);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->json($method, $url, $body + ['current_password' => UserFactory::LEGACY_PASSWORD, 'new_auth_hash' => newAuthHash()]);
-
-        expect($response->status())->toBeIn([200, 201]);
-
-        $fresh = $user->fresh();
-        expect($fresh->auth_scheme)->toBe('v2');
-        expect(Hash::check(newAuthHash(), $fresh->password_hash))->toBeTrue();
-    })->with(PROOF_ENDPOINTS);
-
-    it('leave a legacy account untouched when its plaintext password is wrong', function (string $endpoint) {
-        $user = User::factory()->legacy()->create(['encrypted_private_key' => null]);
-        [$method, $url, $body] = proofEndpoint($endpoint, $user);
-
-        $this->actingAs($user, 'sanctum')
-            ->json($method, $url, $body + ['current_password' => 'wrong', 'new_auth_hash' => newAuthHash()])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
-
-        expect($user->fresh()->auth_scheme)->toBe('legacy');
-    })->with(PROOF_ENDPOINTS);
-
-    it('reject an auth hash from a legacy account', function (string $endpoint) {
-        $user = User::factory()->legacy()->create(['encrypted_private_key' => null]);
-        [$method, $url, $body] = proofEndpoint($endpoint, $user);
-
-        $this->actingAs($user, 'sanctum')
-            ->json($method, $url, $body + ['current_auth_hash' => UserFactory::AUTH_HASH])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
-
-        expect($user->fresh()->auth_scheme)->toBe('legacy');
+            ->assertJsonValidationErrors(['current_auth_hash']);
     })->with(PROOF_ENDPOINTS);
 });

@@ -54,7 +54,7 @@ class AuthSessionService
     }
 
     /**
-     * @return array{id: int, email: string, display_name: string, master_key_salt: string, auth_scheme: string, public_key: string, encrypted_private_key: string|null}
+     * @return array{id: int, email: string, display_name: string, master_key_salt: string, public_key: string, encrypted_private_key: string|null}
      */
     public function userPayload(User $user): array
     {
@@ -63,7 +63,6 @@ class AuthSessionService
             'email' => $user->email,
             'display_name' => $user->display_name,
             'master_key_salt' => $user->master_key_salt,
-            'auth_scheme' => $user->usesLegacyAuth() ? User::AUTH_SCHEME_LEGACY : User::AUTH_SCHEME_V2,
             'public_key' => $user->public_key,
             'encrypted_private_key' => $user->encrypted_private_key,
         ];

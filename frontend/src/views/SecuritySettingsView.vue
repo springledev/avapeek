@@ -266,7 +266,7 @@ watch(passwordAction, () => {
 function currentPasswordError(err: unknown): string | null {
   const errors = (err as { response?: { data?: { errors?: Record<string, string[]> } } } | null)
     ?.response?.data?.errors
-  return errors?.current_password?.[0] ?? null
+  return errors?.current_auth_hash?.[0] ?? null
 }
 
 async function onPasswordConfirm(password: string) {

@@ -50,14 +50,13 @@ function methodsResponse(methods: string[], passkeys: Array<{ id: string; name: 
   })
 }
 
-async function mountView(authScheme: 'v2' | 'legacy' = 'v2') {
+async function mountView() {
   setActivePinia(createPinia())
   useAuthStore().user = {
     id: 1,
     email: 'ana@example.com',
     display_name: 'Ana',
     master_key_salt: 'salt',
-    auth_scheme: authScheme,
     public_key: 'pub',
   }
   const wrapper = mount(SecuritySettingsView, { global: { stubs: { teleport: true } } })
@@ -110,20 +109,6 @@ describe('SecuritySettingsView', () => {
     expect(wrapper.text()).toContain('SECRET')
   })
 
-  it('sends a legacy account\'s password once, with the hash that replaces it', async () => {
-    vi.mocked(api.get).mockResolvedValue(methodsResponse([]))
-    vi.mocked(api.post).mockResolvedValue(ok({ secret: 'SECRET', otpauth_uri: 'otpauth://x' }))
-    const wrapper = await mountView('legacy')
-
-    await buttonWithText(wrapper, 'Set up authenticator').trigger('click')
-    await confirmPassword(wrapper, 'secret')
-
-    expect(api.post).toHaveBeenCalledWith('/auth/mfa/totp/setup', {
-      current_password: 'secret',
-      new_auth_hash: 'auth-hash-of-secret',
-    })
-    expect(useAuthStore().user?.auth_scheme).toBe('v2')
-  })
 
   it('shows a wrong password inline instead of as a toast', async () => {
     vi.mocked(api.get).mockResolvedValue(methodsResponse([]))
@@ -132,7 +117,7 @@ describe('SecuritySettingsView', () => {
         status: 422,
         data: {
           message: 'The current password is incorrect.',
-          errors: { current_password: ['The current password is incorrect.'] },
+          errors: { current_auth_hash: ['The current password is incorrect.'] },
         },
       },
     })

@@ -120,11 +120,11 @@ function authHashOf(password: string): string {
   return `auth-hash-of-${password}`
 }
 
-/** Answers pre-login with the given scheme, and every other POST with the handler. */
-function mockPost(handler: (url: string, data?: unknown) => unknown, scheme = 'v2') {
+/** Answers pre-login, and every other POST with the handler. */
+function mockPost(handler: (url: string, data?: unknown) => unknown) {
   vi.mocked(api.post).mockImplementation((url: string, data?: unknown) => {
     if (url === '/auth/prelogin') {
-      return Promise.resolve(ok({ data: { master_key_salt: 'deadbeef', auth_scheme: scheme } }))
+      return Promise.resolve(ok({ data: { master_key_salt: 'deadbeef' } }))
     }
     return Promise.resolve(handler(url, data))
   })
@@ -213,20 +213,6 @@ describe('auth store', () => {
     expect(store.user?.email).toBe('ana@example.com')
   })
 
-  it('sends a legacy account\'s password once, with the auth hash that replaces it', async () => {
-    mockPost(() => ok(makeAuthResponse()), 'legacy')
-
-    const store = useAuthStore()
-    await store.login('ana@example.com', 'secret-password', true)
-
-    expect(deriveKekAndAuthHash).toHaveBeenCalledTimes(1)
-    expect(api.post).toHaveBeenCalledWith('/auth/login', {
-      email: 'ana@example.com',
-      password: 'secret-password',
-      new_auth_hash: authHashOf('secret-password'),
-      remember: true,
-    })
-  })
 
   it('returns MFA required instead of storing a session', async () => {
     const mfaPayload: MfaRequiredResponse = {
@@ -382,7 +368,7 @@ describe('auth store', () => {
   it('surfaces API errors on login failure', async () => {
     vi.mocked(api.post).mockImplementation((url: string) =>
       url === '/auth/prelogin'
-        ? Promise.resolve(ok({ data: { master_key_salt: 'deadbeef', auth_scheme: 'v2' } }))
+        ? Promise.resolve(ok({ data: { master_key_salt: 'deadbeef' } }))
         : Promise.reject({ response: { data: { message: 'Invalid credentials' } } }),
     )
 
@@ -462,54 +448,15 @@ describe('auth store', () => {
   })
 
   describe('withPasswordProof', () => {
-    it('sends only the auth hash for a v2 account', async () => {
+    it('sends only the auth hash', async () => {
       const store = useAuthStore()
-      store.user = makeUser({ auth_scheme: 'v2' })
+      store.user = makeUser()
       const send = vi.fn<(proof: unknown) => Promise<string>>().mockResolvedValue('done')
 
       await expect(store.withPasswordProof('secret-password', send)).resolves.toBe('done')
 
       expect(deriveKekAndAuthHash).toHaveBeenCalledWith('secret-password', 'deadbeef')
       expect(send).toHaveBeenCalledWith({ current_auth_hash: authHashOf('secret-password') })
-    })
-
-    it('sends a legacy account\'s password once with the hash to switch to, then behaves as v2', async () => {
-      const store = useAuthStore()
-      store.user = makeUser({ auth_scheme: 'legacy' })
-      const send = vi.fn<(proof: unknown) => Promise<string>>().mockResolvedValue('done')
-
-      await store.withPasswordProof('secret-password', send)
-      expect(send).toHaveBeenLastCalledWith({
-        current_password: 'secret-password',
-        new_auth_hash: authHashOf('secret-password'),
-      })
-      expect(store.user?.auth_scheme).toBe('v2')
-
-      await store.withPasswordProof('secret-password', send)
-      expect(send).toHaveBeenLastCalledWith({ current_auth_hash: authHashOf('secret-password') })
-    })
-
-    it('treats a saved session without a scheme as legacy', async () => {
-      const store = useAuthStore()
-      store.user = makeUser()
-      const send = vi.fn<(proof: unknown) => Promise<string>>().mockResolvedValue('done')
-
-      await store.withPasswordProof('secret-password', send)
-
-      expect(send).toHaveBeenCalledWith({
-        current_password: 'secret-password',
-        new_auth_hash: authHashOf('secret-password'),
-      })
-    })
-
-    it('stays legacy and rethrows when the server refuses the proof', async () => {
-      const store = useAuthStore()
-      store.user = makeUser({ auth_scheme: 'legacy' })
-      const failure = { response: { status: 422 } }
-      const send = vi.fn<(proof: unknown) => Promise<string>>().mockRejectedValue(failure)
-
-      await expect(store.withPasswordProof('wrong-password', send)).rejects.toBe(failure)
-      expect(store.user?.auth_scheme).toBe('legacy')
     })
   })
 
@@ -542,7 +489,7 @@ describe('auth store', () => {
       )
 
       const store = useAuthStore()
-      store.user = makeUser({ auth_scheme: 'v2' })
+      store.user = makeUser()
       await store.changePassword({
         currentPassword: 'old-password',
         newPassword: 'new-password',
@@ -564,31 +511,6 @@ describe('auth store', () => {
       expect(store.encryptionKeys).toEqual(savedKeys)
     })
 
-    it('proves a legacy account\'s old password in plaintext once, next to the new auth hash', async () => {
-      vi.mocked(rewrapDEK).mockResolvedValue('dek-1-new')
-      vi.mocked(rewrapPrivateKey).mockResolvedValue('private-new')
-      vi.mocked(api.put).mockResolvedValue(
-        ok({ user: makeUser({ auth_scheme: 'v2' }), encryption_keys: [] }),
-      )
-
-      const store = useAuthStore()
-      store.user = makeUser({ auth_scheme: 'legacy' })
-      await store.changePassword({
-        currentPassword: 'old-password',
-        newPassword: 'new-password',
-        newPasswordConfirmation: 'new-password',
-      })
-
-      expect(api.put).toHaveBeenCalledWith(
-        '/user/password',
-        expect.objectContaining({
-          current_password: 'old-password',
-          new_auth_hash: authHashOf('new-password'),
-        }),
-      )
-      expect(allSentPayloads()).not.toContain('"new-password"')
-      expect(store.user?.auth_scheme).toBe('v2')
-    })
 
     it.each([
       ['too short', 'short', 'short', 'at least 8'],
@@ -596,7 +518,7 @@ describe('auth store', () => {
       ['unchanged', 'old-password', 'old-password', 'must be different'],
     ])('rejects a %s new password before deriving anything', async (_name, next, confirm, message) => {
       const store = useAuthStore()
-      store.user = makeUser({ auth_scheme: 'v2' })
+      store.user = makeUser()
 
       const result = store.changePassword({
         currentPassword: 'old-password',

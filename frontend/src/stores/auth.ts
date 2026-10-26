@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { api } from '@/services/api'
 import apiService from '@/services/api'
-import { apiErrorMessage } from '@/lib/util'
+import { apiErrorMessage, safeErrorSummary } from '@/lib/util'
 import { clearDecryptedCache, setDecryptedCacheUser } from '@/lib/cache/decrypted-cache'
 import { clearShareInbox } from '@/lib/share-inbox'
 import {
@@ -19,7 +19,6 @@ import type {
   User,
   EncryptionKey,
   LoginRequest,
-  LegacyLoginRequest,
   PasswordProof,
   PreloginResponse,
   RegisterRequest,
@@ -180,7 +179,7 @@ export const useAuthStore = defineStore('auth', () => {
 
       return accepted_child ?? null
     } catch (err) {
-      console.error('Registration error:', err)
+      console.error('Registration error:', safeErrorSummary(err))
       error.value = apiErrorMessage(err, 'Registration failed. Please try again.')
       throw err
     } finally {
@@ -192,8 +191,7 @@ export const useAuthStore = defineStore('auth', () => {
    * Logs in an existing user and retrieves their encryption keys.
    *
    * The password is turned into a key in the browser and only the auth hash derived from
-   * that key is sent. Accounts from before the auth hash (`legacy`) send the password one
-   * last time so the server can switch them over.
+   * that key is sent.
    */
   async function login(
     email: string,
@@ -206,13 +204,10 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       const { data: prelogin } = await api.post<PreloginResponse>('/auth/prelogin', { email })
-      const { master_key_salt: salt, auth_scheme: scheme } = prelogin.data
+      const { master_key_salt: salt } = prelogin.data
       const { kek: derivedKEK, authHash } = await deriveKekAndAuthHash(password, salt)
 
-      const loginData: LoginRequest | LegacyLoginRequest =
-        scheme === 'legacy'
-          ? { email, password, new_auth_hash: authHash, remember: staySignedIn }
-          : { email, auth_hash: authHash, remember: staySignedIn }
+      const loginData: LoginRequest = { email, auth_hash: authHash, remember: staySignedIn }
       const response = await api.post<AuthResponse | MfaRequiredResponse>('/auth/login', loginData)
       const data = response.data
 
@@ -228,7 +223,7 @@ export const useAuthStore = defineStore('auth', () => {
       setStaySignedIn(staySignedIn)
       await storeAuthSession(data, derivedKEK, authHash)
     } catch (err) {
-      console.error('Login error:', err)
+      console.error('Login error:', safeErrorSummary(err))
       error.value = apiErrorMessage(err, 'Login failed. Please check your credentials.')
       throw err
     } finally {
@@ -259,8 +254,7 @@ export const useAuthStore = defineStore('auth', () => {
   /**
    * Accounts created before private keys were stored threw theirs away, so
    * nobody could share an album with them. Give them a fresh key pair; the
-   * password is only available at sign-in, which is why this runs here. By
-   * now the server has switched the account to auth hashes.
+   * password is only available at sign-in, which is why this runs here.
    */
   async function createMissingKeyPair(derivedKEK: CryptoKey, authHash: string): Promise<void> {
     try {
@@ -274,7 +268,7 @@ export const useAuthStore = defineStore('auth', () => {
       setUser(response.data.user)
     } catch (err) {
       // Best effort: sign-in still works, and this is retried at the next sign-in.
-      console.error('Failed to create key pair:', err)
+      console.error('Failed to create key pair:', safeErrorSummary(err))
     }
   }
 
@@ -319,7 +313,7 @@ export const useAuthStore = defineStore('auth', () => {
       pendingLogin = null
       await storeAuthSession(response.data, pending.kek, pending.authHash)
     } catch (err) {
-      console.error('MFA challenge error:', err)
+      console.error('MFA challenge error:', safeErrorSummary(err))
       error.value = apiErrorMessage(err, 'MFA verification failed. Please try again.')
       throw err
     } finally {
@@ -367,7 +361,7 @@ export const useAuthStore = defineStore('auth', () => {
       // Call logout API
       await api.post('/auth/logout')
     } catch (err) {
-      console.error('Logout error:', err)
+      console.error('Logout error:', safeErrorSummary(err))
       // Continue with local cleanup even if API call fails
     } finally {
       // Clear all auth data
@@ -458,9 +452,7 @@ export const useAuthStore = defineStore('auth', () => {
   /**
    * Runs a request that needs the account password (security settings, ownership transfer).
    *
-   * The typed password is turned into an auth hash here and only the hash is sent. A legacy
-   * account sends the password once, with the hash that replaces it; after that succeeds
-   * the account is v2 for the rest of the session.
+   * The typed password is turned into an auth hash here and only the hash is sent.
    */
   async function withPasswordProof<T>(
     password: string,
@@ -472,12 +464,6 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     const { authHash } = await deriveKekAndAuthHash(password, current.master_key_salt)
-
-    if (current.auth_scheme !== 'v2') {
-      const result = await send({ current_password: password, new_auth_hash: authHash })
-      setUser({ ...current, auth_scheme: 'v2' })
-      return result
-    }
 
     return send({ current_auth_hash: authHash })
   }
@@ -541,16 +527,10 @@ export const useAuthStore = defineStore('auth', () => {
         throw new WrongPasswordError()
       }
 
-      // A legacy account proves the old password in plaintext once; the new hash replaces it.
-      const proof =
-        user.value.auth_scheme === 'v2'
-          ? { current_auth_hash: oldAuthHash }
-          : { current_password: currentPassword }
-
       const response = await api.put<{ user: User; encryption_keys: EncryptionKey[] }>(
         '/user/password',
         {
-          ...proof,
+          current_auth_hash: oldAuthHash,
           new_auth_hash: newAuthHash,
           encryption_keys: rewrappedKeys,
           encrypted_private_key: rewrappedPrivateKey,

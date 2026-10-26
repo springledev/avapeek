@@ -58,4 +58,10 @@ describe('auth hash', () => {
     expect(authHash).toBe(await deriveAuthHash(kek))
     expect(await rawHex(kek)).toBe(await rawHex(await deriveKEK('correct horse battery', salt)))
   })
+
+  it('matches the precomputed WebCrypto vector, so a refactor cannot lock everyone out', async () => {
+    const { authHash } = await deriveKekAndAuthHash('correct horse battery staple', 'a1'.repeat(32))
+
+    expect(authHash).toBe('afe82116f5d660a9e9248d33a419f72648007a26afa06ef0c867c1d728e9572a')
+  })
 })
