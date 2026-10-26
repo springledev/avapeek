@@ -362,6 +362,8 @@ watch(count, (n) => {
   flex-wrap: wrap;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
+  padding-left: max(var(--space-3), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-3), env(safe-area-inset-right, 0px));
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
   box-shadow: var(--shadow-sheet);

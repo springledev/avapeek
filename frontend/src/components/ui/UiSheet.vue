@@ -86,6 +86,8 @@ function onEscape(event: KeyboardEvent) {
   box-shadow: var(--shadow-sheet);
   padding: var(--space-6);
   padding-bottom: calc(var(--space-6) + var(--safe-area-b));
+  padding-left: max(var(--space-6), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-6), env(safe-area-inset-right, 0px));
   animation: sheet-in var(--dur-standard) var(--ease-soft) both;
   max-height: 88vh;
   overflow-y: auto;

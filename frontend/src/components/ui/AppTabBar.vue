@@ -74,6 +74,8 @@ async function handleLogout() {
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
   padding-bottom: var(--safe-area-b);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
   box-shadow: 0 -1px 4px rgb(46 32 22 / 0.06);
 }
 
@@ -144,12 +146,14 @@ async function handleLogout() {
     top: 0;
     bottom: auto;
     inset-inline: 0 auto;
-    width: 200px;
-    min-width: 200px;
+    width: calc(200px + env(safe-area-inset-left, 0px));
+    min-width: calc(200px + env(safe-area-inset-left, 0px));
     height: 100dvh;
     border-top: none;
     border-right: 1px solid var(--color-border);
-    padding-bottom: 0;
+    padding-top: var(--safe-area-t);
+    padding-bottom: var(--safe-area-b);
+    padding-right: 0;
     box-shadow: none;
     display: flex;
     flex-direction: column;
