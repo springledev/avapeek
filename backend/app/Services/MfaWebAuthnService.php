@@ -113,7 +113,7 @@ class MfaWebAuthnService
             ],
             authenticatorSelection: AuthenticatorSelectionCriteria::create(
                 null,
-                AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_REQUIRED,
+                AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_PREFERRED,
                 AuthenticatorSelectionCriteria::RESIDENT_KEY_REQUIREMENT_NO_PREFERENCE,
                 null,
             ),
@@ -144,7 +144,7 @@ class MfaWebAuthnService
             challenge: $challenge,
             rpId: $this->getRpId(),
             allowCredentials: $allowCredentials,
-            userVerification: PublicKeyCredentialRequestOptions::USER_VERIFICATION_REQUIREMENT_REQUIRED,
+            userVerification: PublicKeyCredentialRequestOptions::USER_VERIFICATION_REQUIREMENT_PREFERRED,
             timeout: 60000,
         );
 
@@ -172,7 +172,13 @@ class MfaWebAuthnService
             ceremonyStepManager: $this->ceremonyStepManagerFactory->creationCeremony([$this->getRpId()])
         );
 
-        return $validator->check($publicKeyCredential->response, $options, $this->getOrigin());
+        try {
+            return $validator->check($publicKeyCredential->response, $options, $this->getOrigin());
+        } catch (AuthenticatorResponseVerificationException $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            throw AuthenticatorResponseVerificationException::create('Attestation could not be verified.', $e);
+        }
     }
 
     /**

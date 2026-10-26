@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -320,6 +321,12 @@ class MfaController extends Controller
         try {
             $credentialSource = $this->webAuthnService->verifyRegistration($validated['response'], $options);
         } catch (AuthenticatorResponseVerificationException $e) {
+            Log::warning('Passkey registration failed verification.', [
+                'user_id' => $user->id,
+                'reason' => $e->getMessage(),
+                'previous' => $e->getPrevious()?->getMessage(),
+            ]);
+
             throw ValidationException::withMessages([
                 'response' => ['The passkey registration could not be verified.'],
             ]);
