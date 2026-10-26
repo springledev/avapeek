@@ -408,7 +408,7 @@ describe('TOTP setup', function () {
         $this->actingAs($user, 'sanctum')
             ->postJson('/api/auth/mfa/totp/setup', ['current_auth_hash' => str_repeat('f', 64)])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
+            ->assertJsonValidationErrors(['current_auth_hash']);
 
         expect($user->fresh()->totp_secret_encrypted)->toBeNull();
     });
@@ -491,7 +491,7 @@ describe('TOTP setup', function () {
             ]);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
+            ->assertJsonValidationErrors(['current_auth_hash']);
     });
 });
 
@@ -607,7 +607,7 @@ describe('Passkey setup', function () {
                 'current_auth_hash' => str_repeat('f', 64),
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
+            ->assertJsonValidationErrors(['current_auth_hash']);
     });
 
     it('binds passkeys to the frontend origin rather than the API url', function () {

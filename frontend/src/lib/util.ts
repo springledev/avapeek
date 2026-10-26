@@ -26,6 +26,17 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
 }
 
 /**
+ * A log-safe summary of an error. Axios errors carry the request body (which holds
+ * the auth hash), so they must never be logged whole.
+ */
+export function safeErrorSummary(err: unknown): string {
+  const e = err as { response?: { status?: number }; message?: string } | null
+  const status = e?.response?.status
+  const message = typeof e?.message === 'string' ? e.message : 'unknown error'
+  return status ? `HTTP ${status}: ${message}` : message
+}
+
+/**
  * First field message from a Laravel 422 response, or null when the error has none.
  */
 export function firstValidationError(err: unknown): string | null {

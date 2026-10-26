@@ -145,7 +145,7 @@ describe('POST /api/children/{child}/transfer-ownership', function () {
             ->assertStatus(422);
         $this->actingAs($this->owner, 'sanctum')
             ->postJson($url, ['user_id' => $this->member->id, 'current_auth_hash' => str_repeat('f', 64)])
-            ->assertStatus(422)->assertJsonValidationErrors('current_password');
+            ->assertStatus(422)->assertJsonValidationErrors('current_auth_hash');
         expect(roleOf($this->child, $this->owner))->toBe('owner');
     });
 

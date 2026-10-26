@@ -118,7 +118,6 @@ async function mountView(role: string, members: ChildMember[], myId = ME) {
     email: 'me@example.com',
     display_name: 'Me',
     master_key_salt: 'salt',
-    auth_scheme: 'v2',
     public_key: 'pub',
   }
   const childStore = useChildStore()
@@ -440,7 +439,7 @@ describe('child membership', () => {
           isAxiosError: true,
           response: {
             status: 422,
-            data: { errors: { current_password: ['The current password is incorrect.'] } },
+            data: { errors: { current_auth_hash: ['The current password is incorrect.'] } },
           },
         }),
       )

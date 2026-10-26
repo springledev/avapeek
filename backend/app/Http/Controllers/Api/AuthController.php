@@ -63,7 +63,6 @@ class AuthController extends Controller
             $user = User::create([
                 'email' => $validated['email'],
                 'password_hash' => Hash::make($validated['auth_hash']),
-                'auth_scheme' => User::AUTH_SCHEME_V2,
                 'display_name' => $validated['display_name'],
                 'master_key_salt' => $validated['master_key_salt'],
                 'public_key' => $validated['public_key'],
@@ -115,8 +114,8 @@ class AuthController extends Controller
     /**
      * Tell the client how to derive its auth hash before it can log in.
      *
-     * Returns the account's key-derivation salt and auth scheme. Unknown emails get a
-     * stable fake salt and `v2`, so the answer does not show whether an account exists.
+     * Returns the account's key-derivation salt. Unknown emails get a stable fake
+     * salt, so the answer does not show whether an account exists.
      */
     public function prelogin(Request $request): JsonResponse
     {
@@ -131,7 +130,6 @@ class AuthController extends Controller
                 'master_key_salt' => $user !== null
                     ? $user->master_key_salt
                     : hash_hmac('sha256', strtolower(trim($validated['email'])), (string) config('app.key')),
-                'auth_scheme' => $user?->usesLegacyAuth() ? User::AUTH_SCHEME_LEGACY : User::AUTH_SCHEME_V2,
             ],
         ]);
     }
@@ -139,9 +137,7 @@ class AuthController extends Controller
     /**
      * Login an existing user.
      *
-     * A v2 account sends `auth_hash`. A legacy account sends its plaintext `password` once
-     * together with `new_auth_hash`, and is moved to v2 as soon as the password checks out.
-     * Authenticates the user and returns their wrapped DEKs
+     * The client sends `auth_hash`, never the password. Authenticates the user and returns their wrapped DEKs
      * for all families they belong to, allowing client-side decryption.
      * Accounts with MFA get a short-lived challenge token instead.
      *
@@ -151,23 +147,17 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'email' => ['required', 'string', 'email'],
-            'auth_hash' => ['required_without:password', 'nullable', 'string', 'regex:'.PasswordProofService::AUTH_HASH_REGEX],
-            'password' => ['required_without:auth_hash', 'nullable', 'string', 'max:1024'],
-            'new_auth_hash' => ['required_with:password', 'nullable', 'string', 'regex:'.PasswordProofService::AUTH_HASH_REGEX],
+            'auth_hash' => ['required', 'string', 'regex:'.PasswordProofService::AUTH_HASH_REGEX],
             'remember' => ['sometimes', 'boolean'],
         ]);
 
         $remember = $validated['remember'] ?? true;
         $user = User::where('email', $validated['email'])->first();
 
-        if (! $this->passwordProofs->matches($user, $validated['auth_hash'] ?? null, $validated['password'] ?? null)) {
+        if (! $this->passwordProofs->matches($user, $validated['auth_hash'])) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
-        }
-
-        if ($user->usesLegacyAuth()) {
-            $this->passwordProofs->upgrade($user, $validated['new_auth_hash']);
         }
 
         if ($user->hasMfaEnabled()) {
@@ -275,10 +265,9 @@ class AuthController extends Controller
             'encrypted_private_key' => [Rule::requiredIf($user->encrypted_private_key !== null), 'nullable', 'string', 'max:4000'],
         ]);
 
-        $this->passwordProofs->assertValid($user, $validated, upgrade: false);
+        $this->passwordProofs->assertValid($user, $validated);
 
-        if (($validated['current_auth_hash'] ?? null) !== null
-            && hash_equals($validated['current_auth_hash'], $validated['new_auth_hash'])) {
+        if (hash_equals($validated['current_auth_hash'], $validated['new_auth_hash'])) {
             throw ValidationException::withMessages([
                 'new_auth_hash' => ['The new password must be different from the current password.'],
             ]);
@@ -306,7 +295,6 @@ class AuthController extends Controller
             }
 
             $user->password_hash = Hash::make($validated['new_auth_hash']);
-            $user->auth_scheme = User::AUTH_SCHEME_V2;
 
             if ($user->encrypted_private_key !== null) {
                 $user->encrypted_private_key = $validated['encrypted_private_key'];

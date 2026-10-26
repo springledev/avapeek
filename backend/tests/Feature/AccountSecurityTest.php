@@ -112,12 +112,12 @@ describe('PUT /api/user/password', function () {
                 'encrypted_private_key' => 'new-private',
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
+            ->assertJsonValidationErrors(['current_auth_hash']);
 
         $this->assertDatabaseHas('encryption_keys', ['user_id' => $user->id, 'encrypted_dek' => 'old-dek']);
     });
 
-    it('marks the account as v2 and stops accepting the old auth hash', function () {
+    it('stops accepting the old auth hash', function () {
         ['user' => $user, 'child' => $child] = userWithOneAlbumKey();
 
         $this->actingAs($user, 'sanctum')
@@ -129,8 +129,7 @@ describe('PUT /api/user/password', function () {
                 ],
                 'encrypted_private_key' => 'new-private',
             ])
-            ->assertOk()
-            ->assertJsonPath('user.auth_scheme', 'v2');
+            ->assertOk();
 
         $this->postJson('/api/auth/login', ['email' => $user->email, 'auth_hash' => UserFactory::AUTH_HASH])
             ->assertStatus(422);
@@ -170,45 +169,6 @@ describe('PUT /api/user/password', function () {
             ->assertJsonValidationErrors(['new_auth_hash']);
 
         expect(Hash::check(UserFactory::AUTH_HASH, $user->fresh()->password_hash))->toBeTrue();
-    });
-
-    it('lets a legacy account change its password with the plaintext current password', function () {
-        $user = User::factory()->legacy()->create(['encrypted_private_key' => 'old-private']);
-        $child = Child::factory()->create(['created_by' => $user->id]);
-        ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => 'owner']);
-        EncryptionKey::create(['child_id' => $child->id, 'user_id' => $user->id, 'encrypted_dek' => 'old-dek', 'key_version' => 1]);
-
-        $this->actingAs($user, 'sanctum')
-            ->putJson('/api/user/password', [
-                'current_password' => UserFactory::LEGACY_PASSWORD,
-                'new_auth_hash' => str_repeat('b', 64),
-                'encryption_keys' => [
-                    ['child_id' => $child->id, 'key_version' => 1, 'encrypted_dek' => 'new-dek'],
-                ],
-                'encrypted_private_key' => 'new-private',
-            ])
-            ->assertOk()
-            ->assertJsonPath('user.auth_scheme', 'v2');
-
-        $fresh = $user->fresh();
-        expect($fresh->auth_scheme)->toBe('v2');
-        expect(Hash::check(str_repeat('b', 64), $fresh->password_hash))->toBeTrue();
-    });
-
-    it('rejects a wrong plaintext current password for a legacy account', function () {
-        $user = User::factory()->legacy()->create(['encrypted_private_key' => 'old-private']);
-
-        $this->actingAs($user, 'sanctum')
-            ->putJson('/api/user/password', [
-                'current_password' => 'wrong',
-                'new_auth_hash' => str_repeat('b', 64),
-                'encryption_keys' => [],
-                'encrypted_private_key' => 'new-private',
-            ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
-
-        expect($user->fresh()->auth_scheme)->toBe('legacy');
     });
 
     it('signs out other sessions but keeps the current one', function () {
@@ -288,22 +248,6 @@ describe('PUT /api/user/keypair', function () {
         expect($user->fresh()->encrypted_private_key)->toBe('existing');
     });
 
-    it('migrates a legacy account when it proves the plaintext password', function () {
-        $user = User::factory()->legacy()->create(['encrypted_private_key' => null]);
-
-        $this->actingAs($user, 'sanctum')
-            ->putJson('/api/user/keypair', [
-                'current_password' => UserFactory::LEGACY_PASSWORD,
-                'new_auth_hash' => str_repeat('c', 64),
-                'public_key' => 'new-public',
-                'encrypted_private_key' => 'new-private',
-            ])
-            ->assertOk()
-            ->assertJsonPath('user.auth_scheme', 'v2');
-
-        expect(Hash::check(str_repeat('c', 64), $user->fresh()->password_hash))->toBeTrue();
-    });
-
     it('requires the current password', function () {
         $user = User::factory()->create(['encrypted_private_key' => null]);
 
@@ -314,7 +258,7 @@ describe('PUT /api/user/keypair', function () {
                 'encrypted_private_key' => 'new-private',
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['current_password']);
+            ->assertJsonValidationErrors(['current_auth_hash']);
     });
 });
 

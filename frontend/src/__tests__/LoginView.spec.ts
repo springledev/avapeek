@@ -99,11 +99,11 @@ async function mountLoginView(path = '/login', beforeMount?: () => void) {
   return { wrapper, router }
 }
 
-/** Answers pre-login like a v2 account, and everything else with the handler. */
-function mockPost(handler: (url: string, data?: unknown) => Promise<unknown>, scheme = 'v2') {
+/** Answers pre-login, and everything else with the handler. */
+function mockPost(handler: (url: string, data?: unknown) => Promise<unknown>) {
   vi.mocked(api.post).mockImplementation((url: string, data?: unknown) => {
     if (url === '/auth/prelogin') {
-      return Promise.resolve(ok({ data: { master_key_salt: 'salt', auth_scheme: scheme } }))
+      return Promise.resolve(ok({ data: { master_key_salt: 'salt' } }))
     }
     return handler(url, data)
   })
@@ -195,19 +195,6 @@ describe('LoginView', () => {
     expect(JSON.stringify(vi.mocked(api.post).mock.calls)).not.toContain('"secret"')
   })
 
-  it('sends a legacy account\'s password only once, with the auth hash that replaces it', async () => {
-    mockPost(() => Promise.resolve(ok(authResponse)), 'legacy')
-
-    const { wrapper } = await mountLoginView()
-    await signInWithPassword(wrapper)
-
-    expect(api.post).toHaveBeenCalledWith('/auth/login', {
-      email: 'ana@example.com',
-      password: 'secret',
-      new_auth_hash: 'auth-hash-of-secret',
-      remember: true,
-    })
-  })
 
   it('returns to the password step when the MFA session has expired', async () => {
     mockPost((url: string) => {
