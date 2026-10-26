@@ -131,9 +131,9 @@ async function deletePhoto(photoId: number) {
   try {
     const res = await api.delete(`/photos/${photoId}`)
     if (res.data?.remaining) {
-      toast.success('Removed from your children. Still visible to others it is shared with.')
+      toast.success(MSG.removedFromKids)
     } else {
-      toast.success('Photo deleted')
+      toast.success(MSG.photoDeleted)
     }
     selectedPhoto.value = null
     recentsStore.fetchRecents()
@@ -142,7 +142,7 @@ async function deletePhoto(photoId: number) {
       err instanceof Error && 'response' in err
         ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
         : undefined
-    toast.error(message || 'Failed to delete photo')
+    toast.error(message || MSG.photoDeleteFailed)
   }
 }
 
@@ -152,7 +152,7 @@ async function addTag(photoId: number, tagName: string) {
   try {
     await useTagsStore().attach(photo, tagName)
   } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, 'Failed to add tag'))
+    toast.error(apiErrorMessage(err, MSG.tagAddFailed))
   }
 }
 
@@ -162,21 +162,21 @@ async function removeTag(photoId: number, tagId: number) {
   try {
     await useTagsStore().detach(photo, tagId)
   } catch (err: unknown) {
-    toast.error(apiErrorMessage(err, 'Failed to remove tag'))
+    toast.error(apiErrorMessage(err, MSG.tagRemoveFailed))
   }
 }
 
 async function updateDate(photoId: number, takenAt: string) {
   try {
     await api.patch(`/photos/${photoId}`, { taken_at: takenAt })
-    toast.success('Date updated')
+    toast.success(MSG.dateUpdated)
     recentsStore.fetchRecents()
   } catch (err: unknown) {
     const message =
       err instanceof Error && 'response' in err
         ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
         : undefined
-    toast.error(message || 'Failed to update date')
+    toast.error(message || MSG.dateUpdateFailed)
   }
 }
 

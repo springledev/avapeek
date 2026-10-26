@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MSG } from '@/lib/messages'
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { toast } from 'vue-sonner'
@@ -60,9 +61,9 @@ async function saveProfile() {
   savingProfile.value = true
   try {
     await authStore.updateProfile(payload)
-    toast.success('Profile updated.')
+    toast.success(MSG.profileUpdated)
   } catch (err: unknown) {
-    toast.error(errorMessage(err, 'Failed to update profile.'))
+    toast.error(errorMessage(err, "Couldn't update your profile — try again"))
   } finally {
     savingProfile.value = false
   }

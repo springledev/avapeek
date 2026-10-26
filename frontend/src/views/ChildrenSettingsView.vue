@@ -23,7 +23,7 @@ async function finishSetup(childId: number) {
     await childStore.finishKeySetup(childId)
     toast.success('All set. You can now add photos.')
   } catch {
-    toast.error(childStore.error || 'Could not finish setting up. Please try again.')
+    toast.error(childStore.error || "Couldn't finish setting up — try again")
   } finally {
     finishingId.value = null
   }
