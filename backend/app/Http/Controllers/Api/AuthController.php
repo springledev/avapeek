@@ -9,12 +9,12 @@ use App\Models\Invite;
 use App\Models\User;
 use App\Services\AuthSessionService;
 use App\Services\MfaTokenService;
+use App\Services\PasswordProofService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -23,12 +23,15 @@ class AuthController extends Controller
     public function __construct(
         private AuthSessionService $authSession,
         private MfaTokenService $mfaTokens,
+        private PasswordProofService $passwordProofs,
     ) {}
 
     /**
      * Register a new user account.
      *
-     * Creates a new user with email, password, and display name.
+     * Creates a new user with email, auth hash, and display name. The password
+     * never leaves the browser: `auth_hash` is derived from the key that the
+     * password produces, and only a bcrypt hash of it is stored.
      * Also stores encryption metadata (master_key_salt, public_key and the
      * KEK-wrapped private key) needed for the zero-knowledge encryption system.
      *
@@ -47,7 +50,7 @@ class AuthController extends Controller
 
         $validated = $request->validate([
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'password' => ['required', 'string', Password::defaults()],
+            'auth_hash' => ['required', 'string', 'regex:'.PasswordProofService::AUTH_HASH_REGEX],
             'display_name' => ['required', 'string', 'max:100', 'regex:/^[\pL\pN\s\-.,\']+$/u'],
             'master_key_salt' => ['required', 'string', 'max:64', 'regex:/^[a-f0-9]+$/i'],
             'public_key' => ['required', 'string', 'max:2000'],
@@ -59,7 +62,8 @@ class AuthController extends Controller
         [$user, $acceptedChild] = DB::transaction(function () use ($validated, $inviteToken): array {
             $user = User::create([
                 'email' => $validated['email'],
-                'password_hash' => Hash::make($validated['password']),
+                'password_hash' => Hash::make($validated['auth_hash']),
+                'auth_scheme' => User::AUTH_SCHEME_V2,
                 'display_name' => $validated['display_name'],
                 'master_key_salt' => $validated['master_key_salt'],
                 'public_key' => $validated['public_key'],
@@ -109,8 +113,34 @@ class AuthController extends Controller
     }
 
     /**
+     * Tell the client how to derive its auth hash before it can log in.
+     *
+     * Returns the account's key-derivation salt and auth scheme. Unknown emails get a
+     * stable fake salt and `v2`, so the answer does not show whether an account exists.
+     */
+    public function prelogin(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'string', 'email', 'max:255'],
+        ]);
+
+        $user = User::where('email', $validated['email'])->first();
+
+        return response()->json([
+            'data' => [
+                'master_key_salt' => $user !== null
+                    ? $user->master_key_salt
+                    : hash_hmac('sha256', strtolower(trim($validated['email'])), (string) config('app.key')),
+                'auth_scheme' => $user?->usesLegacyAuth() ? User::AUTH_SCHEME_LEGACY : User::AUTH_SCHEME_V2,
+            ],
+        ]);
+    }
+
+    /**
      * Login an existing user.
      *
+     * A v2 account sends `auth_hash`. A legacy account sends its plaintext `password` once
+     * together with `new_auth_hash`, and is moved to v2 as soon as the password checks out.
      * Authenticates the user and returns their wrapped DEKs
      * for all families they belong to, allowing client-side decryption.
      * Accounts with MFA get a short-lived challenge token instead.
@@ -121,17 +151,23 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'email' => ['required', 'string', 'email'],
-            'password' => ['required', 'string'],
+            'auth_hash' => ['required_without:password', 'nullable', 'string', 'regex:'.PasswordProofService::AUTH_HASH_REGEX],
+            'password' => ['required_without:auth_hash', 'nullable', 'string', 'max:1024'],
+            'new_auth_hash' => ['required_with:password', 'nullable', 'string', 'regex:'.PasswordProofService::AUTH_HASH_REGEX],
             'remember' => ['sometimes', 'boolean'],
         ]);
 
         $remember = $validated['remember'] ?? true;
         $user = User::where('email', $validated['email'])->first();
 
-        if (! $user || ! Hash::check($validated['password'], $user->password_hash)) {
+        if (! $this->passwordProofs->matches($user, $validated['auth_hash'] ?? null, $validated['password'] ?? null)) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
+        }
+
+        if ($user->usesLegacyAuth()) {
+            $this->passwordProofs->upgrade($user, $validated['new_auth_hash']);
         }
 
         if ($user->hasMfaEnabled()) {
@@ -221,8 +257,8 @@ class AuthController extends Controller
      *
      * The KEK is derived from the password, so the client re-wraps every
      * KEK-wrapped DEK and the private key with the new KEK and sends them
-     * here. They are saved together with the new password hash, or not at all.
-     * Other sessions are signed out because they hold the old KEK.
+     * here with the auth hash of the new password. They are saved together with
+     * it, or not at all. Other sessions are signed out because they hold the old KEK.
      *
      * @throws ValidationException
      */
@@ -231,8 +267,7 @@ class AuthController extends Controller
         $user = $request->user();
 
         $validated = $request->validate([
-            'current_password' => ['required', 'string'],
-            'new_password' => ['required', 'string', Password::defaults(), 'confirmed', 'different:current_password'],
+            ...PasswordProofService::rules(changingPassword: true),
             'encryption_keys' => ['present', 'array'],
             'encryption_keys.*.child_id' => ['required', 'integer'],
             'encryption_keys.*.key_version' => ['required', 'integer'],
@@ -240,9 +275,12 @@ class AuthController extends Controller
             'encrypted_private_key' => [Rule::requiredIf($user->encrypted_private_key !== null), 'nullable', 'string', 'max:4000'],
         ]);
 
-        if (! Hash::check($validated['current_password'], $user->password_hash)) {
+        $this->passwordProofs->assertValid($user, $validated, upgrade: false);
+
+        if (($validated['current_auth_hash'] ?? null) !== null
+            && hash_equals($validated['current_auth_hash'], $validated['new_auth_hash'])) {
             throw ValidationException::withMessages([
-                'current_password' => ['The current password is incorrect.'],
+                'new_auth_hash' => ['The new password must be different from the current password.'],
             ]);
         }
 
@@ -267,7 +305,8 @@ class AuthController extends Controller
                 $key->save();
             }
 
-            $user->password_hash = $validated['new_password'];
+            $user->password_hash = Hash::make($validated['new_auth_hash']);
+            $user->auth_scheme = User::AUTH_SCHEME_V2;
 
             if ($user->encrypted_private_key !== null) {
                 $user->encrypted_private_key = $validated['encrypted_private_key'];
@@ -302,16 +341,12 @@ class AuthController extends Controller
         $user = $request->user();
 
         $validated = $request->validate([
-            'current_password' => ['required', 'string'],
+            ...PasswordProofService::rules(),
             'public_key' => ['required', 'string', 'max:2000'],
             'encrypted_private_key' => ['required', 'string', 'max:4000'],
         ]);
 
-        if (! Hash::check($validated['current_password'], $user->password_hash)) {
-            throw ValidationException::withMessages([
-                'current_password' => ['The current password is incorrect.'],
-            ]);
-        }
+        $this->passwordProofs->assertValid($user, $validated);
 
         if ($user->encrypted_private_key !== null) {
             return response()->json([

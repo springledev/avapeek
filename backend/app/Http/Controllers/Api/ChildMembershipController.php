@@ -8,14 +8,15 @@ use App\Models\ChildUser;
 use App\Models\EncryptionKey;
 use App\Models\Invite;
 use App\Models\User;
+use App\Services\PasswordProofService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class ChildMembershipController extends Controller
 {
+    public function __construct(private PasswordProofService $passwordProofs) {}
+
     /**
      * Set a member's role to admin or member. Owner only.
      */
@@ -95,16 +96,12 @@ class ChildMembershipController extends Controller
     {
         $validated = $request->validate([
             'user_id' => ['required', 'integer'],
-            'current_password' => ['required', 'string'],
+            ...PasswordProofService::rules(),
         ]);
 
         $caller = $request->user();
 
-        if (! Hash::check($validated['current_password'], $caller->password_hash)) {
-            throw ValidationException::withMessages([
-                'current_password' => ['The current password is incorrect.'],
-            ]);
-        }
+        $this->passwordProofs->assertValid($caller, $validated);
 
         $targetId = (int) $validated['user_id'];
 

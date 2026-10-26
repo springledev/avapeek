@@ -14,12 +14,22 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['email', 'password_hash', 'display_name', 'master_key_salt', 'public_key', 'encrypted_private_key', 'last_seen_at', 'totp_secret_encrypted', 'totp_confirmed_at', 'totp_last_timestep', 'mfa_recovery_codes_hash'])]
+#[Fillable(['email', 'password_hash', 'auth_scheme', 'display_name', 'master_key_salt', 'public_key', 'encrypted_private_key', 'last_seen_at', 'totp_secret_encrypted', 'totp_confirmed_at', 'totp_last_timestep', 'mfa_recovery_codes_hash'])]
 #[Hidden(['password_hash', 'remember_token', 'encrypted_private_key', 'totp_secret_encrypted', 'mfa_recovery_codes_hash'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
+
+    /**
+     * The server stores a bcrypt hash of the plaintext password (accounts from before the auth hash).
+     */
+    public const AUTH_SCHEME_LEGACY = 'legacy';
+
+    /**
+     * The server only ever sees a client-derived auth hash and stores a bcrypt hash of that.
+     */
+    public const AUTH_SCHEME_V2 = 'v2';
 
     protected function casts(): array
     {
@@ -84,6 +94,11 @@ class User extends Authenticatable
     public function webauthnCredentials(): HasMany
     {
         return $this->hasMany(WebAuthnCredential::class);
+    }
+
+    public function usesLegacyAuth(): bool
+    {
+        return $this->auth_scheme !== self::AUTH_SCHEME_V2;
     }
 
     public function hasMfaEnabled(): bool

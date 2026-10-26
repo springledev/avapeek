@@ -7,6 +7,7 @@ use App\Models\Invite;
 use App\Models\Photo;
 use App\Models\Tag;
 use App\Models\User;
+use Database\Factories\UserFactory;
 use Illuminate\Support\Facades\Storage;
 
 function familyMember(string $role, Child $child): User
@@ -126,7 +127,7 @@ describe('POST /api/children/{child}/transfer-ownership', function () {
         $this->actingAs($this->owner, 'sanctum')
             ->postJson("/api/children/{$this->child->id}/transfer-ownership", [
                 'user_id' => $this->member->id,
-                'current_password' => 'password',
+                'current_auth_hash' => UserFactory::AUTH_HASH,
             ])
             ->assertOk()
             ->assertJsonPath('data.role', 'owner');
@@ -143,7 +144,7 @@ describe('POST /api/children/{child}/transfer-ownership', function () {
         $this->actingAs($this->owner, 'sanctum')->postJson($url, ['user_id' => $this->member->id])
             ->assertStatus(422);
         $this->actingAs($this->owner, 'sanctum')
-            ->postJson($url, ['user_id' => $this->member->id, 'current_password' => 'wrong'])
+            ->postJson($url, ['user_id' => $this->member->id, 'current_auth_hash' => str_repeat('f', 64)])
             ->assertStatus(422)->assertJsonValidationErrors('current_password');
         expect(roleOf($this->child, $this->owner))->toBe('owner');
     });
@@ -152,10 +153,10 @@ describe('POST /api/children/{child}/transfer-ownership', function () {
         $url = "/api/children/{$this->child->id}/transfer-ownership";
 
         $this->actingAs($this->owner, 'sanctum')
-            ->postJson($url, ['user_id' => $this->owner->id, 'current_password' => 'password'])
+            ->postJson($url, ['user_id' => $this->owner->id, 'current_auth_hash' => UserFactory::AUTH_HASH])
             ->assertStatus(422);
         $this->actingAs($this->owner, 'sanctum')
-            ->postJson($url, ['user_id' => $this->stranger->id, 'current_password' => 'password'])
+            ->postJson($url, ['user_id' => $this->stranger->id, 'current_auth_hash' => UserFactory::AUTH_HASH])
             ->assertNotFound();
         expect(ownerCount($this->child))->toBe(1);
     });
@@ -166,7 +167,7 @@ describe('POST /api/children/{child}/transfer-ownership', function () {
 
         $this->actingAs($this->owner, 'sanctum')
             ->postJson("/api/children/{$this->child->id}/transfer-ownership", [
-                'user_id' => $outsider->id, 'current_password' => 'password',
+                'user_id' => $outsider->id, 'current_auth_hash' => UserFactory::AUTH_HASH,
             ])->assertNotFound();
         expect(roleOf($other, $outsider))->toBe('member');
         expect(roleOf($this->child, $this->owner))->toBe('owner');
@@ -174,7 +175,7 @@ describe('POST /api/children/{child}/transfer-ownership', function () {
 
     it('forbids admins, members and non-members', function () {
         $url = "/api/children/{$this->child->id}/transfer-ownership";
-        $body = ['user_id' => $this->member->id, 'current_password' => 'password'];
+        $body = ['user_id' => $this->member->id, 'current_auth_hash' => UserFactory::AUTH_HASH];
 
         $this->actingAs($this->admin, 'sanctum')->postJson($url, $body)->assertForbidden();
         $this->actingAs($this->member, 'sanctum')->postJson($url, $body)->assertForbidden();
@@ -190,7 +191,7 @@ describe('POST /api/children/{child}/transfer-ownership', function () {
     it('lets the former owner invite and the new owner demote them', function () {
         $this->actingAs($this->owner, 'sanctum')
             ->postJson("/api/children/{$this->child->id}/transfer-ownership", [
-                'user_id' => $this->member->id, 'current_password' => 'password',
+                'user_id' => $this->member->id, 'current_auth_hash' => UserFactory::AUTH_HASH,
             ])->assertOk();
 
         $this->actingAs($this->owner->fresh(), 'sanctum')
