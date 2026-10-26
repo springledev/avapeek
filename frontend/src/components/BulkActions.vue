@@ -37,6 +37,9 @@ const tagsStore = useTagsStore()
 
 const count = computed(() => props.photos.length)
 
+/** Removal is offered when at least one selected photo can be removed by the viewer. */
+const canRemove = computed(() => props.photos.some((p) => p.can_delete === true))
+
 type Sheet = 'remove' | 'tags' | 'share' | null
 const sheet = ref<Sheet>(null)
 
@@ -250,11 +253,25 @@ watch(count, (n) => {
       <Tag :size="20" aria-hidden="true" />
       <span class="bar__label">{{ MSG.bulkTags }}</span>
     </button>
-    <button type="button" class="bar__btn u-focus-ring" :disabled="busy" data-test="bulk-share" @click="sheet = 'share'">
+    <button
+      v-if="childStore.canUploadAnywhere"
+      type="button"
+      class="bar__btn u-focus-ring"
+      :disabled="busy"
+      data-test="bulk-share"
+      @click="sheet = 'share'"
+    >
       <Share2 :size="20" aria-hidden="true" />
       <span class="bar__label">{{ MSG.bulkShare }}</span>
     </button>
-    <button type="button" class="bar__btn bar__btn--danger u-focus-ring" :disabled="busy" data-test="bulk-remove" @click="sheet = 'remove'">
+    <button
+      v-if="canRemove"
+      type="button"
+      class="bar__btn bar__btn--danger u-focus-ring"
+      :disabled="busy"
+      data-test="bulk-remove"
+      @click="sheet = 'remove'"
+    >
       <Trash2 :size="20" aria-hidden="true" />
       <span class="bar__label">{{ MSG.bulkRemove }}</span>
     </button>

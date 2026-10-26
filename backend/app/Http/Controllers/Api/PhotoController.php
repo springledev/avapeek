@@ -437,7 +437,7 @@ class PhotoController extends Controller
         $photo->loadCount('comments');
 
         return response()->json([
-            'data' => $this->formatPhoto($photo, $user->children()->pluck('children.id')->all()),
+            'data' => $this->formatPhoto($photo, $user->children()->pluck('children.id')->all(), $user->id, $this->viewerMemberships($user)),
         ], $status);
     }
 
@@ -445,6 +445,7 @@ class PhotoController extends Controller
     {
         $user = $request->user();
         $accessibleChildIds = $user->children()->pluck('children.id');
+        $memberships = $this->viewerMemberships($user);
 
         $query = Photo::visibleTo($user)->with(['tags', 'children' => function ($q) {
             $q->select('children.id', 'children.name', 'children.avatar_color');
@@ -483,7 +484,7 @@ class PhotoController extends Controller
             ->paginate(48);
 
         return response()->json([
-            'data' => $photos->getCollection()->map(fn (Photo $photo) => array_merge($this->formatPhoto($photo, $accessibleChildIds->all()), [
+            'data' => $photos->getCollection()->map(fn (Photo $photo) => array_merge($this->formatPhoto($photo, $accessibleChildIds->all(), $user->id, $memberships), [
                 'thumbnail_url' => $this->storageService->presignedUrl($photo->thumbnail_path, 30),
             ])),
             'meta' => [
@@ -509,7 +510,7 @@ class PhotoController extends Controller
         $presignedUrl = $this->storageService->presignedUrl($photo->original_path, 10);
 
         return response()->json([
-            'data' => array_merge($this->formatPhoto($photo, $request->user()->children()->pluck('children.id')->all()), [
+            'data' => array_merge($this->formatPhoto($photo, $request->user()->children()->pluck('children.id')->all(), $request->user()->id, $this->viewerMemberships($request->user())), [
                 'presigned_url' => $presignedUrl,
             ]),
         ]);
@@ -566,7 +567,7 @@ class PhotoController extends Controller
         $photo->loadCount('comments');
 
         return response()->json([
-            'data' => $this->formatPhoto($photo, $request->user()->children()->pluck('children.id')->all()),
+            'data' => $this->formatPhoto($photo, $request->user()->children()->pluck('children.id')->all(), $request->user()->id, $this->viewerMemberships($request->user())),
         ]);
     }
 
@@ -574,6 +575,7 @@ class PhotoController extends Controller
     {
         $user = $request->user();
         $accessibleChildIds = $user->children()->pluck('children.id');
+        $memberships = $this->viewerMemberships($user);
         $photos = Photo::visibleTo($user)->with(['tags', 'children' => function ($q) {
             $q->select('children.id', 'children.name', 'children.avatar_color');
         }, 'uploader' => function ($q) {
@@ -584,7 +586,7 @@ class PhotoController extends Controller
             ->paginate(30);
 
         return response()->json([
-            'data' => $photos->getCollection()->map(fn (Photo $photo) => array_merge($this->formatPhoto($photo, $accessibleChildIds->all()), [
+            'data' => $photos->getCollection()->map(fn (Photo $photo) => array_merge($this->formatPhoto($photo, $accessibleChildIds->all(), $user->id, $memberships), [
                 'thumbnail_url' => $this->storageService->presignedUrl($photo->thumbnail_path, 30),
             ])),
             'meta' => [

@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Models\Child;
+use App\Models\ChildUser;
 use App\Models\Comment;
 use App\Models\Photo;
 use App\Models\Tag;
@@ -40,23 +41,73 @@ class PhotoPolicy
     }
 
     /**
-     * Child ids (linked to the photo) the user may remove the photo from:
-     * children where they are owner/admin, or every child they belong to if they uploaded the photo.
+     * The user's membership rows keyed by child id (one query), for computing abilities
+     * of many photos without per-photo queries.
+     *
+     * @return Collection<int, ChildUser>
+     */
+    public function membershipsFor(User $user): Collection
+    {
+        return ChildUser::where('user_id', $user->id)->get()->keyBy('child_id');
+    }
+
+    /**
+     * Child ids (linked to the photo) the user may remove the photo from: children where they
+     * are owner/admin, or, if they uploaded the photo, children where they can still upload
+     * (so a member whose upload permission was revoked loses that right).
      *
      * @return Collection<int, int>
      */
     public function administrableChildIds(User $user, Photo $photo): Collection
     {
-        $roles = $this->rolesByChild($user, $photo);
+        $linkedIds = $photo->children()->pluck('children.id')->all();
 
-        if ($photo->uploaded_by === $user->id) {
-            return $roles->keys()->values();
-        }
+        return $this->administrableAmong($user->id, $photo->uploaded_by, $linkedIds, $this->membershipsFor($user));
+    }
 
-        return $roles
-            ->filter(fn (string $role) => in_array($role, ['owner', 'admin'], true))
-            ->keys()
+    /**
+     * Pure form of {@see administrableChildIds()} working on already loaded data.
+     *
+     * @param  array<int, int>  $linkedChildIds
+     * @param  Collection<int, ChildUser>  $memberships  the user's memberships keyed by child id
+     * @return Collection<int, int>
+     */
+    public function administrableAmong(int $userId, ?int $uploadedBy, array $linkedChildIds, Collection $memberships): Collection
+    {
+        $isUploader = $uploadedBy === $userId;
+
+        return collect($linkedChildIds)
+            ->filter(function (int $childId) use ($memberships, $isUploader): bool {
+                $membership = $memberships->get($childId);
+                if ($membership === null) {
+                    return false;
+                }
+
+                if (in_array($membership->role, ['owner', 'admin'], true)) {
+                    return true;
+                }
+
+                return $isUploader && $membership->can_upload;
+            })
             ->values();
+    }
+
+    /**
+     * Whether the user may delete / edit a photo, from loaded data (no queries).
+     * Mirrors {@see delete()} and {@see update()}; `$photo->children` must be loaded.
+     *
+     * @param  Collection<int, ChildUser>  $memberships
+     * @return array{can_delete: bool, can_edit: bool}
+     */
+    public function abilities(int $userId, Photo $photo, Collection $memberships): array
+    {
+        $linkedIds = $photo->children->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $administrable = $this->administrableAmong($userId, $photo->uploaded_by, $linkedIds, $memberships);
+
+        return [
+            'can_delete' => $administrable->isNotEmpty(),
+            'can_edit' => $administrable->isNotEmpty() && count($linkedIds) === $administrable->count(),
+        ];
     }
 
     /**

@@ -33,6 +33,7 @@ vi.mock('@/stores/child', () => ({
     tryGetChildDEK: async () => null,
     canUploadTo: () => true,
     canManageTags: true,
+    canUploadAnywhere: true,
   }),
 }))
 
@@ -47,9 +48,10 @@ import { MSG } from '@/lib/messages'
 import { toast } from 'vue-sonner'
 import type { Photo } from '@/types/photo'
 
-function photo(id: number, childIds: number[]): Photo {
+function photo(id: number, childIds: number[], canDelete = true): Photo {
   return {
     id,
+    can_delete: canDelete,
     tags: [],
     children: childIds.map((c) => ({
       id: c,
@@ -64,6 +66,24 @@ function photo(id: number, childIds: number[]): Photo {
 beforeEach(() => {
   vi.clearAllMocks()
   setActivePinia(createPinia())
+})
+
+describe('BulkActions permissions', () => {
+  it('hides remove when none of the selected photos can be removed', () => {
+    const wrapper = mount(BulkActions, { props: { photos: [photo(1, [1], false)] }, attachTo: document.body })
+    expect(wrapper.find('[data-test="bulk-remove"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="bulk-download"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('offers remove when at least one selected photo can be removed', () => {
+    const wrapper = mount(BulkActions, {
+      props: { photos: [photo(1, [1], false), photo(2, [1], true)] },
+      attachTo: document.body,
+    })
+    expect(wrapper.find('[data-test="bulk-remove"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
 })
 
 describe('BulkActions', () => {

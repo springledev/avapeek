@@ -46,6 +46,9 @@ export interface Photo {
   tags: PhotoTag[]
   children: PhotoChild[]
   comment_count?: number
+  /** Server-computed from the viewer's permissions; hide the action unless true. */
+  can_delete?: boolean
+  can_edit?: boolean
 }
 
 /** A photo as the API returns it, before its tag names are decrypted. */

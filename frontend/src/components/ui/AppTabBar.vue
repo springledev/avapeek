@@ -11,9 +11,12 @@ const authStore = useAuthStore()
 const recentsStore = useRecentsStore()
 const childStore = useChildStore()
 
-// Hidden only once children have loaded and none of them allows this user to upload.
+// Shown only after children have loaded: to people who can upload somewhere, or who have
+// no kid yet (so they can start one). View-only members never see it.
 const canUpload = computed(
-  () => childStore.children.length === 0 || childStore.children.some((c) => childStore.canUploadTo(c.id)),
+  () =>
+    childStore.childrenLoaded &&
+    (childStore.children.length === 0 || childStore.canUploadAnywhere),
 )
 
 const items = computed(() => [

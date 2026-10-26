@@ -64,8 +64,8 @@ const prevPhotoObj = computed(() =>
 const nextPhotoObj = computed(() =>
   hasNext.value ? (feedStore.photos[selectedPhotoIndex.value + 1] ?? null) : null,
 )
-const canDelete = computed(() => true)
-const canEdit = computed(() => true)
+const canDelete = computed(() => selectedPhoto.value?.can_delete === true)
+const canEdit = computed(() => selectedPhoto.value?.can_edit === true)
 
 interface MonthGroup {
   key: string
