@@ -44,11 +44,11 @@ function closeBatchReview() {
 
 async function startUpload(files: File[], childIds: number[], tagNames: string[] = []) {
   if (childIds.length === 0) {
-    toast.error('Please select at least one child.')
+    toast.error(MSG.uploadNeedsKid)
     return
   }
   if (files.length === 0) {
-    toast.error('Please select photos to upload.')
+    toast.error(MSG.uploadNeedsPhotos)
     return
   }
 

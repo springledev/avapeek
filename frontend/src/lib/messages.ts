@@ -10,6 +10,8 @@ export const MSG = {
   onboardingWelcome: 'Photos of the kids, all in one place.',
   uploadComingSoon: 'Upload is coming soon.',
   seePhotos: 'See photos',
+  uploadNeedsKid: 'Pick at least one kid first.',
+  uploadNeedsPhotos: 'Pick at least one photo first.',
   photosAdded: (n: number) => `${n} ${n === 1 ? 'photo' : 'photos'} added`,
   commentPostFailed: "Couldn't post that — try again",
   commentDeleteFailed: "Couldn't delete that — try again",
