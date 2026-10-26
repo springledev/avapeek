@@ -11,6 +11,7 @@ export const MSG = {
   uploadComingSoon: 'Upload is coming soon.',
   seePhotos: 'See photos',
   uploadNeedsKid: 'Pick at least one kid first.',
+  uploadViewOnly: 'You have view-only access, so you can\'t upload photos.',
   uploadNeedsPhotos: 'Pick at least one photo first.',
   photosAdded: (n: number) => `${n} ${n === 1 ? 'photo' : 'photos'} added`,
   commentPostFailed: "Couldn't post that — try again",

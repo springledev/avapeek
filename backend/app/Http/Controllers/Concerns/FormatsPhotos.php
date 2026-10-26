@@ -3,20 +3,39 @@
 namespace App\Http\Controllers\Concerns;
 
 use App\Models\Child;
+use App\Models\ChildUser;
 use App\Models\Photo;
 use App\Models\Tag;
+use App\Models\User;
+use App\Policies\PhotoPolicy;
+use Illuminate\Support\Collection;
 
 trait FormatsPhotos
 {
     /**
+     * @return Collection<int, ChildUser>
+     */
+    protected function viewerMemberships(User $user): Collection
+    {
+        return app(PhotoPolicy::class)->membershipsFor($user);
+    }
+
+    /**
      * @param  array<int, int>  $viewerChildIds  the requesting user's child ids; only their tags are
      *                                           returned, as other children's tag names are undecryptable
      *                                           for the viewer. Passed per request: no controller state.
+     * @param  Collection<int, ChildUser>|null  $memberships  the viewer's memberships keyed by child id
+     *                                                        (PhotoPolicy::membershipsFor); with $viewerId it adds
+     *                                                        `can_delete` / `can_edit` without extra queries.
      * @return array<string, mixed>
      */
-    protected function formatPhoto(Photo $photo, array $viewerChildIds): array
+    protected function formatPhoto(Photo $photo, array $viewerChildIds, ?int $viewerId = null, ?Collection $memberships = null): array
     {
-        return [
+        $abilities = $viewerId !== null && $memberships !== null && $photo->relationLoaded('children')
+            ? app(PhotoPolicy::class)->abilities($viewerId, $photo, $memberships)
+            : [];
+
+        return $abilities + [
             'id' => $photo->id,
             'uuid' => $photo->uuid,
             'uploaded_by' => $photo->uploaded_by,

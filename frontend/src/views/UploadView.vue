@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { MSG } from '@/lib/messages'
 import { pickUpSharedFiles } from '@/lib/share-inbox'
+import { useChildStore } from '@/stores/child'
 import { useUploadPhotos } from '@/composables/useUploadPhotos'
 import UploadPicker from '@/components/upload/UploadPicker.vue'
 import BatchReview from '@/components/upload/BatchReview.vue'
@@ -12,6 +13,26 @@ import UiProgressOverlay from '@/components/ui/UiProgressOverlay.vue'
 const router = useRouter()
 const route = useRoute()
 const { isUploading, current, total, fileName, errors, upload } = useUploadPhotos()
+
+const childStore = useChildStore()
+
+/** View-only members (kids exist, none allows uploading) have nothing to do here. */
+const isViewOnly = computed(
+  () =>
+    childStore.childrenLoaded &&
+    childStore.children.length > 0 &&
+    !childStore.canUploadAnywhere,
+)
+
+watch(
+  isViewOnly,
+  (blocked) => {
+    if (!blocked) return
+    toast.error(MSG.uploadViewOnly)
+    void router.replace('/feed')
+  },
+  { immediate: true },
+)
 
 const selectedFiles = ref<File[]>([])
 const showBatchReview = ref(false)
@@ -23,6 +44,7 @@ function onFilesSelected(files: File[]) {
 
 /** Picks up files staged by the Web Share Target (`/upload?shared=1`), then empties the inbox. */
 onMounted(async () => {
+  if (isViewOnly.value) return
   try {
     const isSharedVisit = route.query.shared === '1'
     const files = await pickUpSharedFiles(isSharedVisit)
@@ -69,7 +91,7 @@ async function startUpload(files: File[], childIds: number[], tagNames: string[]
 </script>
 
 <template>
-  <div>
+  <div v-if="!isViewOnly">
     <h1 class="upload-title">Upload photos</h1>
     <UploadPicker @select="onFilesSelected" />
 

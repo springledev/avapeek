@@ -54,6 +54,7 @@ class MemoryController extends Controller
         $total = (clone $query)->count();
 
         $viewerChildIds = $user->children()->pluck('children.id')->all();
+        $memberships = $this->viewerMemberships($user);
 
         $photos = $query->with(['tags', 'children' => function ($q) {
             $q->select('children.id', 'children.name', 'children.avatar_color');
@@ -66,7 +67,7 @@ class MemoryController extends Controller
             ->get();
 
         return response()->json([
-            'data' => $photos->map(fn (Photo $photo) => array_merge($this->formatPhoto($photo, $viewerChildIds), [
+            'data' => $photos->map(fn (Photo $photo) => array_merge($this->formatPhoto($photo, $viewerChildIds, $user->id, $memberships), [
                 'thumbnail_url' => $this->storageService->presignedUrl($photo->thumbnail_path, 30),
             ])),
             'meta' => ['total' => $total],

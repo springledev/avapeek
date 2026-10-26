@@ -973,7 +973,7 @@ onBeforeUnmount(() => {
           <span>Download</span>
         </button>
         <button
-          v-if="canEdit && isAdmin"
+          v-if="canEdit"
           type="button"
           class="viewer__menu-item u-focus-ring"
           role="menuitem"

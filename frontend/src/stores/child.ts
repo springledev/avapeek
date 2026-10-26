@@ -71,6 +71,9 @@ export const useChildStore = defineStore('child', () => {
     return child.role === 'owner' || child.role === 'admin' || child.can_upload !== false
   }
 
+  /** Whether the user may upload to (and so add, share or manage) at least one child. */
+  const canUploadAnywhere = computed(() => children.value.some((c) => canUploadTo(c.id)))
+
   /** Whether the user may manage tags in at least one of their children. */
   const canManageTags = computed(() => children.value.some((c) => canUploadTo(c.id)))
 
@@ -526,6 +529,7 @@ export const useChildStore = defineStore('child', () => {
     uploadableChildren,
     canUploadTo,
     canManageTags,
+    canUploadAnywhere,
     setMemberUpload,
     updateChild,
     deleteChild,
