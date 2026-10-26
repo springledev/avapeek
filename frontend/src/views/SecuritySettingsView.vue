@@ -46,6 +46,7 @@ const recoveryCodes = ref<string[]>([])
 const passkeyName = ref('')
 const registeringPasskey = ref(false)
 const passkeySheetOpen = ref(false)
+const passkeyError = ref<string | null>(null)
 const passkeyOptions = ref<PublicKeyCredentialCreationOptionsJSON | null>(null)
 
 const passwordAction = ref<PasswordAction | null>(null)
@@ -188,40 +189,62 @@ function openAddPasskey() {
  * gesture; the password was already checked when the options were issued.
  */
 async function createPasskey() {
-  if (!passkeyOptions.value) return
+  if (!passkeyOptions.value || registeringPasskey.value) return
   registeringPasskey.value = true
+  passkeyError.value = null
+  let verifyData: { passkey_id: string; recovery_codes?: string[] | null }
   try {
     const response = await startRegistration({ optionsJSON: passkeyOptions.value })
-    const { data: verifyData } = await api.post<{
-      passkey_id: string
-      recovery_codes?: string[] | null
-    }>('/auth/mfa/passkeys/register/verify', {
-      response,
-      user_chosen_name: passkeyName.value.trim() || null,
-    })
-    toast.success('Passkey added.')
-    closePasskeySheet()
-    if (verifyData.recovery_codes) {
-      recoveryCodes.value = verifyData.recovery_codes
-      recoverySheetReason.value = 'new'
-      recoverySheetOpen.value = true
-    }
-    await fetchMethods()
+    verifyData = (
+      await api.post<{ passkey_id: string; recovery_codes?: string[] | null }>(
+        '/auth/mfa/passkeys/register/verify',
+        { response, user_chosen_name: passkeyName.value.trim() || null },
+      )
+    ).data
   } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'NotAllowedError') {
-      toast.error('Passkey setup was cancelled.')
-    } else {
-      toast.error(apiErrorMessage(err, 'Failed to add passkey.'))
-    }
-  } finally {
+    passkeyError.value = passkeyErrorMessage(err)
     registeringPasskey.value = false
+    return
   }
+  registeringPasskey.value = false
+  toast.success('Passkey added.')
+  closePasskeySheet()
+  if (verifyData.recovery_codes) {
+    recoveryCodes.value = verifyData.recovery_codes
+    recoverySheetReason.value = 'new'
+    recoverySheetOpen.value = true
+  }
+  try {
+    await fetchMethods()
+  } catch {
+    // The passkey is saved; the list refreshes on the next visit.
+  }
+}
+
+/** Turns a WebAuthn or API failure into a sentence the user can act on. */
+function passkeyErrorMessage(err: unknown): string {
+  const name = err instanceof Error ? err.name : ''
+  if (name === 'NotAllowedError' || name === 'AbortError') {
+    return 'Passkey setup was cancelled or timed out. Tap "Create passkey" to try again.'
+  }
+  if (name === 'InvalidStateError') {
+    return 'This device or password manager already has a passkey for this account.'
+  }
+  if (name === 'SecurityError') {
+    return "This site can't create passkeys from this address. Open Avapeek from its usual address and try again."
+  }
+  const errors = (err as { response?: { data?: { errors?: Record<string, string[]> } } } | null)
+    ?.response?.data?.errors
+  const detail = errors?.response?.[0]
+  if (detail) return `${detail} Tap "Create passkey" to try again.`
+  return apiErrorMessage(err, "We couldn't add that passkey. Tap \"Create passkey\" to try again.")
 }
 
 function closePasskeySheet() {
   passkeySheetOpen.value = false
   passkeyOptions.value = null
   passkeyName.value = ''
+  passkeyError.value = null
 }
 
 function openRemovePasskey(id: string) {
@@ -539,6 +562,7 @@ onMounted(fetchMethods)
             :disabled="registeringPasskey"
           />
         </div>
+        <p v-if="passkeyError" class="security__passkey-error" role="alert">{{ passkeyError }}</p>
         <div class="security__sheet-actions">
           <UiButton variant="ghost" type="button" @click="closePasskeySheet">Cancel</UiButton>
           <UiButton variant="accent" type="submit" :loading="registeringPasskey">
@@ -685,6 +709,12 @@ onMounted(fetchMethods)
   font-family: inherit;
   font-size: var(--text-body);
   min-height: var(--target-min);
+}
+
+.security__passkey-error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--text-body);
 }
 
 .security__passkey-input:focus {

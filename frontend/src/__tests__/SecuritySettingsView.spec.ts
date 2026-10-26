@@ -27,6 +27,7 @@ vi.mock('@simplewebauthn/browser', () => ({
 
 import { api } from '@/services/api'
 import { toast } from 'vue-sonner'
+import { startRegistration } from '@simplewebauthn/browser'
 import SecuritySettingsView from '@/views/SecuritySettingsView.vue'
 
 function ok<T>(data: T): AxiosResponse<T> {
@@ -65,6 +66,7 @@ describe('SecuritySettingsView', () => {
     vi.mocked(api.post).mockReset()
     vi.mocked(toast.success).mockReset()
     vi.mocked(toast.error).mockReset()
+    vi.mocked(startRegistration).mockReset()
   })
 
   it('asks for the password before starting authenticator setup', async () => {
@@ -156,5 +158,74 @@ describe('SecuritySettingsView', () => {
 
     await buttonWithText(wrapper, "I've saved them").trigger('click')
     expect(wrapper.find('.security__code').exists()).toBe(false)
+  })
+
+  async function openPasskeySheet(wrapper: Awaited<ReturnType<typeof mountView>>) {
+    await buttonWithText(wrapper, 'Add a passkey').trigger('click')
+    await confirmPassword(wrapper, 'secret')
+  }
+
+  it('closes the passkey sheet and lists the new passkey after saving it', async () => {
+    let saved = false
+    vi.mocked(api.get).mockImplementation(async () =>
+      saved ? methodsResponse(['passkey'], [{ id: 'pk-1', name: 'Bitwarden' }]) : methodsResponse([]),
+    )
+    vi.mocked(api.post).mockImplementation(async (url: string) => {
+      if (url === '/auth/mfa/passkeys/register/options') return ok({ options: { challenge: 'abc' } })
+      saved = true
+      return ok({ passkey_id: 'pk-1', recovery_codes: null })
+    })
+    vi.mocked(startRegistration).mockResolvedValue({ id: 'cred' } as never)
+    const wrapper = await mountView()
+
+    await openPasskeySheet(wrapper)
+    await wrapper.find('#passkey-name').setValue('Bitwarden')
+    await wrapper.find('.security__passkey-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(api.post).toHaveBeenCalledWith('/auth/mfa/passkeys/register/verify', {
+      response: { id: 'cred' },
+      user_chosen_name: 'Bitwarden',
+    })
+    expect(wrapper.find('#passkey-name').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Remove Bitwarden"]').exists()).toBe(true)
+  })
+
+  it('shows the server reason inline and allows retrying when verification fails', async () => {
+    vi.mocked(api.get).mockResolvedValue(methodsResponse([]))
+    vi.mocked(api.post).mockImplementation(async (url: string) => {
+      if (url === '/auth/mfa/passkeys/register/options') return ok({ options: { challenge: 'abc' } })
+      throw {
+        response: {
+          status: 422,
+          data: { errors: { response: ['The passkey registration could not be verified.'] } },
+        },
+      }
+    })
+    vi.mocked(startRegistration).mockResolvedValue({ id: 'cred' } as never)
+    const wrapper = await mountView()
+
+    await openPasskeySheet(wrapper)
+    await wrapper.find('.security__passkey-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.find('.security__passkey-error').text()).toContain('could not be verified')
+    expect(wrapper.find('#passkey-name').exists()).toBe(true)
+    expect(wrapper.find('.security__passkey-form button[type="submit"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('shows an inline message when the passkey prompt is cancelled', async () => {
+    vi.mocked(api.get).mockResolvedValue(methodsResponse([]))
+    vi.mocked(api.post).mockResolvedValue(ok({ options: { challenge: 'abc' } }))
+    const cancelled = new Error('cancelled')
+    cancelled.name = 'NotAllowedError'
+    vi.mocked(startRegistration).mockRejectedValue(cancelled)
+    const wrapper = await mountView()
+
+    await openPasskeySheet(wrapper)
+    await wrapper.find('.security__passkey-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.find('.security__passkey-error').text()).toContain('cancelled')
   })
 })

@@ -545,6 +545,45 @@ describe('Recovery codes', function () {
     });
 });
 
+/**
+ * Build a "none" attestation the way a software authenticator such as Bitwarden does.
+ *
+ * @return array<string, mixed>
+ */
+function fakeNoneAttestation(string $challengeB64Url, string $origin = 'http://localhost:5173', int $flags = 0x45, bool $emptyExtensions = true): array
+{
+    $b64 = fn (string $raw): string => rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
+    $cborBytes = fn (string $raw): string => (strlen($raw) < 24 ? chr(0x40 + strlen($raw)) : chr(0x58).chr(strlen($raw))).$raw;
+    $cborInt = fn (int $n): string => $n >= 0 ? chr($n) : chr(0x20 + (-1 - $n));
+    $cborText = fn (string $t): string => chr(0x60 + strlen($t)).$t;
+
+    $key = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+    $details = openssl_pkey_get_details($key)['ec'];
+    $cose = chr(0xA5).$cborInt(1).$cborInt(2).$cborInt(3).$cborInt(-7).$cborInt(-1).$cborInt(1)
+        .$cborInt(-2).$cborBytes(str_pad($details['x'], 32, "\0", STR_PAD_LEFT))
+        .$cborInt(-3).$cborBytes(str_pad($details['y'], 32, "\0", STR_PAD_LEFT));
+
+    $credentialId = random_bytes(32);
+    $authData = hash('sha256', parse_url($origin, PHP_URL_HOST), true)
+        .chr($flags).pack('N', 0).str_repeat("\0", 16).pack('n', strlen($credentialId)).$credentialId.$cose;
+    $attestationObject = chr(0xA3).$cborText('fmt').$cborText('none').$cborText('attStmt').chr(0xA0)
+        .$cborText('authData').chr(0x58).chr(strlen($authData)).$authData;
+    $clientData = json_encode(['type' => 'webauthn.create', 'challenge' => $challengeB64Url, 'origin' => $origin, 'crossOrigin' => false]);
+
+    return [
+        'id' => $b64($credentialId),
+        'rawId' => $b64($credentialId),
+        'type' => 'public-key',
+        'response' => [
+            'clientDataJSON' => $b64($clientData),
+            'attestationObject' => $b64($attestationObject),
+            'transports' => ['internal'],
+        ],
+        'clientExtensionResults' => $emptyExtensions ? (object) [] : [],
+        'authenticatorAttachment' => 'platform',
+    ];
+}
+
 describe('Passkey setup', function () {
     it('returns registration options', function () {
         $user = User::factory()->create();
@@ -588,6 +627,53 @@ describe('Passkey setup', function () {
 
         expect(fn () => app(MfaWebAuthnService::class)->getOrigin())
             ->toThrow(RuntimeException::class, 'FRONTEND_URL must be set');
+    });
+
+    it('stores a passkey from a software authenticator and returns its id and recovery codes', function () {
+        $user = User::factory()->create();
+
+        $options = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/auth/mfa/passkeys/register/options', ['current_password' => 'password'])
+            ->json('options');
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/auth/mfa/passkeys/register/verify', [
+                'response' => fakeNoneAttestation($options['challenge']),
+                'user_chosen_name' => 'Bitwarden',
+            ])
+            ->assertOk()
+            ->assertJsonStructure(['passkey_id', 'recovery_codes']);
+
+        expect($user->webauthnCredentials()->where('user_chosen_name', 'Bitwarden')->exists())->toBeTrue();
+    });
+
+    it('accepts a passkey from an authenticator that did not report user verification', function () {
+        $user = User::factory()->create();
+
+        $options = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/auth/mfa/passkeys/register/options', ['current_password' => 'password'])
+            ->json('options');
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/auth/mfa/passkeys/register/verify', [
+                'response' => fakeNoneAttestation($options['challenge'], flags: 0x41),
+            ])
+            ->assertOk();
+    });
+
+    it('rejects a passkey created on a different origin with a readable message', function () {
+        $user = User::factory()->create();
+
+        $options = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/auth/mfa/passkeys/register/options', ['current_password' => 'password'])
+            ->json('options');
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/auth/mfa/passkeys/register/verify', [
+                'response' => fakeNoneAttestation($options['challenge'], 'https://evil.example'),
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['response']);
     });
 
     it('rejects an invalid registration response', function () {
