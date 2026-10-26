@@ -19,10 +19,10 @@ function tagFamily(string $role = 'owner'): array
     return [$user, $child];
 }
 
-function joinChild(Child $child, string $role = 'member'): User
+function joinChild(Child $child, string $role = 'member', bool $canUpload = true): User
 {
     $user = User::factory()->create();
-    ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => $role]);
+    ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => $role, 'can_upload' => $canUpload]);
 
     return $user;
 }
@@ -250,9 +250,9 @@ describe('DELETE /api/tags/{tag}', function () {
         $this->assertDatabaseHas('tags', ['id' => $tag->id]);
     });
 
-    it('does not let a plain member delete another member tag', function () {
+    it('does not let a member without upload permission delete a tag', function () {
         [$alice, $child] = tagFamily();
-        $member = joinChild($child);
+        $member = joinChild($child, 'member', canUpload: false);
         $tag = Tag::factory()->create(['child_id' => $child->id, 'created_by' => $alice->id]);
 
         $this->actingAs($member, 'sanctum')->deleteJson("/api/tags/{$tag->id}")->assertStatus(403);

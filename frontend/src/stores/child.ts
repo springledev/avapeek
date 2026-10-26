@@ -60,7 +60,19 @@ export const useChildStore = defineStore('child', () => {
    * Children the user can actually upload to: those with a KEK-wrapped key.
    * Keyless children (key setup failed or abandoned) are excluded.
    */
-  const uploadableChildren = computed(() => children.value.filter((c) => hasOwnKey(c.id)))
+  const uploadableChildren = computed(() =>
+    children.value.filter((c) => hasOwnKey(c.id) && canUploadTo(c.id)),
+  )
+
+  /** Whether the user may upload to and manage tags in this child (owners and admins always). */
+  function canUploadTo(childId: number): boolean {
+    const child = children.value.find((c) => c.id === childId)
+    if (!child) return false
+    return child.role === 'owner' || child.role === 'admin' || child.can_upload !== false
+  }
+
+  /** Whether the user may manage tags in at least one of their children. */
+  const canManageTags = computed(() => children.value.some((c) => canUploadTo(c.id)))
 
   async function ensureDEK(childId: number): Promise<CryptoKey> {
     const existing = deks.value.get(childId)
@@ -332,6 +344,7 @@ export const useChildStore = defineStore('child', () => {
     childId: number,
     role: string,
     relationship: string | null,
+    canUpload = true,
   ): Promise<InviteResponse> {
     isLoading.value = true
     error.value = null
@@ -340,6 +353,7 @@ export const useChildStore = defineStore('child', () => {
       const response = await api.post<{ data: InviteResponse }>(`/children/${childId}/invite`, {
         role,
         relationship,
+        can_upload: canUpload,
       })
 
       return response.data.data
@@ -397,6 +411,27 @@ export const useChildStore = defineStore('child', () => {
     } catch (err) {
       console.error('Failed to change member role:', err)
       error.value = apiErrorMessage(err, 'Failed to change role.')
+      throw err
+    }
+  }
+
+  /**
+   * Owner or admin: allow or stop a plain member from uploading and managing tags.
+   */
+  async function setMemberUpload(
+    childId: number,
+    userId: number,
+    canUpload: boolean,
+  ): Promise<Pick<ChildMember, 'id' | 'can_upload'>> {
+    try {
+      const response = await api.patch<{ data: Pick<ChildMember, 'id' | 'can_upload'> }>(
+        `/children/${childId}/members/${userId}/permissions`,
+        { can_upload: canUpload },
+      )
+      return response.data.data
+    } catch (err) {
+      console.error('Failed to change upload permission:', err)
+      error.value = apiErrorMessage(err, 'Failed to change permission.')
       throw err
     }
   }
@@ -489,6 +524,9 @@ export const useChildStore = defineStore('child', () => {
     finishKeySetup,
     hasOwnKey,
     uploadableChildren,
+    canUploadTo,
+    canManageTags,
+    setMemberUpload,
     updateChild,
     deleteChild,
     createInvite,

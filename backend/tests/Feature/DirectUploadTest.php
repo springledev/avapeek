@@ -492,7 +492,7 @@ describe('complete under concurrency and storage errors', function () {
 
 describe('pending intent cap', function () {
     it('returns 429 when a user has too many live intents and ignores expired ones', function () {
-        [$user] = directUploadSetup();
+        [$user, $child] = directUploadSetup();
         config(['avapeek.uploads.max_pending_intents' => 2]);
         UploadIntent::factory()->expired()->create(['user_id' => $user->id]);
         UploadIntent::factory()->count(2)->create(['user_id' => $user->id]);
@@ -501,6 +501,7 @@ describe('pending intent cap', function () {
             ->assertStatus(429);
 
         $other = User::factory()->create();
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $other->id, 'role' => 'member']);
         $this->actingAs($other, 'sanctum')->postJson('/api/photos/upload-intent', intentPayload())
             ->assertCreated();
     });

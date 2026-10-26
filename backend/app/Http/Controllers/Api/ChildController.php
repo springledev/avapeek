@@ -46,6 +46,7 @@ class ChildController extends Controller
                     'photo_count' => $child->photo_count,
                     'role' => $child->pivot?->role,
                     'relationship' => $child->pivot?->relationship,
+                    'can_upload' => $this->canUpload($child->pivot?->role, $child->pivot?->can_upload),
                     'storage_used' => $quota['used_bytes'],
                     'storage_limit_bytes' => $quota['limit_bytes'],
                     'storage_percentage' => $quota['percentage'],
@@ -137,9 +138,10 @@ class ChildController extends Controller
     public function show(Request $request, Child $child): JsonResponse
     {
         $currentUser = $request->user();
-        $userRole = $currentUser->children()
+        $userPivot = $currentUser->children()
             ->where('child_id', $child->id)
-            ->first()?->pivot->role;
+            ->first()?->pivot;
+        $userRole = $userPivot?->role;
 
         $child->loadCount('photos');
 
@@ -158,6 +160,7 @@ class ChildController extends Controller
                     'display_name' => $user->display_name,
                     'role' => $user->pivot->role,
                     'relationship' => $user->pivot->relationship,
+                    'can_upload' => $this->canUpload($user->pivot->role, $user->pivot->can_upload),
                     'joined_at' => $user->pivot->joined_at,
                     'last_active' => $user->last_active_at?->toISOString(),
                 ];
@@ -181,6 +184,7 @@ class ChildController extends Controller
                 'storage_percentage' => $quota['percentage'],
                 'members' => $members,
                 'role' => $userRole,
+                'can_upload' => $this->canUpload($userRole, $userPivot?->can_upload),
                 'created_at' => $child->created_at?->toISOString(),
             ],
         ]);
@@ -205,11 +209,20 @@ class ChildController extends Controller
             'photo_count' => $child->photos()->count(),
             'role' => $pivot?->role,
             'relationship' => $pivot?->relationship,
+            'can_upload' => $this->canUpload($pivot?->role, $pivot?->can_upload),
             'storage_used' => $quota['used_bytes'],
             'storage_limit_bytes' => $quota['limit_bytes'],
             'storage_percentage' => $quota['percentage'],
             'created_at' => $child->created_at?->toISOString(),
         ];
+    }
+
+    /**
+     * Owners and admins can always upload; members only when granted.
+     */
+    private function canUpload(?string $role, mixed $granted): bool
+    {
+        return in_array($role, ['owner', 'admin'], true) || (bool) $granted;
     }
 
     private function generateUniqueSlug(string $name): string

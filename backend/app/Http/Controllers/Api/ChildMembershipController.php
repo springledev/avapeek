@@ -59,6 +59,36 @@ class ChildMembershipController extends Controller
     }
 
     /**
+     * Allow or stop a plain member from uploading photos and managing tags. Owner or admin.
+     * Owners and admins can always upload, so their permission is not editable.
+     */
+    public function updatePermissions(Request $request, Child $child, int $userId): JsonResponse
+    {
+        $validated = $request->validate([
+            'can_upload' => ['required', 'boolean'],
+        ]);
+
+        return DB::transaction(function () use ($child, $userId, $validated): JsonResponse {
+            Child::whereKey($child->id)->lockForUpdate()->firstOrFail();
+
+            $target = $this->membership($child->id, $userId);
+            if (! $target) {
+                return response()->json(['message' => 'User not found in this child'], 404);
+            }
+
+            if ($target->role !== 'member') {
+                return response()->json(['message' => 'Owners and admins can always upload.'], 422);
+            }
+
+            ChildUser::where('child_id', $child->id)
+                ->where('user_id', $userId)
+                ->update(['can_upload' => $validated['can_upload']]);
+
+            return response()->json(['data' => $this->memberPayload($child->id, $userId)]);
+        });
+    }
+
+    /**
      * Hand ownership to another member; the caller becomes an admin. Owner only.
      */
     public function transferOwnership(Request $request, Child $child): JsonResponse
@@ -194,7 +224,7 @@ class ChildMembershipController extends Controller
     }
 
     /**
-     * @return array{id: int, display_name: string, role: string, relationship: string|null}
+     * @return array{id: int, display_name: string, role: string, relationship: string|null, can_upload: bool}
      */
     private function memberPayload(int $childId, int $userId): array
     {
@@ -206,6 +236,7 @@ class ChildMembershipController extends Controller
             'display_name' => $user->display_name,
             'role' => $pivot->role,
             'relationship' => $pivot->relationship,
+            'can_upload' => in_array($pivot->role, ['owner', 'admin'], true) || $pivot->can_upload,
         ];
     }
 }

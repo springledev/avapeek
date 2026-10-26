@@ -31,6 +31,8 @@ vi.mock('@/stores/child', () => ({
       { id: 2, name: 'Bo', avatar_color: null },
     ],
     tryGetChildDEK: async () => null,
+    canUploadTo: () => true,
+    canManageTags: true,
   }),
 }))
 

@@ -183,7 +183,7 @@ async function applyTags() {
 
 const shareTargets = computed(() => {
   const full = childrenLinkingAll(props.photos)
-  return childStore.children.filter((c) => !full.has(c.id))
+  return childStore.children.filter((c) => !full.has(c.id) && childStore.canUploadTo(c.id))
 })
 
 async function shareTo(childId: number) {
@@ -239,7 +239,14 @@ watch(count, (n) => {
       <Download :size="20" aria-hidden="true" />
       <span class="bar__label">{{ MSG.bulkDownload }}</span>
     </button>
-    <button type="button" class="bar__btn u-focus-ring" :disabled="busy" data-test="bulk-tags" @click="openTags">
+    <button
+      v-if="childStore.canManageTags"
+      type="button"
+      class="bar__btn u-focus-ring"
+      :disabled="busy"
+      data-test="bulk-tags"
+      @click="openTags"
+    >
       <Tag :size="20" aria-hidden="true" />
       <span class="bar__label">{{ MSG.bulkTags }}</span>
     </button>

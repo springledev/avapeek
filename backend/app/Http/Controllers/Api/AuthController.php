@@ -90,6 +90,7 @@ class AuthController extends Controller
                 'user_id' => $user->id,
                 'role' => $invite->role,
                 'relationship' => $invite->relationship ?? '',
+                'can_upload' => $invite->can_upload,
                 'joined_at' => now(),
             ]);
 

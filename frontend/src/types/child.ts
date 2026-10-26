@@ -23,6 +23,8 @@ export interface Child {
   age: string | null
   role: string
   relationship: string | null
+  /** Owners and admins always can; members only when granted. Absent means allowed. */
+  can_upload?: boolean
   storage_used: number
   storage_limit_bytes: number | null
   storage_percentage: number
@@ -43,6 +45,7 @@ export interface InviteResponse {
   url: string
   role: string
   relationship: string | null
+  can_upload?: boolean
   expires_at: string
   created_at: string
 }
@@ -53,6 +56,7 @@ export interface InvitePreview {
   inviter_name: string
   role: string
   relationship: string | null
+  can_upload?: boolean
   expires_at: string
 }
 
@@ -61,6 +65,7 @@ export interface ChildMember {
   display_name: string
   role: string
   relationship: string | null
+  can_upload?: boolean
   joined_at: string
   last_active?: string | null
 }

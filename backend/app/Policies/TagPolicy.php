@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Models\Child;
 use App\Models\ChildUser;
 use App\Models\Tag;
 use App\Models\User;
@@ -29,17 +30,25 @@ class TagPolicy
     }
 
     /**
-     * The creator (while still a member), or an owner/admin of the tag's child.
+     * Owners, admins and members granted upload permission may create tags in the child.
+     */
+    public function create(User $user, Child $child): Response
+    {
+        return $user->canUploadTo($child->id)
+            ? Response::allow()
+            : Response::deny('You do not have permission to manage tags.');
+    }
+
+    /**
+     * Owners, admins and members granted upload permission may delete the child's tags.
      */
     public function delete(User $user, Tag $tag): Response
     {
-        $role = $this->roleInTagChild($user, $tag);
-
-        if ($role === null) {
+        if ($this->roleInTagChild($user, $tag) === null) {
             return Response::deny('You do not have access to this tag.');
         }
 
-        return ($tag->created_by === $user->id || in_array($role, ['owner', 'admin'], true))
+        return $user->canUploadTo($tag->child_id)
             ? Response::allow()
             : Response::deny('You do not have permission to delete this tag.');
     }

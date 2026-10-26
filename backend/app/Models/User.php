@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
 use Laravel\Sanctum\HasApiTokens;
 
 #[Fillable(['email', 'password_hash', 'display_name', 'master_key_salt', 'public_key', 'encrypted_private_key', 'last_seen_at', 'totp_secret_encrypted', 'totp_confirmed_at', 'totp_last_timestep', 'mfa_recovery_codes_hash'])]
@@ -36,7 +37,28 @@ class User extends Authenticatable
     public function children(): BelongsToMany
     {
         return $this->belongsToMany(Child::class, 'child_users')
-            ->withPivot('role', 'relationship', 'joined_at');
+            ->withPivot('role', 'relationship', 'can_upload', 'joined_at');
+    }
+
+    /**
+     * Ids of the children the user may upload photos to and manage tags in:
+     * every child where they are owner/admin, plus those where a member was granted `can_upload`.
+     *
+     * @return Collection<int, int>
+     */
+    public function uploadableChildIds(): Collection
+    {
+        return ChildUser::where('user_id', $this->id)
+            ->where(fn ($query) => $query
+                ->whereIn('role', ['owner', 'admin'])
+                ->orWhere('can_upload', true))
+            ->pluck('child_id')
+            ->map(fn ($id) => (int) $id);
+    }
+
+    public function canUploadTo(int $childId): bool
+    {
+        return $this->uploadableChildIds()->contains($childId);
     }
 
     public function encryptionKeys(): HasMany

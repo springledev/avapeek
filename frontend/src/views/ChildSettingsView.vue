@@ -25,6 +25,7 @@ const child = computed(() => childStore.children.find((c) => c.id === childId.va
 
 const showInviteSheet = ref(false)
 const inviteRole = ref('member')
+const inviteCanUpload = ref(true)
 const inviteRelationship = ref('')
 const inviteResult = ref<InviteResponse | null>(null)
 
@@ -149,6 +150,7 @@ async function createInvite() {
       childId.value,
       inviteRole.value,
       inviteRelationship.value || null,
+      inviteRole.value === 'admin' || inviteCanUpload.value,
     )
     inviteResult.value = response
     toast.success('Invite link created!')
@@ -194,6 +196,13 @@ function memberHasActions(member: ChildMember): boolean {
 const selectedIsSelf = computed(() => !!selectedMember.value && isSelf(selectedMember.value))
 const canSetRole = computed(
   () => currentUserRole.value === 'owner' && !!selectedMember.value && !selectedIsSelf.value,
+)
+const canSetUpload = computed(
+  () =>
+    canManageMembers.value &&
+    !!selectedMember.value &&
+    !selectedIsSelf.value &&
+    selectedMember.value.role === 'member',
 )
 const canRemoveSelected = computed(
   () =>
@@ -254,6 +263,26 @@ async function changeSelectedRole(role: 'admin' | 'member') {
     )
   } catch (err: unknown) {
     toast.error(apiErrorMessage(err, 'Failed to change role.'))
+  }
+}
+
+async function changeSelectedUpload(canUpload: boolean) {
+  const member = selectedMember.value
+  if (!member) return
+
+  try {
+    const updated = await childStore.setMemberUpload(childId.value, member.id, canUpload)
+    members.value = members.value.map((m) =>
+      m.id === member.id ? { ...m, can_upload: updated.can_upload } : m,
+    )
+    closeMemberSheet()
+    toast.success(
+      canUpload
+        ? `${member.display_name} can now upload photos and manage tags.`
+        : `${member.display_name} is now view only.`,
+    )
+  } catch (err: unknown) {
+    toast.error(apiErrorMessage(err, 'Failed to change permission.'))
   }
 }
 
@@ -321,6 +350,7 @@ function closeInviteSheet() {
   showInviteSheet.value = false
   inviteResult.value = null
   inviteRole.value = 'member'
+  inviteCanUpload.value = true
   inviteRelationship.value = ''
 }
 
@@ -379,7 +409,9 @@ function formatLastActive(dateStr: string | null): string {
               </p>
               <p class="child-settings__member-role">
                 {{ member.role
-                }}<span v-if="member.relationship"> · {{ member.relationship }}</span>
+                }}<span v-if="member.role === 'member' && member.can_upload === false">
+                  · view only</span
+                ><span v-if="member.relationship"> · {{ member.relationship }}</span>
                 <span v-if="member.last_active" class="child-settings__last-active">
                   · {{ formatLastActive(member.last_active) }}</span
                 >
@@ -447,12 +479,30 @@ function formatLastActive(dateStr: string | null): string {
     <div v-if="selectedMember" class="member-sheet">
       <p class="invite-sheet__hint">
         {{ selectedMember.role
-        }}<span v-if="selectedMember.relationship"> · {{ selectedMember.relationship }}</span>
+        }}<span v-if="selectedMember.role === 'member' && selectedMember.can_upload === false">
+          · view only</span
+        ><span v-if="selectedMember.relationship"> · {{ selectedMember.relationship }}</span>
       </p>
       <template v-if="selectedIsSelf">
         <UiButton variant="danger" @click="leaveFamily">Leave this kid</UiButton>
       </template>
       <template v-else>
+        <template v-if="canSetUpload">
+          <UiButton
+            v-if="selectedMember.can_upload === false"
+            variant="subtle"
+            @click="changeSelectedUpload(true)"
+          >
+            Allow uploads and tags
+          </UiButton>
+          <UiButton v-else variant="subtle" @click="changeSelectedUpload(false)">
+            Make view only
+          </UiButton>
+          <p class="invite-sheet__hint">
+            Members who can upload add photos and manage tags. View only members can see photos and
+            comment.
+          </p>
+        </template>
         <template v-if="canSetRole">
           <UiButton
             v-if="selectedMember.role === 'member'"
@@ -558,6 +608,13 @@ function formatLastActive(dateStr: string | null): string {
           <select id="invite-role" v-model="inviteRole" class="invite-sheet__select">
             <option value="member">Member</option>
             <option v-if="currentUserRole === 'owner'" value="admin">Admin</option>
+          </select>
+        </div>
+        <div v-if="inviteRole === 'member'" class="invite-sheet__field">
+          <label class="invite-sheet__label" for="invite-access">Access</label>
+          <select id="invite-access" v-model="inviteCanUpload" class="invite-sheet__select">
+            <option :value="true">Can upload photos and manage tags</option>
+            <option :value="false">View and comment only</option>
           </select>
         </div>
         <div class="invite-sheet__field">
