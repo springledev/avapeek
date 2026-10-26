@@ -1,4 +1,10 @@
 /**
+ * How the server checks the password. 'v2': it only gets an auth hash derived from the KEK.
+ * 'legacy': it still holds a hash of the plaintext password until the next sign-in or confirmation.
+ */
+export type AuthScheme = 'v2' | 'legacy'
+
+/**
  * User data returned from the API.
  */
 export interface User {
@@ -6,6 +12,8 @@ export interface User {
   email: string
   display_name: string
   master_key_salt: string
+  /** Missing in sessions saved before the field existed; those accounts are legacy. */
+  auth_scheme?: AuthScheme
   public_key: string
   /** RSA private key wrapped with the KEK; null for accounts created before it was stored. */
   encrypted_private_key?: string | null
@@ -33,7 +41,8 @@ export interface EncryptionKey {
  */
 export interface RegisterRequest {
   email: string
-  password: string
+  /** Derived from the KEK; the password itself is never sent. */
+  auth_hash: string
   display_name: string
   master_key_salt: string
   public_key: string
@@ -43,13 +52,39 @@ export interface RegisterRequest {
 }
 
 /**
- * Login request payload.
+ * Pre-login answer: what the client needs before it can derive its auth hash.
+ */
+export interface PreloginResponse {
+  data: { master_key_salt: string; auth_scheme: AuthScheme }
+}
+
+/**
+ * Login request payload for v2 accounts.
  */
 export interface LoginRequest {
   email: string
-  password: string
+  auth_hash: string
   remember: boolean
 }
+
+/**
+ * Login request payload for a legacy account: the plaintext password is sent one last
+ * time, together with the auth hash that replaces it on the server.
+ */
+export interface LegacyLoginRequest {
+  email: string
+  password: string
+  new_auth_hash: string
+  remember: boolean
+}
+
+/**
+ * Proof of the current password for sensitive requests.
+ * v2 accounts send the auth hash; legacy accounts send the password once plus the hash to switch to.
+ */
+export type PasswordProof =
+  | { current_auth_hash: string }
+  | { current_password: string; new_auth_hash: string }
 
 /**
  * Authentication response from register/login.

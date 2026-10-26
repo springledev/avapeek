@@ -4,8 +4,7 @@ import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { toast } from 'vue-sonner'
 import UiButton from '@/components/ui/UiButton.vue'
-
-const MIN_PASSWORD_LENGTH = 8
+import { newPasswordError } from '@/lib/password-rules'
 
 const authStore = useAuthStore()
 
@@ -34,7 +33,9 @@ function errorMessage(err: unknown, fallback: string): string {
   )?.response?.data
   if (data?.errors) return Object.values(data.errors).flat().join(' ')
   if (data?.message) return data.message
-  return err instanceof Error && err.name === 'WrongPasswordError' ? err.message : fallback
+  const isPasswordError =
+    err instanceof Error && (err.name === 'WrongPasswordError' || err.name === 'NewPasswordError')
+  return isPasswordError ? err.message : fallback
 }
 
 function togglePasswordSection() {
@@ -76,12 +77,13 @@ async function changePassword() {
     passwordError.value = 'Enter your current password.'
     return
   }
-  if (newPassword.value.length < MIN_PASSWORD_LENGTH) {
-    passwordError.value = `Your new password must be at least ${MIN_PASSWORD_LENGTH} characters long.`
-    return
-  }
-  if (newPassword.value !== newPasswordConfirm.value) {
-    passwordError.value = "The new passwords don't match."
+  const ruleError = newPasswordError(
+    newPassword.value,
+    newPasswordConfirm.value,
+    currentPassword.value,
+  )
+  if (ruleError) {
+    passwordError.value = ruleError
     return
   }
 
