@@ -69,6 +69,13 @@ describe('SecuritySettingsView', () => {
     vi.mocked(startRegistration).mockReset()
   })
 
+  it('explains that passkeys are a second step, not a password replacement', async () => {
+    vi.mocked(api.get).mockResolvedValue(methodsResponse([]))
+    const wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('Passkeys are a second step after your password')
+  })
+
   it('asks for the password before starting authenticator setup', async () => {
     vi.mocked(api.get).mockResolvedValue(methodsResponse([]))
     vi.mocked(api.post).mockResolvedValue(ok({ secret: 'SECRET', otpauth_uri: 'otpauth://x' }))

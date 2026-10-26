@@ -405,9 +405,16 @@ onMounted(fetchMethods)
         </div>
         <div>
           <h3 class="security__section-title">Passkeys</h3>
-          <p class="security__section-desc">Sign in with your device’s fingerprint or face.</p>
+          <p class="security__section-desc">
+            Confirm sign-in with your device’s fingerprint, face or password manager.
+          </p>
         </div>
       </div>
+
+      <p class="security__hint">
+        Passkeys are a second step after your password, not a replacement. Your password is what
+        unlocks your encrypted photos on this device, so it’s always needed.
+      </p>
 
       <UiButton variant="accent" :loading="registeringPasskey" @click="openAddPasskey">
         Add a passkey
