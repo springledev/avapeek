@@ -3,6 +3,13 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from '../App.vue'
+import { useAuthStore } from '@/stores/auth'
+import { resyncPushSubscription } from '@/services/push'
+import type { User } from '@/types/auth'
+
+vi.mock('@/services/push', () => ({
+  resyncPushSubscription: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+}))
 
 vi.mock('@/composables/useDarkMode', () => ({
   useDarkMode: () => ({
@@ -55,5 +62,22 @@ describe('App', () => {
     expect(toaster.attributes('position')).toBe('top-right')
     expect(toaster.attributes('richcolors')).not.toBe('true')
     expect(toaster.attributes('offset')).toBeDefined()
+  })
+
+  it('resyncs push after an in-app sign-in', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    mount(App, {
+      global: {
+        plugins: [pinia, createRouter({ history: createWebHistory(), routes: [] })],
+        stubs: { AppShell: true, Toaster: true },
+      },
+    })
+    vi.mocked(resyncPushSubscription).mockClear()
+
+    useAuthStore().user = { id: 1 } as User
+    await Promise.resolve()
+
+    expect(resyncPushSubscription).toHaveBeenCalledOnce()
   })
 })

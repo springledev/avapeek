@@ -44,6 +44,15 @@ function onVisibilityChange() {
 
 watch(() => authStore.kek, syncKeys)
 
+// Also runs after an in-app sign-in, which doesn't remount the app.
+watch(
+  () => authStore.isAuthenticated,
+  (isAuthenticated) => {
+    if (isAuthenticated) void resyncPushSubscription().catch(() => undefined)
+  },
+  { immediate: true },
+)
+
 onMounted(async () => {
   document.addEventListener('visibilitychange', onVisibilityChange)
   keyWaitTimer = setInterval(() => {
@@ -51,9 +60,6 @@ onMounted(async () => {
   }, KEY_WAIT_INTERVAL_MS)
   await authStore.restoreKEK()
   syncKeys()
-  if (authStore.isAuthenticated) {
-    void resyncPushSubscription().catch(() => undefined)
-  }
 })
 
 onBeforeUnmount(() => {
