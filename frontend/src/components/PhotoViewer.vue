@@ -1088,7 +1088,7 @@ onBeforeUnmount(() => {
 .viewer__close {
   position: absolute;
   top: calc(var(--space-4) + var(--safe-area-t));
-  right: var(--space-4);
+  right: max(var(--space-4), env(safe-area-inset-right, 0px));
   z-index: 10;
   width: 48px;
   height: 48px;
@@ -1141,11 +1141,11 @@ onBeforeUnmount(() => {
 }
 
 .viewer__nav--prev {
-  left: var(--space-4);
+  left: max(var(--space-4), env(safe-area-inset-left, 0px));
 }
 
 .viewer__nav--next {
-  right: var(--space-4);
+  right: max(var(--space-4), env(safe-area-inset-right, 0px));
 }
 
 .viewer__frame {
@@ -1543,6 +1543,8 @@ onBeforeUnmount(() => {
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
   padding-bottom: calc(var(--space-2) + var(--safe-area-b));
+  padding-left: max(var(--space-3), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-3), env(safe-area-inset-right, 0px));
   border-top: 1px solid rgb(255 255 255 / 0.08);
   background: rgb(0 0 0 / 0.35);
 }
@@ -1587,7 +1589,7 @@ onBeforeUnmount(() => {
 
 .viewer__menu {
   position: absolute;
-  right: var(--space-4);
+  right: max(var(--space-4), env(safe-area-inset-right, 0px));
   bottom: calc(var(--target-min) + var(--space-8) + var(--safe-area-b));
   z-index: 30;
   display: flex;

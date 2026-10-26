@@ -62,6 +62,8 @@ const percent = computed(() =>
   justify-content: center;
   background: var(--color-overlay);
   padding: var(--space-6);
+  padding-left: max(var(--space-6), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-6), env(safe-area-inset-right, 0px));
 }
 
 .overlay__card {

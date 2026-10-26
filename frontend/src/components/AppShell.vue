@@ -69,6 +69,9 @@ watch(
 .shell__content {
   flex: 1;
   padding: var(--space-4);
+  padding-top: calc(var(--space-4) + var(--safe-area-t));
+  padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
   padding-bottom: calc(var(--tabbar-h) + var(--safe-area-b) + var(--space-4));
 }
 
@@ -78,7 +81,7 @@ watch(
   }
 
   .shell__content {
-    padding-bottom: var(--space-6);
+    padding-bottom: calc(var(--space-6) + var(--safe-area-b));
     padding-left: var(--space-6);
   }
 }
