@@ -28,7 +28,7 @@ watch(
   isViewOnly,
   (blocked) => {
     if (!blocked) return
-    toast.error(MSG.uploadViewOnly)
+    toast.info(MSG.uploadViewOnly)
     void router.replace('/feed')
   },
   { immediate: true },

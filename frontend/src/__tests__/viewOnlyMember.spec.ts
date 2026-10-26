@@ -9,7 +9,7 @@ import { toast } from 'vue-sonner'
 import type { Child } from '@/types/child'
 
 vi.mock('vue-sonner', () => ({
-  toast: { error: vi.fn<(m: string) => void>(), success: vi.fn<(m: string) => void>() },
+  toast: { error: vi.fn<(m: string) => void>(), success: vi.fn<(m: string) => void>(), info: vi.fn<(m: string) => void>() },
 }))
 
 vi.mock('@/lib/sign-out', () => ({ signOut: vi.fn<() => Promise<void>>() }))
@@ -81,7 +81,7 @@ describe('view-only members', () => {
     const wrapper = mount(UploadView, { global: { plugins: [r] } })
     await flushPromises()
 
-    expect(toast.error).toHaveBeenCalled()
+    expect(toast.info).toHaveBeenCalled()
     expect(r.currentRoute.value.path).toBe('/feed')
     expect(wrapper.text()).not.toContain('Upload photos')
   })
