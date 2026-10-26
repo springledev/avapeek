@@ -34,6 +34,8 @@ class TagController extends Controller
 
     public function store(StoreTagRequest $request, Child $child): JsonResponse
     {
+        Gate::authorize('create', [Tag::class, $child]);
+
         $validated = $request->validated();
 
         // The child row lock serializes concurrent creates, so the cap is exact.
@@ -88,9 +90,16 @@ class TagController extends Controller
         $policy = app(PhotoPolicy::class);
         $user = $request->user();
 
-        if ($tags->count() !== count($tagIds)
-            || $tags->contains(fn (Tag $tag) => $policy->attachTag($user, $photo, $tag)->denied())) {
+        if ($tags->count() !== count($tagIds)) {
             abort(422, 'One or more tags are invalid.');
+        }
+
+        foreach ($tags as $tag) {
+            $response = $policy->attachTag($user, $photo, $tag);
+
+            if ($response->denied()) {
+                abort($response->status() === 403 ? 403 : 422, $response->status() === 403 ? (string) $response->message() : 'One or more tags are invalid.');
+            }
         }
 
         $photo->tags()->syncWithoutDetaching($tagIds);
@@ -111,6 +120,8 @@ class TagController extends Controller
 
         // A tag of a child the user cannot access is left untouched (no-op).
         if (Gate::forUser($request->user())->allows('view', $tag)) {
+            abort_if(app(PhotoPolicy::class)->detachTag($request->user(), $photo, $tag)->denied(), 403, 'You do not have permission to manage tags.');
+
             $photo->tags()->detach($tag->id);
         }
 

@@ -4,15 +4,22 @@ import { LayoutGrid, Plus, Settings, Clock, LogOut } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth'
 import { signOut } from '@/lib/sign-out'
 import { useRecentsStore } from '@/stores/recents'
+import { useChildStore } from '@/stores/child'
 import AppLogo from '@/components/ui/AppLogo.vue'
 
 const authStore = useAuthStore()
 const recentsStore = useRecentsStore()
+const childStore = useChildStore()
+
+// Hidden only once children have loaded and none of them allows this user to upload.
+const canUpload = computed(
+  () => childStore.children.length === 0 || childStore.children.some((c) => childStore.canUploadTo(c.id)),
+)
 
 const items = computed(() => [
   { to: '/feed', label: 'Photos', icon: LayoutGrid },
   { to: '/recents', label: 'Recents', icon: Clock, badge: recentsStore.unseenCount },
-  { to: '/upload', label: 'Upload', icon: Plus },
+  ...(canUpload.value ? [{ to: '/upload', label: 'Upload', icon: Plus }] : []),
   { to: '/settings', label: 'Settings', icon: Settings },
 ])
 

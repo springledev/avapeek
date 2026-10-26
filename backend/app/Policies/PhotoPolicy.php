@@ -105,7 +105,8 @@ class PhotoPolicy
 
     /**
      * A tag may be attached when the user can view the photo, the tag's child is one of the
-     * children the photo is linked to, and the user is a member of that child.
+     * children the photo is linked to, and the user may manage tags in that child
+     * (owner/admin, or a member granted upload permission).
      */
     public function attachTag(User $user, Photo $photo, Tag $tag): Response
     {
@@ -114,13 +115,34 @@ class PhotoPolicy
             return $view;
         }
 
-        return $this->rolesByChild($user, $photo)->has($tag->child_id)
+        if (! $this->rolesByChild($user, $photo)->has($tag->child_id)) {
+            return Response::denyWithStatus(422, 'This tag cannot be attached to this photo.');
+        }
+
+        return $user->canUploadTo($tag->child_id)
             ? Response::allow()
-            : Response::deny('This tag cannot be attached to this photo.');
+            : Response::denyWithStatus(403, 'You do not have permission to manage tags.');
     }
 
     /**
-     * Any member of the target child (any role) may link a photo they can view into it.
+     * A tag may be detached by anyone who may manage tags in the tag's child, even when the
+     * photo is no longer linked to that child (so stale links can still be cleaned up).
+     */
+    public function detachTag(User $user, Photo $photo, Tag $tag): Response
+    {
+        $view = $this->view($user, $photo);
+        if ($view->denied()) {
+            return $view;
+        }
+
+        return $user->canUploadTo($tag->child_id)
+            ? Response::allow()
+            : Response::denyWithStatus(403, 'You do not have permission to manage tags.');
+    }
+
+    /**
+     * Linking a photo into the target child adds content to it, so it needs the same
+     * permission as uploading there (owner/admin, or a member granted upload permission).
      */
     public function share(User $user, Photo $photo, Child $target): Response
     {
@@ -129,9 +151,13 @@ class PhotoPolicy
             return $view;
         }
 
-        return $user->children()->whereKey($target->id)->exists()
+        if (! $user->children()->whereKey($target->id)->exists()) {
+            return Response::deny('You are not a member of this child.');
+        }
+
+        return $user->canUploadTo($target->id)
             ? Response::allow()
-            : Response::deny('You are not a member of this child.');
+            : Response::deny('You do not have permission to add photos to this child.');
     }
 
     public function deleteComment(User $user, Photo $photo, Comment $comment): Response

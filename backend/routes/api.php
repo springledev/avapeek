@@ -96,7 +96,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Memories ("on this day")
     Route::get('/memories', [MemoryController::class, 'index']);
 
-    // Tags (per child, names are client-encrypted)
+    // Tags (per child, names are client-encrypted; owners, admins and uploaders manage them)
     Route::delete('/tags/{tag}', [TagController::class, 'destroy']);
 
     // Photo-Tag management
@@ -129,6 +129,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::middleware('child.admin')->group(function () {
             Route::post('/children/{child}/invite', [InviteController::class, 'store'])->middleware('throttle:invite');
             Route::delete('/children/{child}/members/{user}', [ChildMembershipController::class, 'removeMember']);
+            Route::patch('/children/{child}/members/{user}/permissions', [ChildMembershipController::class, 'updatePermissions']);
         });
 
         Route::post('/children/{child}/leave', [ChildMembershipController::class, 'leave']);

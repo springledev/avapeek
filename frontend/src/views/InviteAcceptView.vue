@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Images } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth'
+import { useChildStore } from '@/stores/child'
+import { syncEncryptionKeys } from '@/services/key-sync'
 import { api } from '@/services/api'
 import { setPendingInviteToken, removePendingInviteToken } from '@/lib/auth-storage'
 import type { InvitePreview } from '@/types/child'
@@ -13,6 +15,7 @@ import AuthCard from '@/components/AuthCard.vue'
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const childStore = useChildStore()
 
 const token = route.params.token as string
 const invite = ref<InvitePreview | null>(null)
@@ -65,6 +68,11 @@ async function acceptInvite() {
     )
 
     removePendingInviteToken()
+    // Show the new album and pick up its key right away if an admin has already shared it.
+    void childStore
+      .fetchChildren()
+      .catch(() => undefined)
+      .then(() => syncEncryptionKeys())
     router.push('/welcome')
   } catch (err) {
     error.value = apiErrorMessage(err, 'Failed to accept invite.')
@@ -122,7 +130,11 @@ onMounted(async () => {
       </div>
 
       <div v-if="invite.role" class="invite__card">
-        You'll join {{ invite.child_name }}'s album as {{ roleWithArticle }}.
+        You'll join {{ invite.child_name }}'s album as {{ roleWithArticle }}<template
+          v-if="invite.role === 'member' && invite.can_upload === false"
+        >
+          who can view and comment</template
+        >.
       </div>
 
       <div v-if="error" class="invite__error" role="alert">{{ error }}</div>

@@ -34,6 +34,8 @@ class PhotoController extends Controller
 
     private const INTENT_MINUTES = 15;
 
+    private const UPLOAD_FORBIDDEN_MESSAGE = 'You do not have permission to upload to this child.';
+
     public function upload(PhotoMetadataRequest $request): JsonResponse
     {
         $validated = $request->validated();
@@ -43,6 +45,10 @@ class PhotoController extends Controller
 
         if ($invalid = $this->invalidChildIdsResponse($user, $childrenData)) {
             return $invalid;
+        }
+
+        if ($forbidden = $this->uploadForbiddenResponse($user, $childrenData)) {
+            return $forbidden;
         }
 
         if ($invalid = $this->invalidTagIdsResponse($validated, $childrenData)) {
@@ -94,6 +100,10 @@ class PhotoController extends Controller
 
         $validated = $request->validated();
         $user = $request->user();
+
+        if ($user->uploadableChildIds()->isEmpty()) {
+            return response()->json(['message' => self::UPLOAD_FORBIDDEN_MESSAGE], 403);
+        }
 
         $pending = UploadIntent::where('user_id', $user->id)->unexpired()->count();
         if ($pending >= (int) config('avapeek.uploads.max_pending_intents')) {
@@ -223,6 +233,12 @@ class PhotoController extends Controller
             return $invalid;
         }
 
+        if ($forbidden = $this->uploadForbiddenResponse($user, $childrenData)) {
+            $this->discardIntent($intent);
+
+            return $forbidden;
+        }
+
         if ($invalid = $this->invalidTagIdsResponse($validated, $childrenData)) {
             $this->discardIntent($intent);
 
@@ -281,6 +297,27 @@ class PhotoController extends Controller
 
         if (! empty($unknownIds)) {
             return response()->json(['message' => 'Invalid child IDs: '.implode(', ', $unknownIds)], 422);
+        }
+
+        return null;
+    }
+
+    /**
+     * Uploading links the photo into each target child, so the user must be allowed to
+     * upload to every one of them (owner/admin, or a member granted `can_upload`).
+     *
+     * @param  array<int|string, mixed>  $childrenData
+     */
+    private function uploadForbiddenResponse(User $user, array $childrenData): ?JsonResponse
+    {
+        $uploadable = $user->uploadableChildIds();
+        $forbiddenIds = array_filter(
+            array_map('intval', array_keys($childrenData)),
+            fn (int $childId) => ! $uploadable->contains($childId),
+        );
+
+        if ($forbiddenIds !== []) {
+            return response()->json(['message' => self::UPLOAD_FORBIDDEN_MESSAGE], 403);
         }
 
         return null;

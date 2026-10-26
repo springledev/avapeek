@@ -23,6 +23,7 @@ class Invite extends Model
         'email',
         'role',
         'relationship',
+        'can_upload',
         'invited_by',
         'expires_at',
         'accepted_at',
@@ -32,6 +33,7 @@ class Invite extends Model
     ];
 
     protected $casts = [
+        'can_upload' => 'boolean',
         'expires_at' => 'datetime',
         'accepted_at' => 'datetime',
         'revoked_at' => 'datetime',

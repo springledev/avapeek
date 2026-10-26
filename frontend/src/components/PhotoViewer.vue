@@ -136,6 +136,11 @@ const isAdmin = computed(() =>
   childStore.children.some((c) => c.role === 'owner' || c.role === 'admin'),
 )
 
+/** Tags are managed by owners, admins and members allowed to upload to one of the photo's kids. */
+const canManageTags = computed(() =>
+  props.photo.children.some((c) => childStore.canUploadTo(c.id)),
+)
+
 const displayTags = computed(() => dedupeTagsByName(props.photo.tags ?? []))
 const visibleChildren = computed(() => props.photo.children.slice(0, 3))
 
@@ -1037,6 +1042,7 @@ onBeforeUnmount(() => {
         <section class="info-sheet__section">
           <h3 class="info-sheet__label">Tags</h3>
           <TagInput
+            v-if="canManageTags"
             :child-ids="props.photo.children.map((c) => c.id)"
             :exclude="displayTags.map((t) => t.name)"
             @add="(name: string) => emit('tagAdded', props.photo.id, name)"
@@ -1045,12 +1051,14 @@ onBeforeUnmount(() => {
             <li v-for="tag in displayTags" :key="tag.id" class="info-sheet__tag">
               <TagChip
                 :name="tag.name"
-                removable
+                :removable="canManageTags"
                 @remove="emit('tagRemoved', props.photo.id, tag.id)"
               />
             </li>
           </ul>
-          <p v-else class="info-sheet__empty">No tags yet. Add one above.</p>
+          <p v-else class="info-sheet__empty">
+            {{ canManageTags ? 'No tags yet. Add one above.' : 'No tags yet.' }}
+          </p>
         </section>
       </div>
       <template #footer>

@@ -15,12 +15,14 @@ class ChildUser extends Pivot
         'user_id',
         'role',
         'relationship',
+        'can_upload',
     ];
 
     protected function casts(): array
     {
         return [
             'joined_at' => 'datetime',
+            'can_upload' => 'boolean',
         ];
     }
 }

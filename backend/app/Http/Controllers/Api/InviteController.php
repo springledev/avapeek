@@ -25,6 +25,7 @@ class InviteController extends Controller
         $validated = $request->validate([
             'role' => ['required', 'string', 'in:member,admin'],
             'relationship' => ['nullable', 'string', 'max:30'],
+            'can_upload' => ['sometimes', 'boolean'],
         ]);
 
         if ($validated['role'] === 'admin') {
@@ -43,6 +44,7 @@ class InviteController extends Controller
             'email' => null,
             'role' => $validated['role'],
             'relationship' => $validated['relationship'] ?? null,
+            'can_upload' => $validated['can_upload'] ?? true,
             'invited_by' => $request->user()->id,
             'expires_at' => now()->addDays(7),
             'created_at' => now(),
@@ -57,6 +59,7 @@ class InviteController extends Controller
                 'url' => $url,
                 'role' => $invite->role,
                 'relationship' => $invite->relationship,
+                'can_upload' => $invite->can_upload,
                 'expires_at' => $invite->expires_at->toISOString(),
                 'created_at' => $invite->created_at->toISOString(),
             ],
@@ -109,6 +112,7 @@ class InviteController extends Controller
                 'inviter_name' => $invite->inviter->display_name,
                 'role' => $invite->role,
                 'relationship' => $invite->relationship,
+                'can_upload' => $invite->can_upload,
                 'expires_at' => $invite->expires_at->toISOString(),
             ],
         ]);
@@ -169,6 +173,7 @@ class InviteController extends Controller
             'user_id' => $user->id,
             'role' => $invite->role,
             'relationship' => $invite->relationship,
+            'can_upload' => $invite->can_upload,
         ]);
 
         $invite->update([
@@ -204,6 +209,7 @@ class InviteController extends Controller
                 'child_name' => $invite->child->name,
                 'role' => $invite->role,
                 'relationship' => $invite->relationship,
+                'can_upload' => $invite->can_upload,
                 'token' => $invite->token,
                 'expires_at' => $invite->expires_at->toISOString(),
                 'created_at' => $invite->created_at->toISOString(),

@@ -30,7 +30,7 @@ class Child extends Model
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'child_users')
-            ->withPivot('role', 'relationship', 'joined_at');
+            ->withPivot('role', 'relationship', 'can_upload', 'joined_at');
     }
 
     public function encryptionKeys(): HasMany

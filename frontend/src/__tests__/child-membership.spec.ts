@@ -246,10 +246,11 @@ describe('child membership', () => {
       ])
     })
 
-    it('owner on a member: make admin, transfer, remove', async () => {
+    it('owner on a member: view only, make admin, transfer, remove', async () => {
       const { wrapper } = await mountView('owner', allMembers)
       await openMember(wrapper, 'Max')
       expect(sheetActions(wrapper)).toEqual([
+        'Make view only',
         'Make admin',
         'Transfer ownership',
         'Remove from family',
@@ -264,7 +265,7 @@ describe('child membership', () => {
       expect(buttonTexts(wrapper)).not.toContain('Leave this kid')
     })
 
-    it('admin can only remove members, and leave from their own row', async () => {
+    it('admin can set upload access of and remove members, and leave from their own row', async () => {
       const list = [
         member(ME, 'Me', 'admin'),
         member(2, 'Olly', 'owner'),
@@ -274,7 +275,7 @@ describe('child membership', () => {
       const { wrapper } = await mountView('admin', list)
 
       await openMember(wrapper, 'Max')
-      expect(sheetActions(wrapper)).toEqual(['Remove from family'])
+      expect(sheetActions(wrapper)).toEqual(['Make view only', 'Remove from family'])
 
       const rows = wrapper.findAll('button.child-settings__member').map((b) => b.text())
       expect(rows.some((t) => t.includes('Olly'))).toBe(false)
@@ -315,6 +316,27 @@ describe('child membership', () => {
       expect(api.patch).toHaveBeenCalledWith('/children/7/members/3', { role: 'admin' })
       expect(toast.success).toHaveBeenCalled()
       expect(wrapper.text()).toContain('admin')
+      assertNoCrypto()
+    })
+
+    it('lets an admin make a member view only and back, updating the list', async () => {
+      const { wrapper } = await mountView('admin', [member(ME, 'Me', 'admin'), member(3, 'Max', 'member')])
+      vi.mocked(api.patch).mockResolvedValueOnce(ok({ data: { id: 3, can_upload: false } }))
+
+      await openMember(wrapper, 'Max')
+      await button(wrapper, 'Make view only').trigger('click')
+      await flushPromises()
+
+      expect(api.patch).toHaveBeenCalledWith('/children/7/members/3/permissions', { can_upload: false })
+      expect(wrapper.text()).toContain('view only')
+
+      vi.mocked(api.patch).mockResolvedValueOnce(ok({ data: { id: 3, can_upload: true } }))
+      await openMember(wrapper, 'Max')
+      await button(wrapper, 'Allow uploads and tags').trigger('click')
+      await flushPromises()
+
+      expect(api.patch).toHaveBeenLastCalledWith('/children/7/members/3/permissions', { can_upload: true })
+      expect(wrapper.text()).not.toContain('view only')
       assertNoCrypto()
     })
 
