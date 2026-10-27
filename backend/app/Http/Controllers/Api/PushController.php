@@ -87,6 +87,8 @@ class PushController extends Controller
                 'child_id' => $childId,
                 'notify_photos' => $preferences[$childId]->notify_photos ?? true,
                 'notify_comments' => $preferences[$childId]->notify_comments ?? true,
+                'notify_joins' => $preferences[$childId]->notify_joins ?? true,
+                'notify_admin_comments' => $preferences[$childId]->notify_admin_comments ?? true,
             ])->values(),
         ]);
     }
@@ -96,23 +98,32 @@ class PushController extends Controller
         $validated = $request->validate([
             'notify_photos' => ['required', 'boolean'],
             'notify_comments' => ['required', 'boolean'],
+            'notify_joins' => ['sometimes', 'boolean'],
+            'notify_admin_comments' => ['sometimes', 'boolean'],
         ]);
 
+        $flags = array_map('boolval', array_intersect_key($validated, array_flip([
+            'notify_photos', 'notify_comments', 'notify_joins', 'notify_admin_comments',
+        ])));
+
+        // Flags the client did not send keep their stored value (new rows use the column defaults).
         DB::table('notification_preferences')->upsert(
-            [[
-                'user_id' => $request->user()->id,
-                'child_id' => $child->id,
-                'notify_photos' => (bool) $validated['notify_photos'],
-                'notify_comments' => (bool) $validated['notify_comments'],
-            ]],
+            [['user_id' => $request->user()->id, 'child_id' => $child->id, ...$flags]],
             ['user_id', 'child_id'],
-            ['notify_photos', 'notify_comments'],
+            array_keys($flags),
         );
+
+        $stored = NotificationPreference::query()
+            ->where('user_id', $request->user()->id)
+            ->where('child_id', $child->id)
+            ->first();
 
         return response()->json(['data' => [
             'child_id' => $child->id,
-            'notify_photos' => (bool) $validated['notify_photos'],
-            'notify_comments' => (bool) $validated['notify_comments'],
+            'notify_photos' => (bool) $stored->notify_photos,
+            'notify_comments' => (bool) $stored->notify_comments,
+            'notify_joins' => (bool) $stored->notify_joins,
+            'notify_admin_comments' => (bool) $stored->notify_admin_comments,
         ]]);
     }
 

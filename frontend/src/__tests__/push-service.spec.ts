@@ -186,20 +186,24 @@ describe('services/push', () => {
   })
 
   it('reads and writes per-child preferences', async () => {
+    const prefs = {
+      notify_photos: true,
+      notify_comments: false,
+      notify_joins: true,
+      notify_admin_comments: false,
+    }
     mocked.get.mockResolvedValueOnce({
-      data: { data: [{ child_id: 1, notify_photos: true, notify_comments: false }] },
+      data: { data: [{ child_id: 1, ...prefs }] },
     })
-    expect(await getPreferences()).toEqual([
-      { child_id: 1, notify_photos: true, notify_comments: false },
-    ])
+    expect(await getPreferences()).toEqual([{ child_id: 1, ...prefs }])
 
     mocked.put.mockResolvedValueOnce({
-      data: { data: { child_id: 1, notify_photos: false, notify_comments: false } },
+      data: { data: { child_id: 1, ...prefs, notify_photos: false } },
     })
-    await setPreferences(1, { notify_photos: false, notify_comments: false })
+    await setPreferences(1, { ...prefs, notify_photos: false })
     expect(mocked.put).toHaveBeenCalledWith('/push/preferences/1', {
+      ...prefs,
       notify_photos: false,
-      notify_comments: false,
     })
   })
 })

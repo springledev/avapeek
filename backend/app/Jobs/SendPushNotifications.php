@@ -41,8 +41,10 @@ class SendPushNotifications implements ShouldQueue
         $events = $batcher->drain($this->type);
 
         try {
+            $urls = $resolver->resolveUrls($this->type, $events);
+
             foreach ($resolver->resolve($this->type, $events) as $subscription) {
-                $push->send($subscription, $this->type);
+                $push->send($subscription, $this->type, $urls[$subscription->user_id] ?? null);
             }
         } catch (Throwable $e) {
             // Keep the batch for the retry; successful runs never restore, so nothing is duplicated.

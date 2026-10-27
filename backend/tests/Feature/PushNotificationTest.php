@@ -331,7 +331,7 @@ describe('notification preferences', function () {
             ->getJson('/api/push/preferences')
             ->assertOk()
             ->assertExactJson(['data' => [
-                ['child_id' => $child->id, 'notify_photos' => true, 'notify_comments' => true],
+                ['child_id' => $child->id, 'notify_photos' => true, 'notify_comments' => true, 'notify_joins' => true, 'notify_admin_comments' => true],
             ]]);
 
         expect($strangerChild->id)->not->toBe($child->id);
@@ -481,8 +481,9 @@ describe('dispatch and batching', function () {
         Photo::factory()->create(['uploaded_by' => $owner->id]);
         Comment::factory()->count(3)->create(['photo_id' => $photo->id, 'user_id' => $owner->id]);
 
-        Queue::assertPushed(SendPushNotifications::class, 2);
+        Queue::assertPushed(SendPushNotifications::class, 3);
         Queue::assertPushed(SendPushNotifications::class, fn ($job) => $job->type === 'comments');
+        Queue::assertPushed(SendPushNotifications::class, fn ($job) => $job->type === 'admin_comments');
         Queue::assertPushed(SendPushNotifications::class, fn ($job) => $job->type === 'photos');
     });
 
@@ -502,6 +503,8 @@ describe('dispatch and batching', function () {
         pushFakeDns();
         pushSubscribe($owner, 'https://push.example.test/owner');
         pushSubscribe($other, 'https://push.example.test/other');
+        // Owners/admins normally get the dedicated admin_comments push instead of the generic one.
+        NotificationPreference::factory()->create(['user_id' => $owner->id, 'child_id' => $child->id, 'notify_admin_comments' => false]);
         $history = [];
         pushServiceWith([new Response(201), new Response(201)], $history);
 
@@ -535,6 +538,7 @@ describe('dispatch and batching', function () {
         $batcher->record('photos', $photo->id, $owner->id);
 
         $failing = Mockery::mock(PushRecipientResolver::class);
+        $failing->shouldReceive('resolveUrls')->andReturn([]);
         $failing->shouldReceive('resolve')->once()->andThrow(new RuntimeException('db down'));
         expect(fn () => (new SendPushNotifications('photos'))->handle($batcher, $failing, app(WebPushService::class)))
             ->toThrow(RuntimeException::class);
@@ -560,6 +564,7 @@ describe('dispatch and batching', function () {
         $batcher->shouldReceive('drain')->once()->andReturn([[$photo->id, $owner->id]]);
         $batcher->shouldReceive('restore')->once()->andThrow(new LogicException('cache down'));
         $resolver = Mockery::mock(PushRecipientResolver::class);
+        $resolver->shouldReceive('resolveUrls')->andReturn([]);
         $resolver->shouldReceive('resolve')->once()->andThrow(new RuntimeException('original failure'));
 
         expect(fn () => (new SendPushNotifications('photos'))->handle($batcher, $resolver, app(WebPushService::class)))

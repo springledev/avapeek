@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   notificationForType,
   parsePushType,
+  parsePushUrl,
   pickClient,
   resolveClickUrl,
   routeNotificationClick,
@@ -35,6 +36,61 @@ describe('push service worker helpers', () => {
 
     expect(JSON.stringify(spec)).not.toMatch(/Alice|secret|Mia|evil/)
     expect(spec.options.tag).toBe('avapeek-comments')
+  })
+
+  it('builds text that says where to look for admin comments and joins', () => {
+    const joins = notificationForType('joins', '/settings/children/4')
+    const adminComments = notificationForType('admin_comments', '/recents?photo=9')
+
+    expect(joins.options.body).toContain('Settings')
+    expect(joins.options.data).toEqual({ url: '/settings/children/4' })
+    expect(adminComments.options.body).toContain('commented on a photo')
+    expect(adminComments.options.data).toEqual({ url: '/recents?photo=9' })
+    expect(parsePushType('{"type":"joins"}')).toBe('joins')
+    expect(parsePushType('{"type":"admin_comments"}')).toBe('admin_comments')
+  })
+
+  it('only accepts allowlisted in-app urls from the payload', () => {
+    expect(parsePushUrl('{"url":"/recents?photo=12"}')).toBe('/recents?photo=12')
+    expect(parsePushUrl('{"url":"/settings/children/3"}')).toBe('/settings/children/3')
+    expect(parsePushUrl('{"url":"https://evil.example/x"}')).toBeNull()
+    expect(parsePushUrl('{"url":"//evil.example"}')).toBeNull()
+    expect(parsePushUrl('{"url":"/recents?photo=1&x=2"}')).toBeNull()
+    expect(parsePushUrl('{"url":"/settings/security"}')).toBeNull()
+    expect(parsePushUrl('nope')).toBeNull()
+    expect(resolveClickUrl('https://evil.example')).toBe('/recents')
+    expect(resolveClickUrl('/settings/children/3')).toBe('/settings/children/3')
+  })
+
+  it('navigates an existing client to the deep link', async () => {
+    const client: WindowClientLike = {
+      url: 'https://app.example/recents',
+      focus: vi.fn<() => Promise<unknown>>().mockResolvedValue(undefined),
+      navigate: vi.fn<(url: string) => Promise<unknown>>().mockResolvedValue(undefined),
+    }
+
+    await routeNotificationClick({
+      clients: [client],
+      origin: 'https://app.example',
+      url: '/recents?photo=7',
+      openWindow: vi.fn<(url: string) => Promise<unknown>>(),
+    })
+
+    expect(client.navigate).toHaveBeenCalledWith('/recents?photo=7')
+    expect(client.focus).toHaveBeenCalled()
+  })
+
+  it('opens a window at the deep link when no client exists', async () => {
+    const openWindow = vi.fn<(url: string) => Promise<unknown>>().mockResolvedValue(undefined)
+
+    await routeNotificationClick({
+      clients: [],
+      origin: 'https://app.example',
+      url: '/settings/children/2',
+      openWindow,
+    })
+
+    expect(openWindow).toHaveBeenCalledWith('/settings/children/2')
   })
 
   it('falls back to photos for missing, malformed or unknown payloads', () => {

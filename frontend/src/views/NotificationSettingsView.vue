@@ -17,6 +17,9 @@ const rows = computed(() =>
     name: child.name,
     notify_photos: preferences.value.get(child.id)?.notify_photos ?? true,
     notify_comments: preferences.value.get(child.id)?.notify_comments ?? true,
+    notify_joins: preferences.value.get(child.id)?.notify_joins ?? true,
+    notify_admin_comments: preferences.value.get(child.id)?.notify_admin_comments ?? true,
+    isAdmin: child.role === 'owner' || child.role === 'admin',
   })),
 )
 
@@ -24,13 +27,17 @@ async function onToggleDevice() {
   await push.toggle()
 }
 
-async function onToggleType(childId: number, key: 'notify_photos' | 'notify_comments') {
+type PreferenceKey = Exclude<keyof ChildPushPreference, 'child_id'>
+
+async function onToggleType(childId: number, key: PreferenceKey) {
   const row = rows.value.find((r) => r.id === childId)
   if (!row || savingChildId.value !== null) return
 
   const next = {
     notify_photos: row.notify_photos,
     notify_comments: row.notify_comments,
+    notify_joins: row.notify_joins,
+    notify_admin_comments: row.notify_admin_comments,
     [key]: !row[key],
   }
   savingChildId.value = childId
@@ -82,8 +89,8 @@ onMounted(async () => {
           <div class="notify__text">
             <p class="notify__label">Notify on this device</p>
             <p class="notify__desc">
-              A generic alert when someone adds photos or comments. It never shows names or
-              content. Your browser's push service (Google, Apple, Mozilla or Microsoft) can see
+              A short alert when someone adds photos, comments or joins. It never shows names or
+              content, and tapping it opens the right screen. Your browser's push service (Google, Apple, Mozilla or Microsoft) can see
               that a message arrived and when.
             </p>
           </div>
@@ -147,6 +154,44 @@ onMounted(async () => {
               </button>
             </label>
           </div>
+          <div v-if="row.isAdmin" class="notify__switches">
+            <label class="notify__option">
+              <span>Someone joins</span>
+              <button
+                type="button"
+                role="switch"
+                class="notify__switch"
+                :class="{ 'notify__switch--on': row.notify_joins }"
+                :aria-checked="row.notify_joins"
+                :aria-label="`Someone joins ${row.name}`"
+                :disabled="savingChildId !== null"
+                data-testid="push-joins-toggle"
+                @click="onToggleType(row.id, 'notify_joins')"
+              >
+                <span class="notify__knob" />
+              </button>
+            </label>
+            <label class="notify__option">
+              <span>Member comments</span>
+              <button
+                type="button"
+                role="switch"
+                class="notify__switch"
+                :class="{ 'notify__switch--on': row.notify_admin_comments }"
+                :aria-checked="row.notify_admin_comments"
+                :aria-label="`Member comments on ${row.name}`"
+                :disabled="savingChildId !== null"
+                data-testid="push-admin-comments-toggle"
+                @click="onToggleType(row.id, 'notify_admin_comments')"
+              >
+                <span class="notify__knob" />
+              </button>
+            </label>
+          </div>
+          <p v-if="row.isAdmin" class="notify__desc">
+            As an admin you also hear when someone joins (see them under Settings, Kids, then
+            {{ row.name }}) and when a member comments on a photo (tap to open it).
+          </p>
         </div>
       </template>
     </template>
@@ -220,7 +265,8 @@ onMounted(async () => {
 
 .notify__switches {
   display: flex;
-  gap: var(--space-6);
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
 }
 
 .notify__option {

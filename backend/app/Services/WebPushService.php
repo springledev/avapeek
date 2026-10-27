@@ -17,7 +17,7 @@ use Throwable;
 /**
  * Sends one generic Web Push message per subscription.
  *
- * The payload is only {type, url}: no names, ids, counts or content. The
+ * The payload is only {type, url}: no names, counts or content (the url may carry a numeric photo or child id). The
  * library encrypts it per RFC 8291; this class never logs endpoints or keys.
  */
 class WebPushService
@@ -43,15 +43,15 @@ class WebPushService
     /**
      * @return array{type: string, url: string}
      */
-    public static function payload(string $type): array
+    public static function payload(string $type, ?string $url = null): array
     {
-        return ['type' => $type, 'url' => self::URL];
+        return ['type' => $type, 'url' => $url ?? self::URL];
     }
 
     /**
      * Returns true when the push service accepted the message.
      */
-    public function send(PushSubscription $subscription, string $type): bool
+    public function send(PushSubscription $subscription, string $type, ?string $url = null): bool
     {
         if (! $this->isEnabled()) {
             return false;
@@ -98,7 +98,7 @@ class WebPushService
                     'authToken' => $subscription->auth,
                     'contentEncoding' => 'aes128gcm',
                 ]),
-                json_encode(self::payload($type), JSON_THROW_ON_ERROR),
+                json_encode(self::payload($type, $url), JSON_THROW_ON_ERROR),
             );
         } catch (Throwable $e) {
             $this->log('push send threw '.$e::class, $subscription);

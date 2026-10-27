@@ -4,13 +4,22 @@
  *
  * The push payload is only `{ type, url }`. Notification text is chosen here,
  * never taken from the payload, so nothing user-supplied (and nothing
- * decrypted) can end up in the OS notification history.
+ * decrypted) can end up in the OS notification history. The payload `url` is
+ * only honoured when it matches a strict allowlist of in-app paths.
  */
 
-export type PushType = 'photos' | 'comments'
+export type PushType = 'photos' | 'comments' | 'admin_comments' | 'joins'
 
-/** The only place a notification may send the user: the unseen feed. */
+/** Default click target: the unseen feed. */
 export const PUSH_CLICK_URL = '/recents'
+
+/** In-app paths a push may deep-link to (numeric ids only, no other query or host). */
+const ALLOWED_CLICK_URLS: readonly RegExp[] = [
+  /^\/recents$/,
+  /^\/recents\?photo=\d{1,12}$/,
+  /^\/settings\/children$/,
+  /^\/settings\/children\/\d{1,12}$/,
+]
 
 export const NOTIFICATION_ICON = '/icons/icon-192.png'
 
@@ -37,10 +46,20 @@ const COPY: Record<PushType, { title: string; body: string; tag: string }> = {
     body: 'Someone commented on a photo.',
     tag: 'avapeek-comments',
   },
+  admin_comments: {
+    title: 'New comment on a photo',
+    body: 'A family member commented on a photo. Tap to open it.',
+    tag: 'avapeek-admin-comments',
+  },
+  joins: {
+    title: 'Someone joined your family',
+    body: 'A new member accepted your invite. Tap to see who in Settings, Kids.',
+    tag: 'avapeek-joins',
+  },
 }
 
 function isPushType(value: unknown): value is PushType {
-  return value === 'photos' || value === 'comments'
+  return value === 'photos' || value === 'comments' || value === 'admin_comments' || value === 'joins'
 }
 
 /**
@@ -59,7 +78,18 @@ export function parsePushType(raw: string | null | undefined): PushType {
   }
 }
 
-export function notificationForType(type: PushType): NotificationSpec {
+/** Returns the payload `url` only if it is an allowlisted in-app path, else null. */
+export function parsePushUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  try {
+    const url = (JSON.parse(raw) as { url?: unknown } | null)?.url
+    return typeof url === 'string' && ALLOWED_CLICK_URLS.some((re) => re.test(url)) ? url : null
+  } catch {
+    return null
+  }
+}
+
+export function notificationForType(type: PushType, url?: string | null): NotificationSpec {
   const copy = COPY[type]
   return {
     title: copy.title,
@@ -69,17 +99,19 @@ export function notificationForType(type: PushType): NotificationSpec {
       icon: NOTIFICATION_ICON,
       badge: NOTIFICATION_ICON,
       renotify: false,
-      data: { url: PUSH_CLICK_URL },
+      data: { url: url ?? PUSH_CLICK_URL },
     },
   }
 }
 
 /**
- * Click target. Always `/recents`: the payload's `url` is deliberately not
- * trusted, so a push can never steer the worker to another path.
+ * Click target. Only an allowlisted in-app path is used; anything else
+ * (including external URLs) falls back to `/recents`.
  */
-export function resolveClickUrl(): string {
-  return PUSH_CLICK_URL
+export function resolveClickUrl(url?: string | null): string {
+  return typeof url === 'string' && ALLOWED_CLICK_URLS.some((re) => re.test(url))
+    ? url
+    : PUSH_CLICK_URL
 }
 
 export interface WindowClientLike {
@@ -101,18 +133,21 @@ export function pickClient<T extends { url: string }>(
 export interface ClickDeps {
   clients: readonly WindowClientLike[]
   origin: string
+  /** Allowlisted url from the notification's data; defaults to `/recents`. */
+  url?: string | null
   openWindow: (url: string) => Promise<unknown>
 }
 
 /** Focuses an existing client and navigates it to the target, else opens a window. */
 export async function routeNotificationClick(deps: ClickDeps): Promise<void> {
-  const target = resolveClickUrl()
-  const client = pickClient(deps.clients, deps.origin, target)
+  const target = resolveClickUrl(deps.url)
+  const targetPath = target.split('?')[0]!
+  const client = pickClient(deps.clients, deps.origin, targetPath)
   if (!client) {
     await deps.openWindow(target)
     return
   }
-  if (new URL(client.url).pathname !== target && client.navigate) {
+  if (new URL(client.url).pathname + new URL(client.url).search !== target && client.navigate) {
     await client.navigate(target)
   }
   await client.focus()
