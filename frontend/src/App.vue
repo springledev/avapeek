@@ -4,6 +4,7 @@ import { Toaster } from 'vue-sonner'
 import { useAuthStore } from '@/stores/auth'
 import { useChildStore } from '@/stores/child'
 import { useDarkMode } from '@/composables/useDarkMode'
+import { useGridDensity } from '@/composables/useGridDensity'
 import { useNetwork } from '@/composables/useNetwork'
 import AppShell from '@/components/AppShell.vue'
 import OfflineBanner from '@/components/OfflineBanner.vue'
@@ -13,9 +14,11 @@ import { resyncPushSubscription } from '@/services/push'
 const authStore = useAuthStore()
 const childStore = useChildStore()
 const { initDarkMode } = useDarkMode()
+const { initDensity } = useGridDensity()
 const { initNetwork, cleanup } = useNetwork()
 
 initDarkMode()
+initDensity()
 initNetwork()
 
 const KEY_SYNC_INTERVAL_MS = 60_000

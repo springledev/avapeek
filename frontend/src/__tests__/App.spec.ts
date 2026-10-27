@@ -51,6 +51,20 @@ describe('App', () => {
     expect(wrapper.exists()).toBe(true)
   })
 
+  it('applies the stored feed density on startup', () => {
+    localStorage.setItem('avapeek-feed-density', '3')
+    document.documentElement.dataset.feedDensity = ''
+    mount(App, {
+      global: {
+        plugins: [createPinia(), createRouter({ history: createWebHistory(), routes: [] })],
+        stubs: { AppShell: true, Toaster: true },
+      },
+    })
+    expect(document.documentElement.dataset.feedDensity).toBe('3')
+    localStorage.removeItem('avapeek-feed-density')
+    document.documentElement.dataset.feedDensity = ''
+  })
+
   it('configures the Toaster with design-token offsets and no richColors', () => {
     const wrapper = mount(App, {
       global: {
