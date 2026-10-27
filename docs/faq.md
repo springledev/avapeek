@@ -1,5 +1,13 @@
 # FAQ and troubleshooting
 
+## Why use Avapeek instead of Instagram, a shared album or a family photo app?
+
+See [Why Avapeek?](why-avapeek.md) for an honest comparison, including the trade-offs.
+
+## Is there a hosted version?
+
+Not yet. A hosted version is planned for people who cannot or do not want to self-host. Watch the GitHub repository for news.
+
 ## Can I reset a forgotten password?
 
 No. Your password derives the key that unwraps your encryption keys. There is no reset flow and no recovery key. If you forget it, your account's keys are lost. If another family member still has access to the same children, ask them to invite you again with a new account. See [security.md](security.md#password-loss). You can change your password while logged in (Settings), which re-wraps your keys.

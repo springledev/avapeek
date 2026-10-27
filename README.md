@@ -8,6 +8,18 @@ Avapeek lets you share photos of your children with grandparents, relatives and 
 
 > Screenshots: _to be added._
 
+## Why Avapeek?
+
+Compared with social media, shared albums or family photo apps, Avapeek is built around three things:
+
+- **Privacy by design.** Photos, EXIF, filenames, tag names and comments are encrypted in your browser. Your server, database, backups and storage only hold ciphertext. There are no ads, no trackers, and nothing for anyone to train an AI on.
+- **You own it.** Self-host on your own hardware and choose your own storage. Open source (AGPL-3.0). Any member can export everything, so there is no lock-in.
+- **Family only.** One group per child, invite-only, with owner/admin/member roles and optional view-only members. No public profiles, no followers.
+
+The honest trade-offs: you run the server and the backups, a forgotten password means lost photos (no reset exists), and the feature set is smaller than the big platforms. Read the full comparison in [Why Avapeek?](docs/why-avapeek.md).
+
+> **Hosted version coming soon** for people who cannot or do not want to self-host.
+
 ## Features
 
 - Client-side AES-GCM encryption of photos, thumbnails, low-quality placeholders, EXIF and comments
@@ -20,7 +32,7 @@ Avapeek lets you share photos of your children with grandparents, relatives and 
 
 ## Security model in brief
 
-Your password derives a key in your browser (PBKDF2, 600,000 iterations). That key wraps your private key and the per-child data keys; those wrap per-photo keys. The database and bucket store only wrapped keys and ciphertext, so a leaked database or bucket does not expose your photos. It does not protect against a malicious server operator, because your password is sent to the server and derives that key. Some metadata (child names, photo dates and sizes, tag names) is **not** encrypted today, and there is **no password recovery**: a forgotten password means the data is unreadable. Read [docs/security.md](docs/security.md) before trusting it with anything important.
+Your password derives a key in your browser (PBKDF2, 600,000 iterations). That key wraps your private key and the per-child data keys; those wrap per-photo keys. The database and bucket store only wrapped keys and ciphertext, so a leaked database or bucket does not expose your photos. It does not protect against a malicious server operator, because the app that does the encryption is delivered by the server (when you self-host, that operator is you). Your password itself is never sent, only a one-way auth hash. Some metadata (child names, photo dates and sizes, who belongs to which child) is **not** encrypted today, and there is **no password recovery**: a forgotten password means the data is unreadable. Read [docs/security.md](docs/security.md) before trusting it with anything important.
 
 ## Quickstart
 
@@ -48,6 +60,7 @@ cd avapeek
 | [Security](docs/security.md) | Encryption design, what the server can see, threat model, limitations |
 | [Architecture](docs/architecture.md) | Components and request flows |
 | [Development](docs/development.md) | Dev environment, tests, repo layout |
+| [Why Avapeek?](docs/why-avapeek.md) | How it compares with social media, shared albums and family photo apps |
 | [FAQ and troubleshooting](docs/faq.md) | Common problems |
 
 ## Contributing
