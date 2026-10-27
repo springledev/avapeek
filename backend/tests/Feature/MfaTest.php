@@ -648,6 +648,43 @@ describe('Passkey setup', function () {
         expect($user->webauthnCredentials()->where('user_chosen_name', 'Bitwarden')->exists())->toBeTrue();
     });
 
+    it('keeps registration options across requests on a cache store that serializes values', function () {
+        config(['cache.stores.array.serialize' => true]);
+        app('cache')->forgetDriver('array');
+        $user = User::factory()->create();
+
+        $options = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/auth/mfa/passkeys/register/options', ['current_auth_hash' => UserFactory::AUTH_HASH])
+            ->json('options');
+
+        $this->app['auth']->forgetGuards();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/auth/mfa/passkeys/register/verify', [
+                'response' => fakeNoneAttestation($options['challenge']),
+            ])
+            ->assertOk()
+            ->assertJsonStructure(['passkey_id']);
+    });
+
+    it('keeps passkey login options across requests on a cache store that serializes values', function () {
+        config(['cache.stores.array.serialize' => true]);
+        app('cache')->forgetDriver('array');
+        $user = User::factory()->create();
+        $credential = WebAuthnCredential::factory()->create(['user_id' => $user->id]);
+        $mfaToken = app(MfaTokenService::class)->create($user, true);
+
+        $this->postJson('/api/auth/mfa/passkey/options', ['mfa_token' => $mfaToken])->assertOk();
+
+        $this->postJson('/api/auth/mfa/challenge', [
+            'mfa_token' => $mfaToken,
+            'method' => 'passkey',
+            'passkey_response' => ['id' => $credential->credential_id, 'rawId' => $credential->credential_id, 'type' => 'public-key'],
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.passkey_response.0', 'The passkey verification failed.');
+    });
+
     it('accepts a passkey from an authenticator that did not report user verification', function () {
         $user = User::factory()->create();
 
