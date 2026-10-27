@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use PragmaRX\Google2FA\Google2FA;
+use Throwable;
 use Webauthn\Exception\AuthenticatorResponseVerificationException;
 use Webauthn\PublicKeyCredentialCreationOptions;
 use Webauthn\PublicKeyCredentialRequestOptions;
@@ -123,7 +124,7 @@ class MfaController extends Controller
         $options = $this->webAuthnService->buildAssertionOptions($user);
         Cache::put(
             $this->passkeyOptionsCacheKey($session['nonce']),
-            $this->webAuthnService->deserializeRequestOptions(json_encode($options, JSON_THROW_ON_ERROR)),
+            json_encode($options, JSON_THROW_ON_ERROR),
             now()->addMinutes(self::OPTIONS_TTL_MINUTES)
         );
 
@@ -284,7 +285,7 @@ class MfaController extends Controller
 
         Cache::put(
             $this->registerOptionsCacheKey($user->id),
-            $this->webAuthnService->deserializeCreationOptions(json_encode($options, JSON_THROW_ON_ERROR)),
+            json_encode($options, JSON_THROW_ON_ERROR),
             now()->addMinutes(self::OPTIONS_TTL_MINUTES)
         );
 
@@ -306,7 +307,8 @@ class MfaController extends Controller
         ]);
 
         $user = $request->user();
-        $options = Cache::get($this->registerOptionsCacheKey($user->id));
+        $cachedOptions = Cache::get($this->registerOptionsCacheKey($user->id));
+        $options = is_string($cachedOptions) ? $this->restoreCachedOptions($cachedOptions, creation: true) : null;
 
         if (! $options instanceof PublicKeyCredentialCreationOptions) {
             throw ValidationException::withMessages([
@@ -485,7 +487,8 @@ class MfaController extends Controller
             ]);
         }
 
-        $options = Cache::get($this->passkeyOptionsCacheKey($nonce));
+        $cachedOptions = Cache::get($this->passkeyOptionsCacheKey($nonce));
+        $options = is_string($cachedOptions) ? $this->restoreCachedOptions($cachedOptions, creation: false) : null;
 
         if (! $options instanceof PublicKeyCredentialRequestOptions) {
             throw ValidationException::withMessages([
@@ -609,6 +612,21 @@ class MfaController extends Controller
     private function codeFailuresKey(User $user): string
     {
         return 'mfa_code_failures:'.$user->id;
+    }
+
+    /**
+     * Options are cached as JSON because cache.serializable_classes=false turns
+     * cached objects into __PHP_Incomplete_Class on real (serializing) stores.
+     */
+    private function restoreCachedOptions(string $json, bool $creation): PublicKeyCredentialCreationOptions|PublicKeyCredentialRequestOptions|null
+    {
+        try {
+            return $creation
+                ? $this->webAuthnService->deserializeCreationOptions($json)
+                : $this->webAuthnService->deserializeRequestOptions($json);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function passkeyOptionsCacheKey(string $nonce): string
