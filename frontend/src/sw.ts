@@ -10,7 +10,7 @@
  *   URLs expire, so nothing from them may be stored in Cache Storage.
  * - Receives Web Share Target POSTs and stages the files in IndexedDB.
  * - Shows generic Web Push notifications (text chosen here from the payload
- *   `type`, never from payload content) and routes clicks to /recents.
+ *   `type`, never from payload content) and deep-links clicks to an allowlisted in-app path (default /recents).
  *
  * Each concern is its own handler function so more events can be added
  * without touching the others. Pure logic lives in `lib/sw-routes.ts` and
@@ -26,7 +26,7 @@ import {
   toPrecachePath,
   type PrecacheEntry,
 } from './lib/sw-routes'
-import { notificationForType, parsePushType, routeNotificationClick } from './lib/push-sw'
+import { notificationForType, parsePushType, parsePushUrl, routeNotificationClick } from './lib/push-sw'
 import { purgeExpiredShares } from './lib/share-inbox'
 import { handleShareTarget } from './lib/share-target'
 
@@ -106,7 +106,7 @@ function onPush(event: PushEvent): void {
   } catch {
     raw = null
   }
-  const { title, options } = notificationForType(parsePushType(raw))
+  const { title, options } = notificationForType(parsePushType(raw), parsePushUrl(raw))
   event.waitUntil(self.registration.showNotification(title, options))
 }
 
@@ -117,6 +117,7 @@ function onNotificationClick(event: NotificationEvent): void {
       routeNotificationClick({
         clients: windowClients as unknown as WindowClient[],
         origin: self.location.origin,
+        url: (event.notification.data as { url?: unknown } | null)?.url as string | undefined,
         openWindow: (url) => self.clients.openWindow(url),
       }),
     ),

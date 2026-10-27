@@ -22,6 +22,8 @@ class NotificationPreferenceFactory extends Factory
             'child_id' => Child::factory(),
             'notify_photos' => true,
             'notify_comments' => true,
+            'notify_joins' => true,
+            'notify_admin_comments' => true,
         ];
     }
 }

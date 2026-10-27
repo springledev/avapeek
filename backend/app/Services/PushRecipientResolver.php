@@ -35,35 +35,87 @@ class PushRecipientResolver
      */
     public function resolveUserIds(string $type, array $events): array
     {
+        return array_keys($this->resolveItems($type, $events));
+    }
+
+    /**
+     * Deep link per recipient user id. A batch touching one photo (or one child)
+     * links straight to it; a mixed batch links to the general screen. Only
+     * numeric ids ever reach a URL, never names or content.
+     *
+     * @param  list<array{0: int, 1: int}>  $events
+     * @return array<int, string>
+     */
+    public function resolveUrls(string $type, array $events): array
+    {
+        $urls = [];
+
+        foreach ($this->resolveItems($type, $events) as $userId => $itemIds) {
+            $urls[$userId] = match ($type) {
+                PushBatcher::TYPE_JOINS => count($itemIds) === 1 ? '/settings/children/'.$itemIds[0] : '/settings/children',
+                PushBatcher::TYPE_ADMIN_COMMENTS => count($itemIds) === 1 ? '/recents?photo='.$itemIds[0] : WebPushService::URL,
+                default => WebPushService::URL,
+            };
+        }
+
+        return $urls;
+    }
+
+    /**
+     * Recipient user id => distinct item ids (photo ids; child ids for joins) that qualified.
+     *
+     * @param  list<array{0: int, 1: int}>  $events
+     * @return array<int, list<int>>
+     */
+    private function resolveItems(string $type, array $events): array
+    {
         if ($events === []) {
             return [];
         }
 
-        $column = $type === PushBatcher::TYPE_COMMENTS ? 'notify_comments' : 'notify_photos';
-        $photoIds = array_values(array_unique(array_column($events, 0)));
+        $column = match ($type) {
+            PushBatcher::TYPE_COMMENTS => 'notify_comments',
+            PushBatcher::TYPE_ADMIN_COMMENTS => 'notify_admin_comments',
+            PushBatcher::TYPE_JOINS => 'notify_joins',
+            default => 'notify_photos',
+        };
+        $adminsOnly = $type === PushBatcher::TYPE_ADMIN_COMMENTS || $type === PushBatcher::TYPE_JOINS;
 
-        /** @var array<int, list<int>> $childIdsByPhoto */
-        $childIdsByPhoto = [];
-        foreach (DB::table('child_photo')->whereIn('photo_id', $photoIds)->get(['photo_id', 'child_id']) as $row) {
-            $childIdsByPhoto[(int) $row->photo_id][] = (int) $row->child_id;
+        $itemIds = array_values(array_unique(array_column($events, 0)));
+
+        /** @var array<int, list<int>> $childIdsByItem */
+        $childIdsByItem = [];
+        if ($type === PushBatcher::TYPE_JOINS) {
+            foreach ($itemIds as $childId) {
+                $childIdsByItem[$childId] = [$childId];
+            }
+        } else {
+            foreach (DB::table('child_photo')->whereIn('photo_id', $itemIds)->get(['photo_id', 'child_id']) as $row) {
+                $childIdsByItem[(int) $row->photo_id][] = (int) $row->child_id;
+            }
         }
 
-        $childIds = array_values(array_unique(array_merge(...array_values($childIdsByPhoto) ?: [[]])));
+        $childIds = array_values(array_unique(array_merge(...array_values($childIdsByItem) ?: [[]])));
 
         if ($childIds === []) {
             return [];
         }
 
-        /** @var array<int, list<int>> $memberIdsByChild */
-        $memberIdsByChild = [];
-        foreach (DB::table('child_users')->whereIn('child_id', $childIds)->get(['child_id', 'user_id']) as $row) {
-            $memberIdsByChild[(int) $row->child_id][] = (int) $row->user_id;
+        /** @var array<int, array<int, string>> $memberRoles child id => [user id => role] */
+        $memberRoles = [];
+        foreach (DB::table('child_users')->whereIn('child_id', $childIds)->get(['child_id', 'user_id', 'role']) as $row) {
+            $memberRoles[(int) $row->child_id][(int) $row->user_id] = (string) $row->role;
         }
 
-        $memberIds = array_values(array_unique(array_merge(...array_values($memberIdsByChild) ?: [[]])));
+        $memberIds = [];
+        foreach ($memberRoles as $roles) {
+            foreach (array_keys($roles) as $userId) {
+                $memberIds[$userId] = true;
+            }
+        }
 
         $subscribedUserIds = PushSubscription::query()
-            ->whereIn('user_id', $memberIds)
+            ->whereIn('user_id', array_keys($memberIds))
             ->distinct()
             ->pluck('user_id')
             ->map(fn ($id): int => (int) $id)
@@ -75,31 +127,50 @@ class PushRecipientResolver
 
         /** @var array<string, bool> $muted keyed "user:child" */
         $muted = [];
+        /** @var array<string, bool> $adminCommentsOff keyed "user:child" */
+        $adminCommentsOff = [];
         $preferences = NotificationPreference::query()
             ->whereIn('child_id', $childIds)
             ->whereIn('user_id', $subscribedUserIds)
-            ->where($column, false)
-            ->get(['user_id', 'child_id']);
+            ->get(['user_id', 'child_id', 'notify_photos', 'notify_comments', 'notify_joins', 'notify_admin_comments']);
         foreach ($preferences as $preference) {
-            $muted[$preference->user_id.':'.$preference->child_id] = true;
+            $key = $preference->user_id.':'.$preference->child_id;
+            if (! $preference->{$column}) {
+                $muted[$key] = true;
+            }
+            if (! $preference->notify_admin_comments) {
+                $adminCommentsOff[$key] = true;
+            }
         }
 
         $subscribed = array_flip($subscribedUserIds);
         $recipients = [];
 
-        foreach ($events as [$photoId, $actorId]) {
-            foreach ($childIdsByPhoto[$photoId] ?? [] as $childId) {
-                foreach ($memberIdsByChild[$childId] ?? [] as $userId) {
-                    if ($userId === $actorId || ! isset($subscribed[$userId]) || isset($muted[$userId.':'.$childId])) {
+        foreach ($events as [$itemId, $actorId]) {
+            foreach ($childIdsByItem[$itemId] ?? [] as $childId) {
+                foreach ($memberRoles[$childId] ?? [] as $userId => $role) {
+                    $key = $userId.':'.$childId;
+                    $isAdmin = in_array($role, ['owner', 'admin'], true);
+
+                    if ($userId === $actorId || ! isset($subscribed[$userId]) || isset($muted[$key])) {
+                        continue;
+                    }
+
+                    if ($adminsOnly && ! $isAdmin) {
+                        continue;
+                    }
+
+                    // Admins get the more specific admin-comment push instead of the generic one.
+                    if ($type === PushBatcher::TYPE_COMMENTS && $isAdmin && ! isset($adminCommentsOff[$key])) {
                         continue;
                     }
 
                     // Union semantics: one unmuted shared child is enough.
-                    $recipients[$userId] = true;
+                    $recipients[$userId][$itemId] = $itemId;
                 }
             }
         }
 
-        return array_keys($recipients);
+        return array_map(fn (array $ids): array => array_values($ids), $recipients);
     }
 }

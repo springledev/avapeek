@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Child;
 use App\Models\ChildUser;
 use App\Models\Invite;
+use App\Services\PushBatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -124,7 +125,7 @@ class InviteController extends Controller
      * Creates the child_users membership record and marks the invite as accepted.
      * Returns the child ID so the frontend can navigate to the child dashboard.
      */
-    public function accept(Request $request, string $token): JsonResponse
+    public function accept(Request $request, string $token, PushBatcher $batcher): JsonResponse
     {
         $invite = Invite::where('token', $token)->first();
 
@@ -180,6 +181,12 @@ class InviteController extends Controller
             'accepted_at' => now(),
             'accepted_by' => $user->id,
         ]);
+
+        try {
+            $batcher->record(PushBatcher::TYPE_JOINS, $invite->child_id, $user->id);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return response()->json([
             'data' => [

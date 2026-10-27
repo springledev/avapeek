@@ -16,6 +16,7 @@ class CommentPushObserver
     {
         try {
             $this->batcher->record(PushBatcher::TYPE_COMMENTS, $comment->photo_id, (int) $comment->user_id);
+            $this->batcher->record(PushBatcher::TYPE_ADMIN_COMMENTS, $comment->photo_id, (int) $comment->user_id);
         } catch (Throwable $e) {
             report($e);
         }

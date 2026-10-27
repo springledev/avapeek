@@ -10,6 +10,8 @@ export interface ChildPushPreference {
   child_id: number
   notify_photos: boolean
   notify_comments: boolean
+  notify_joins: boolean
+  notify_admin_comments: boolean
 }
 
 const ENABLED_KEY = 'avapeek-push-enabled'
@@ -180,7 +182,7 @@ export async function getPreferences(): Promise<ChildPushPreference[]> {
 
 export async function setPreferences(
   childId: number,
-  preferences: { notify_photos: boolean; notify_comments: boolean },
+  preferences: Omit<ChildPushPreference, 'child_id'>,
 ): Promise<ChildPushPreference> {
   const { data } = await api.put<{ data: ChildPushPreference }>(
     `/push/preferences/${childId}`,

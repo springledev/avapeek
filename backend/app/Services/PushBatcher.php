@@ -17,12 +17,18 @@ class PushBatcher
 
     public const TYPE_COMMENTS = 'comments';
 
+    /** Owners and admins only: a member commented on a photo they can access. */
+    public const TYPE_ADMIN_COMMENTS = 'admin_comments';
+
+    /** Owners and admins only: someone accepted an invite and joined a child. */
+    public const TYPE_JOINS = 'joins';
+
     /** Pending events outlive a stopped or backlogged worker for an hour. */
     public const EVENTS_TTL_SECONDS = 3600;
 
     /**
-     * @param  int  $photoId  Photo that was added, or that was commented on.
-     * @param  int  $actorId  User who uploaded or commented (never notified for this event).
+     * @param  int  $photoId  Photo that was added or commented on (the child id for TYPE_JOINS).
+     * @param  int  $actorId  User who uploaded, commented or joined (never notified for this event).
      */
     public function record(string $type, int $photoId, int $actorId): void
     {

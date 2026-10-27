@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Clock } from '@lucide/vue'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSelection } from '@/composables/useSelection'
 import BulkActions from '@/components/BulkActions.vue'
@@ -180,9 +180,37 @@ async function updateDate(photoId: number, takenAt: string) {
   }
 }
 
+/**
+ * Opens the photo named by `?photo=<id>` (set by push notification deep links).
+ * Uses the loaded recents when it is there, else fetches it through the
+ * authorized photo endpoint; an inaccessible or missing photo is ignored.
+ */
+async function openPhotoFromQuery() {
+  const raw = route.query.photo
+  const id = Number(Array.isArray(raw) ? raw[0] : raw)
+  if (!Number.isInteger(id) || id <= 0) return
+
+  const loaded = recentsStore.photos.find((p) => p.id === id)
+  if (loaded) {
+    openPhoto(loaded, [loaded])
+    return
+  }
+
+  try {
+    const response = await api.get<{ data: Photo }>(`/photos/${id}`)
+    const [photo] = await useTagsStore().decryptPhotoTags([response.data.data])
+    if (photo) openPhoto(photo, [photo])
+  } catch {
+    /* no access or gone: stay on the recents list */
+  }
+}
+
+watch(() => route.query.photo, () => void openPhotoFromQuery())
+
 onMounted(async () => {
   await recentsStore.fetchRecents()
   await recentsStore.markAsSeen()
+  await openPhotoFromQuery()
 })
 </script>
 

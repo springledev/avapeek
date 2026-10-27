@@ -25,15 +25,15 @@ import type { Child } from '@/types/child'
 
 const mocked = vi.mocked(service)
 
-function child(id: number, name: string): Child {
-  return { id, name, role: 'owner' } as Child
+function child(id: number, name: string, role = 'owner'): Child {
+  return { id, name, role } as Child
 }
 
 async function mountView() {
   const pinia = createPinia()
   setActivePinia(pinia)
   const store = useChildStore()
-  store.children = [child(1, 'Mia'), child(2, 'Leo')]
+  store.children = [child(1, 'Mia'), child(2, 'Leo', 'member')]
   const wrapper = mount(NotificationSettingsView, { global: { plugins: [pinia] } })
   await flushPromises()
   return wrapper
@@ -49,7 +49,13 @@ describe('NotificationSettingsView', () => {
     mocked.getPushConfig.mockResolvedValue('KEY')
     mocked.hasSubscription.mockResolvedValue(false)
     mocked.getPreferences.mockResolvedValue([
-      { child_id: 1, notify_photos: true, notify_comments: false },
+      {
+        child_id: 1,
+        notify_photos: true,
+        notify_comments: false,
+        notify_joins: false,
+        notify_admin_comments: true,
+      },
     ])
   })
 
@@ -83,6 +89,42 @@ describe('NotificationSettingsView', () => {
     expect(wrapper.find('[data-testid="push-device-toggle"]').attributes('aria-checked')).toBe('false')
   })
 
+  it('shows joins and member-comment toggles only for owners and admins', async () => {
+    const wrapper = await mountView()
+
+    const rows = wrapper.findAll('[data-testid="push-child-row"]')
+    expect(rows[0]!.find('[data-testid="push-joins-toggle"]').attributes('aria-checked')).toBe('false')
+    expect(
+      rows[0]!.find('[data-testid="push-admin-comments-toggle"]').attributes('aria-checked'),
+    ).toBe('true')
+    expect(rows[1]!.find('[data-testid="push-joins-toggle"]').exists()).toBe(false)
+    expect(rows[1]!.find('[data-testid="push-admin-comments-toggle"]').exists()).toBe(false)
+  })
+
+  it('saves the joins toggle', async () => {
+    mocked.setPreferences.mockResolvedValue({
+      child_id: 1,
+      notify_photos: true,
+      notify_comments: false,
+      notify_joins: true,
+      notify_admin_comments: true,
+    })
+    const wrapper = await mountView()
+
+    await wrapper
+      .findAll('[data-testid="push-child-row"]')[0]!
+      .find('[data-testid="push-joins-toggle"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(mocked.setPreferences).toHaveBeenCalledWith(1, {
+      notify_photos: true,
+      notify_comments: false,
+      notify_joins: true,
+      notify_admin_comments: true,
+    })
+  })
+
   it('subscribes only when the device toggle is tapped', async () => {
     mocked.subscribe.mockResolvedValue(undefined)
     const wrapper = await mountView()
@@ -100,6 +142,8 @@ describe('NotificationSettingsView', () => {
       child_id: 2,
       notify_photos: false,
       notify_comments: true,
+      notify_joins: true,
+      notify_admin_comments: true,
     })
     const wrapper = await mountView()
 
@@ -112,6 +156,8 @@ describe('NotificationSettingsView', () => {
     expect(mocked.setPreferences).toHaveBeenCalledWith(2, {
       notify_photos: false,
       notify_comments: true,
+      notify_joins: true,
+      notify_admin_comments: true,
     })
     expect(
       wrapper
