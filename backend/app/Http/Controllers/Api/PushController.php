@@ -89,6 +89,8 @@ class PushController extends Controller
                 'notify_comments' => $preferences[$childId]->notify_comments ?? true,
                 'notify_joins' => $preferences[$childId]->notify_joins ?? true,
                 'notify_admin_comments' => $preferences[$childId]->notify_admin_comments ?? true,
+                'notify_access_requests' => $preferences[$childId]->notify_access_requests ?? true,
+                'notify_access_granted' => $preferences[$childId]->notify_access_granted ?? true,
             ])->values(),
         ]);
     }
@@ -100,10 +102,13 @@ class PushController extends Controller
             'notify_comments' => ['required', 'boolean'],
             'notify_joins' => ['sometimes', 'boolean'],
             'notify_admin_comments' => ['sometimes', 'boolean'],
+            'notify_access_requests' => ['sometimes', 'boolean'],
+            'notify_access_granted' => ['sometimes', 'boolean'],
         ]);
 
         $flags = array_map('boolval', array_intersect_key($validated, array_flip([
             'notify_photos', 'notify_comments', 'notify_joins', 'notify_admin_comments',
+            'notify_access_requests', 'notify_access_granted',
         ])));
 
         // Flags the client did not send keep their stored value (new rows use the column defaults).
@@ -124,6 +129,8 @@ class PushController extends Controller
             'notify_comments' => (bool) $stored->notify_comments,
             'notify_joins' => (bool) $stored->notify_joins,
             'notify_admin_comments' => (bool) $stored->notify_admin_comments,
+            'notify_access_requests' => (bool) $stored->notify_access_requests,
+            'notify_access_granted' => (bool) $stored->notify_access_granted,
         ]]);
     }
 

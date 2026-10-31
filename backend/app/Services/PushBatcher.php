@@ -23,12 +23,21 @@ class PushBatcher
     /** Owners and admins only: someone accepted an invite and joined a child. */
     public const TYPE_JOINS = 'joins';
 
+    /** Owners and admins only: a member without the album key asked for access. */
+    public const TYPE_ACCESS_REQUESTED = 'access_requested';
+
+    /**
+     * The member who was just given the album key. Unlike other types the second
+     * event value is the recipient (the invitee), not an excluded actor.
+     */
+    public const TYPE_ACCESS_GRANTED = 'access_granted';
+
     /** Pending events outlive a stopped or backlogged worker for an hour. */
     public const EVENTS_TTL_SECONDS = 3600;
 
     /**
-     * @param  int  $photoId  Photo that was added or commented on (the child id for TYPE_JOINS).
-     * @param  int  $actorId  User who uploaded, commented or joined (never notified for this event).
+     * @param  int  $photoId  Photo that was added or commented on (the child id for TYPE_JOINS, TYPE_ACCESS_REQUESTED and TYPE_ACCESS_GRANTED).
+     * @param  int  $actorId  User who uploaded, commented, joined or asked for access (never notified for this event); the recipient for TYPE_ACCESS_GRANTED.
      */
     public function record(string $type, int $photoId, int $actorId): void
     {

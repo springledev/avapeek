@@ -3,6 +3,7 @@
 use App\Jobs\SendPushNotifications;
 use App\Models\Child;
 use App\Models\ChildUser;
+use App\Models\EncryptionKey;
 use App\Models\Invite;
 use App\Models\NotificationPreference;
 use App\Models\Photo;
@@ -264,5 +265,120 @@ describe('payload and preferences', function () {
         $this->actingAs(User::factory()->create(), 'sanctum')
             ->putJson("/api/push/preferences/{$child->id}", ['notify_photos' => true, 'notify_comments' => true, 'notify_joins' => false])
             ->assertForbidden();
+    });
+});
+
+function giveKekKey(Child $child, User $user, string $wrapType = 'kek'): void
+{
+    EncryptionKey::create(['child_id' => $child->id, 'user_id' => $user->id, 'encrypted_dek' => 'x', 'wrap_type' => $wrapType, 'key_version' => 1]);
+}
+
+describe('access push types', function () {
+    it('notifies key-holding owners and admins of an access request, never the actor or plain members', function () {
+        $child = Child::factory()->create();
+        $other = Child::factory()->create();
+        $owner = adminPushUser($child, 'owner');
+        $admin = adminPushUser($child, 'admin');
+        $keylessAdmin = adminPushUser($child, 'admin');
+        $publicKeyOnlyAdmin = adminPushUser($child, 'admin');
+        $member = adminPushUser($child, 'member');
+        $outsider = adminPushUser($other, 'owner');
+        $actor = adminPushUser($child, 'member');
+        giveKekKey($child, $owner);
+        giveKekKey($child, $admin);
+        giveKekKey($child, $publicKeyOnlyAdmin, 'public_key');
+        giveKekKey($other, $outsider);
+        giveKekKey($child, $member);
+
+        $ids = app(PushRecipientResolver::class)->resolveUserIds(PushBatcher::TYPE_ACCESS_REQUESTED, [[$child->id, $actor->id]]);
+
+        expect($ids)->toEqualCanonicalizing([$owner->id, $admin->id]);
+    });
+
+    it('respects notify_access_requests and links to the child page', function () {
+        $child = Child::factory()->create();
+        $owner = adminPushUser($child, 'owner');
+        giveKekKey($child, $owner);
+        $resolver = app(PushRecipientResolver::class);
+
+        expect($resolver->resolveUrls(PushBatcher::TYPE_ACCESS_REQUESTED, [[$child->id, 0]]))
+            ->toBe([$owner->id => "/settings/children/{$child->id}"]);
+
+        NotificationPreference::factory()->create(['user_id' => $owner->id, 'child_id' => $child->id, 'notify_access_requests' => false]);
+
+        expect($resolver->resolveUserIds(PushBatcher::TYPE_ACCESS_REQUESTED, [[$child->id, 0]]))->toBe([]);
+    });
+
+    it('notifies only the granted member, respects notify_access_granted and links to the feed', function () {
+        $child = Child::factory()->create();
+        $owner = adminPushUser($child, 'owner');
+        $invitee = adminPushUser($child, 'member');
+        $bystander = adminPushUser($child, 'member');
+        $resolver = app(PushRecipientResolver::class);
+
+        expect($resolver->resolveUserIds(PushBatcher::TYPE_ACCESS_GRANTED, [[$child->id, $invitee->id]]))->toBe([$invitee->id])
+            ->and($resolver->resolveUrls(PushBatcher::TYPE_ACCESS_GRANTED, [[$child->id, $invitee->id]]))->toBe([$invitee->id => '/feed']);
+
+        NotificationPreference::factory()->create(['user_id' => $invitee->id, 'child_id' => $child->id, 'notify_access_granted' => false]);
+
+        expect($resolver->resolveUserIds(PushBatcher::TYPE_ACCESS_GRANTED, [[$child->id, $invitee->id]]))->toBe([]);
+    });
+
+    it('does not notify a user who is no longer a member', function () {
+        $child = Child::factory()->create();
+        $stranger = adminPushUser(Child::factory()->create(), 'member');
+
+        expect(app(PushRecipientResolver::class)->resolveUserIds(PushBatcher::TYPE_ACCESS_GRANTED, [[$child->id, $stranger->id]]))->toBe([]);
+    });
+
+    it('records access_granted when an admin shares the key', function () {
+        $child = Child::factory()->create();
+        $owner = adminPushUser($child, 'owner');
+        $invitee = adminPushUser($child, 'member');
+        giveKekKey($child, $owner);
+        Queue::fake();
+
+        $this->actingAs($owner, 'sanctum')->postJson('/api/encryption-keys/wrap-for-invitee', [
+            'child_id' => $child->id, 'user_id' => $invitee->id, 'wrapped_dek' => 'wrapped',
+        ])->assertCreated();
+
+        Queue::assertPushed(SendPushNotifications::class, fn ($job) => $job->type === 'access_granted');
+        expect(Cache::get('push:events:access_granted'))->toBe([[$child->id, $invitee->id]]);
+    });
+
+    it('does not record access_granted when sharing is rejected', function () {
+        $child = Child::factory()->create();
+        $member = adminPushUser($child, 'member');
+        $invitee = adminPushUser($child, 'member');
+        Queue::fake();
+
+        $this->actingAs($member, 'sanctum')->postJson('/api/encryption-keys/wrap-for-invitee', [
+            'child_id' => $child->id, 'user_id' => $invitee->id, 'wrapped_dek' => 'wrapped',
+        ])->assertForbidden();
+
+        Queue::assertNothingPushed();
+    });
+
+    it('saves and returns the access flags', function () {
+        $child = Child::factory()->create();
+        $admin = adminPushUser($child, 'admin');
+
+        $this->actingAs($admin, 'sanctum')->getJson('/api/push/preferences')
+            ->assertJsonPath('data.0.notify_access_requests', true)
+            ->assertJsonPath('data.0.notify_access_granted', true);
+
+        $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/push/preferences/{$child->id}", ['notify_photos' => true, 'notify_comments' => true, 'notify_access_requests' => false, 'notify_access_granted' => false])
+            ->assertOk()
+            ->assertJsonPath('data.notify_access_requests', false)
+            ->assertJsonPath('data.notify_access_granted', false);
+
+        $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/push/preferences/{$child->id}", ['notify_photos' => true, 'notify_comments' => true])
+            ->assertJsonPath('data.notify_access_requests', false);
+
+        $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/push/preferences/{$child->id}", ['notify_photos' => true, 'notify_comments' => true, 'notify_access_granted' => 'x'])
+            ->assertUnprocessable();
     });
 });

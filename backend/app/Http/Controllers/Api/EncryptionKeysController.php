@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\EncryptionKey;
 use App\Models\User;
 use App\Services\AuthSessionService;
+use App\Services\PushBatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -214,6 +215,12 @@ class EncryptionKeysController extends Controller
             'wrap_type' => EncryptionKey::WRAP_PUBLIC_KEY,
             'key_version' => 1,
         ]);
+
+        try {
+            app(PushBatcher::class)->record(PushBatcher::TYPE_ACCESS_GRANTED, $validated['child_id'], $invitee->id);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return response()->json([
             'data' => [
