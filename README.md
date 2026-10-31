@@ -58,6 +58,7 @@ cd avapeek
 | [Configuration](docs/configuration.md) | Every environment variable |
 | [Storage](docs/storage.md) | Garage, AWS S3, Backblaze B2, Cloudflare R2, CORS, quota |
 | [Security](docs/security.md) | Encryption design, what the server can see, threat model, limitations |
+| [Roadmap and known issues](docs/roadmap.md) | Planned work and current limitations |
 | [Architecture](docs/architecture.md) | Components and request flows |
 | [Development](docs/development.md) | Dev environment, tests, repo layout |
 | [Why Avapeek?](docs/why-avapeek.md) | How it compares with social media, shared albums and family photo apps |
