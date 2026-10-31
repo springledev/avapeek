@@ -55,6 +55,8 @@ describe('NotificationSettingsView', () => {
         notify_comments: false,
         notify_joins: false,
         notify_admin_comments: true,
+        notify_access_requests: false,
+        notify_access_granted: true,
       },
     ])
   })
@@ -101,6 +103,50 @@ describe('NotificationSettingsView', () => {
     expect(rows[1]!.find('[data-testid="push-admin-comments-toggle"]').exists()).toBe(false)
   })
 
+  it('shows access requests only for admins and access granted for everyone', async () => {
+    const wrapper = await mountView()
+
+    const rows = wrapper.findAll('[data-testid="push-child-row"]')
+    expect(
+      rows[0]!.find('[data-testid="push-access-requests-toggle"]').attributes('aria-checked'),
+    ).toBe('false')
+    expect(rows[1]!.find('[data-testid="push-access-requests-toggle"]').exists()).toBe(false)
+    expect(
+      rows[0]!.find('[data-testid="push-access-granted-toggle"]').attributes('aria-checked'),
+    ).toBe('true')
+    expect(
+      rows[1]!.find('[data-testid="push-access-granted-toggle"]').attributes('aria-checked'),
+    ).toBe('true')
+  })
+
+  it('saves the access requests and access granted toggles', async () => {
+    mocked.setPreferences.mockResolvedValue({
+      child_id: 1,
+      notify_photos: true,
+      notify_comments: false,
+      notify_joins: false,
+      notify_admin_comments: true,
+      notify_access_requests: true,
+      notify_access_granted: true,
+    })
+    const wrapper = await mountView()
+    const row = () => wrapper.findAll('[data-testid="push-child-row"]')[0]!
+
+    await row().find('[data-testid="push-access-requests-toggle"]').trigger('click')
+    await flushPromises()
+    expect(mocked.setPreferences).toHaveBeenLastCalledWith(1, expect.objectContaining({
+      notify_access_requests: true,
+      notify_access_granted: true,
+    }))
+
+    await row().find('[data-testid="push-access-granted-toggle"]').trigger('click')
+    await flushPromises()
+    expect(mocked.setPreferences).toHaveBeenLastCalledWith(1, expect.objectContaining({
+      notify_access_requests: true,
+      notify_access_granted: false,
+    }))
+  })
+
   it('saves the joins toggle', async () => {
     mocked.setPreferences.mockResolvedValue({
       child_id: 1,
@@ -108,6 +154,8 @@ describe('NotificationSettingsView', () => {
       notify_comments: false,
       notify_joins: true,
       notify_admin_comments: true,
+      notify_access_requests: true,
+      notify_access_granted: true,
     })
     const wrapper = await mountView()
 
@@ -122,6 +170,8 @@ describe('NotificationSettingsView', () => {
       notify_comments: false,
       notify_joins: true,
       notify_admin_comments: true,
+      notify_access_requests: false,
+      notify_access_granted: true,
     })
   })
 
@@ -144,6 +194,8 @@ describe('NotificationSettingsView', () => {
       notify_comments: true,
       notify_joins: true,
       notify_admin_comments: true,
+      notify_access_requests: true,
+      notify_access_granted: true,
     })
     const wrapper = await mountView()
 
@@ -158,6 +210,8 @@ describe('NotificationSettingsView', () => {
       notify_comments: true,
       notify_joins: true,
       notify_admin_comments: true,
+      notify_access_requests: true,
+      notify_access_granted: true,
     })
     expect(
       wrapper
