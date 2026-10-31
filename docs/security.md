@@ -31,6 +31,67 @@ password + master_key_salt
 
 Password change re-wraps the private key and every DEK under the new KEK in the browser; the DEKs and PEKs themselves do not change, so photos stay readable.
 
+## Login protocol
+
+All derivation happens in the browser (`frontend/src/crypto/keychain.ts`, `auth-hash.ts`). The server never receives the password or the KEK.
+
+1. **Salt.** At registration the browser generates 32 random bytes and stores them hex-encoded (64 characters) as `users.master_key_salt`. The salt is not secret.
+2. **Pre-login.** The client calls `POST /api/auth/prelogin` with the email and receives `master_key_salt`. For an unknown email the server returns `HMAC-SHA256(key = APP_KEY, message = lowercased trimmed email)` as 64 hex characters, which has the same shape as a real salt and is the same on every request.
+3. **Derivation.** `KEK = PBKDF2-SHA256(password, salt, 600,000 iterations)`, an AES-256-GCM key. `auth_hash = HMAC-SHA256(key = raw KEK bytes, message = "avapeek-auth-v1")`, 64 lowercase hex characters. One PBKDF2 run produces both.
+4. **Login.** The client sends `{email, auth_hash, remember}` to `POST /api/auth/login`. The server checks `auth_hash` against `users.password_hash`, which is `bcrypt(auth_hash)` (Laravel `Hash::make`, 12 rounds by default, `BCRYPT_ROUNDS`). For an unknown email it still runs a bcrypt check against a dummy hash, so response time does not reveal whether the account exists, and both cases return the same error.
+5. **Second factor.** If the account has MFA enabled, the server returns `mfa_required` and a 5-minute, single-use challenge token (an encrypted payload with a nonce kept in the cache) instead of a session. The client completes it at `POST /api/auth/mfa/challenge` with a TOTP code, a recovery code or a passkey assertion. Passkeys and TOTP are only a second factor for the server session; they play no part in deriving or unwrapping keys.
+6. **Session.** The server issues a Laravel Sanctum personal access token (`Authorization: Bearer`, stored hashed server-side). With "stay signed in" (the default) the token has no expiry; otherwise it expires after 12 hours. The response also carries the user's `master_key_salt`, `public_key`, `encrypted_private_key` and wrapped DEKs, which the client unwraps with the KEK. Logout deletes the token, and a password change deletes all other tokens.
+
+**Rate limits** (per IP unless noted, from `AppServiceProvider` and `routes/api.php`): login 5 per minute; pre-login 10 per minute; registration 3 per minute; MFA challenge and passkey options 10 per minute; MFA code failures lock the account's code entry after 10 failures in 15 minutes; password-confirmation endpoints 10 per minute per user; authenticated API 60 per minute per user; invite creation 10 per hour; uploads 30 per minute; upload intents 60 per minute.
+
+Honest notes on this design:
+
+- **Enumeration.** Pre-login does not distinguish known from unknown emails without `APP_KEY`, and the login path is timing-equalised. It is not perfect: registration validates `unique:users`, so while registration is open (the first account, or with a valid invite) a request reveals whether an email is taken, throttled to 3 per minute.
+- **Online guessing** is limited by the 5-per-minute login throttle, which is keyed by IP only. There is no per-account lockout for the password step (only for MFA codes), so a distributed attacker is not stopped by it.
+- **Offline guessing.** Someone with a database copy can test password guesses against either `bcrypt(auth_hash)` or the wrapped private key. Both cost one PBKDF2 run per guess, so bcrypt adds no protection beyond what PBKDF2 already gives; it only stops a database leak from being a ready-made login credential.
+- **Transport.** The auth hash is a bearer-equivalent secret for the login step. Use HTTPS.
+
+## Cryptographic parameters
+
+| Item | Value | Source |
+| --- | --- | --- |
+| Password KDF | PBKDF2-HMAC-SHA256, 600,000 iterations, 32-byte (256-bit) random salt | `keychain.ts` `deriveKEK`, `generateSalt` |
+| KEK, DEK, PEK | AES-256-GCM | `keychain.ts` |
+| Content encryption (photo, thumbnail, LQIP, EXIF, filename, comments, tag names) | AES-GCM, random **16-byte** IV per object | `encrypt.ts` `generateIV` |
+| Key wraps (private key, DEK, PEK) | AES-GCM, random 12-byte IV per wrap | `keychain.ts` |
+| User key pair | RSA-OAEP 2048, SHA-256 | `keychain.ts` |
+
+### PBKDF2 policy
+
+600,000 iterations of SHA-256 follows the OWASP password-storage guidance for PBKDF2-HMAC-SHA256 and is a practical cost on phones in the browser. PBKDF2 is not memory-hard, so GPUs and ASICs attack it more cheaply than Argon2id; the strength of the KEK is bounded by the strength of the password.
+
+The iteration count and the algorithm are constants in the client code. They are **not stored per user**, and there is no KDF version field. Changing them today would break every existing login.
+
+*Planned, not implemented:* store a KDF identifier and parameters per user (for example a `kdf_version` column, with the current scheme as version 1), return it from pre-login, and derive with whatever the account specifies. On the next successful login with the old parameters, the client would derive the new KEK, re-wrap the private key and every DEK (the same operation as a password change) and upload the new auth hash in one transaction. The same mechanism would carry a move to Argon2id.
+
+### IV uniqueness
+
+Every AES-GCM encryption draws a fresh IV from `crypto.getRandomValues`; no IV is derived from a counter or reused. Content IVs are 16 bytes (stored as 32 hex characters in `iv_*` columns); key-wrap IVs are 12 bytes.
+
+For AES-GCM with random IVs, NIST SP 800-38D recommends at most 2^32 invocations under one key, to keep the chance of an IV collision negligible. Content is encrypted under per-photo keys (PEK), which encrypt only a handful of objects each (original, thumbnail, LQIP, EXIF, filename and that photo's comments). Tag names are encrypted under the per-child DEK, which still sees only as many encryptions as the family has tags. Every key is therefore many orders of magnitude below the bound.
+
+The standard IV length is 96 bits (12 bytes). Other lengths are allowed by the specification: the IV is run through GHASH to form the initial counter block, and security under the random-IV bound is unchanged. 12 bytes would be the conventional choice; 16 bytes is a historical choice that is safe but unusual, and changing it would need the format versioning below.
+
+### Ciphertext formats and versioning
+
+| Data | Storage |
+| --- | --- |
+| Photo and thumbnail bytes | AES-GCM ciphertext (with tag) as an object in storage; IV in `photos.iv_original`, `photos.iv_thumbnail` (32 hex characters) |
+| LQIP, EXIF, filename, comment body, tag name | base64 ciphertext in `lqip_encrypted`, `exif_encrypted`, `name_encrypted`, `body_encrypted` (comments), `name_encrypted` (tags), with the IV in the matching `iv_lqip`, `iv_exif`, `iv_name`, `iv_body` column |
+| PEK | `child_photo.encrypted_pek` (base64, 48 bytes) + `iv_pek` (base64 of 12 bytes) |
+| DEK (KEK wrap) | `encryption_keys.encrypted_dek` = `base64(iv ‖ ciphertext)`, 60 bytes |
+| DEK (invite, RSA wrap) | `encryption_keys.encrypted_dek` = base64 RSA-OAEP output, `wrap_type` other than `kek` |
+| Private key | `users.encrypted_private_key` = `base64(iv ‖ pkcs8 ciphertext)` |
+
+**There is no format version marker.** The formats are identified only by column and length (the client rejects a KEK-wrapped DEK that is not exactly 60 bytes), and the auth hash label `avapeek-auth-v1` is the only versioned string. `encryption_keys.key_version` exists but numbers DEK generations for the planned key rotation; it does not describe a cipher or encoding.
+
+*Planned, not implemented:* add a version to each format so that algorithms, IV length or AAD binding can change without guessing. Options are a leading version byte inside wrapped blobs, and a `crypto_version` column on `photos`, `comments`, `tags` and `users`. Clients would read every version they know and write only the newest, and old data would be migrated lazily or by a background re-encryption job.
+
 ## What the server sees
 
 **Never plaintext:** photo and thumbnail bytes, LQIP placeholders, EXIF data (`exif_encrypted`), original filenames (`name_encrypted`, PEK), comment text (`body_encrypted`), the passwords' derived key, DEKs, PEKs, private keys.
@@ -78,7 +139,7 @@ Does **not** protect against:
 - **Invites trust a server-supplied public key.** When you invite someone, your browser wraps the child's DEK with the invitee's RSA public key as returned by the server. There is no fingerprint or out-of-band verification, so a malicious server can substitute its own key and receive the DEK without modifying any JavaScript.
 - **No binding of ciphertext to its photo.** AES-GCM is used without additional authenticated data (AAD) tying a ciphertext to its photo id, so the server could swap blobs between photos and the client would not detect it.
 - **No key rotation when a member is removed.** Removing a member deletes their wrapped key copies from the server, but the DEK does not change. Anyone who already downloaded ciphertext and had decrypted or cached the keys keeps the ability to read those photos, and the DEK still protects future uploads they could theoretically obtain ciphertext of. A forward-secrecy design (new DEK, re-wrap remaining PEKs client-side) is planned but not implemented. Treat removal as revoking access to the app, not as cryptographic erasure.
-- **Leaving a family does not rotate the key either.** A member who leaves, and a member who is removed, lose their wrapped key copies on the server and their access in the app, but the DEK is unchanged. Anyone who already held the DEK or downloaded ciphertext can still decrypt what they have. Key rotation is tracked as B11 and is not part of role management.
+- **Leaving a family does not rotate the key either.** A member who leaves, and a member who is removed, lose their wrapped key copies on the server and their access in the app, but the DEK is unchanged. Anyone who already held the DEK or downloaded ciphertext can still decrypt what they have. Key rotation is planned (see [roadmap.md](roadmap.md)) and is not part of role management.
 - Several metadata fields are plaintext (see above). Tag names are encrypted, but tag structure (which photos share a tag, tags per photo, ciphertext length) is not hidden. The server cannot see names, so it cannot prevent two members racing to create the same tag; the client merges same-named tags into one in the UI. Tags are not re-encrypted when a DEK rotates (part of the planned forward-secrecy work).
 - PBKDF2 rather than a memory-hard function (the source notes an Argon2id upgrade as a possibility).
 - Presigned download URLs are short-lived bearer links; anyone holding one can fetch that ciphertext until it expires. The ciphertext is useless without the key.
