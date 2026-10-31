@@ -6,6 +6,21 @@ export const MSG = {
   uploadFailed: UPLOAD_FAILED,
   uploadPartial: (done: number, total: number) =>
     `${done} of ${total} added — ${UPLOAD_FAILED}`,
+  accessWaitingTitle: (name: string) => `Waiting for access to ${name}'s photos`,
+  accessWaitingBody:
+    "Photos are end-to-end encrypted. An album admin needs to open Avapeek once to share the key with you. We'll let you know when it's done.",
+  accessRemind: 'Remind admins',
+  accessReminding: 'Sending...',
+  accessReminded: 'Reminder sent. We told the album admins.',
+  accessRemindedAlready: 'Reminder already sent today',
+  accessRemindFailed: "Couldn't send the reminder. Try again.",
+  accessLockedEmptyTitle: 'Waiting for an admin to share access',
+  accessLockedEmptyBody: 'Your photos will show up here as soon as an album admin opens Avapeek.',
+  tileLocked: 'Locked until an admin shares access',
+  viewerLocked: 'This photo is locked until an album admin shares access with you.',
+  welcomeWaiting:
+    "Photos appear once an album admin opens Avapeek and shares the key with you. We'll notify you as soon as that happens.",
+  uploadLockedReason: 'Waiting for access',
   viewerError: "This photo didn't load — tap to retry",
   onboardingWelcome: 'Photos of the kids, all in one place.',
   uploadComingSoon: 'Upload is coming soon.',
