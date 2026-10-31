@@ -81,6 +81,11 @@ export const useChildStore = defineStore('child', () => {
     return lockedChildren.value.some((c) => c.id === childId)
   }
 
+  /** Whether none of the photo's albums can be opened yet (all of them are locked). */
+  function isPhotoLocked(photo: { children: { id: number }[] }): boolean {
+    return photo.children.length > 0 && photo.children.every((c) => isChildLocked(c.id))
+  }
+
   /** Asks the album's admins to share the key. Never throws. */
   async function sendAccessReminder(childId: number): Promise<AccessReminderResult> {
     try {
@@ -560,6 +565,7 @@ export const useChildStore = defineStore('child', () => {
     hasOwnKey,
     lockedChildren,
     isChildLocked,
+    isPhotoLocked,
     sendAccessReminder,
     uploadableChildren,
     canUploadTo,

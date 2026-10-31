@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { getThumbnail } from '@/lib/cache/decrypted-cache'
 import { getPEKForPhoto, fetchAndDecrypt, cleanupComponent } from '@/services/storage'
 import { decryptBlob, blobToObjectURL } from '@/crypto/encrypt'
 import { base64ToArrayBuffer } from '@/lib/util'
 import { api } from '@/services/api'
+import { Lock } from '@lucide/vue'
+import { useChildStore } from '@/stores/child'
+import { MSG } from '@/lib/messages'
 import TagChip from '@/components/TagChip.vue'
 import { dedupeTagsByName } from '@/lib/tags'
 import type { Photo } from '@/types/photo'
@@ -24,6 +27,8 @@ const isLoading = ref(false)
 const error = ref(false)
 const observed = ref(false)
 const elRef = ref<HTMLElement | null>(null)
+const childStore = useChildStore()
+const isLocked = computed(() => !thumbnailUrl.value && childStore.isPhotoLocked(props.photo))
 const componentKey = `photocard-${props.photo.id}`
 let observer: IntersectionObserver | null = null
 
@@ -110,10 +115,19 @@ onBeforeUnmount(() => {
       @load="thumbnailLoaded = true"
       alt=""
     />
-    <div v-if="!thumbnailUrl && !error" class="photo-card-placeholder">
+    <div
+      v-if="isLocked"
+      class="photo-card-placeholder"
+      role="img"
+      :aria-label="MSG.tileLocked"
+      data-test="tile-locked"
+    >
+      <Lock :size="24" aria-hidden="true" />
+    </div>
+    <div v-else-if="!thumbnailUrl && !error" class="photo-card-placeholder">
       <span class="skeleton w-8 h-8" />
     </div>
-    <div v-if="error" class="photo-card-placeholder">
+    <div v-else-if="error" class="photo-card-placeholder">
       <span class="text-xs text-slate-400">Failed</span>
     </div>
 

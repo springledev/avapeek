@@ -13,6 +13,7 @@ import {
   Info,
   Tag,
   AlertTriangle,
+  Lock,
   Send,
   Trash2,
   MessageSquare,
@@ -68,6 +69,7 @@ const thumbnailMotion = ref('')
 const originalMotion = ref('')
 const isLoading = ref(true)
 const hasError = ref(false)
+const isLocked = computed(() => childStore.isPhotoLocked(props.photo))
 const showInfo = ref(false)
 const showEditSheet = ref(false)
 const showMenu = ref(false)
@@ -657,6 +659,11 @@ watch(
   },
 )
 
+// The album key arrived while the locked message was showing: load the photo.
+watch(isLocked, (locked, wasLocked) => {
+  if (wasLocked && !locked) loadImage()
+})
+
 watch(
   () => commentsStore.error,
   (message) => {
@@ -731,7 +738,17 @@ onBeforeUnmount(() => {
           <ChevronRight :size="32" />
         </button>
 
-        <UiEmptyState v-if="hasError" :title="MSG.viewerError">
+        <UiEmptyState
+          v-if="isLocked && hasError"
+          :title="MSG.viewerLocked"
+          data-test="viewer-locked"
+        >
+          <template #icon>
+            <Lock :size="48" />
+          </template>
+        </UiEmptyState>
+
+        <UiEmptyState v-else-if="hasError" :title="MSG.viewerError">
           <template #icon>
             <AlertTriangle :size="48" />
           </template>
