@@ -1,7 +1,7 @@
 name: CI
 
-# Minimal frontend checks on pull requests. The backend Pest suite is run
-# locally; see docs/development.md.
+# Frontend checks (type-check, lint, Vitest) and backend checks (Pint, Pest on
+# in-memory SQLite) on pull requests and pushes to master.
 on:
   pull_request:
   push:
@@ -11,6 +11,30 @@ permissions:
   contents: read
 
 jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.5'
+          extensions: bcmath, gmp, intl, mbstring, pdo_sqlite, sqlite3, zip
+          coverage: none
+      - id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - run: cp .env.example .env && php artisan key:generate
+      - run: vendor/bin/pint --test
+      - run: php artisan test --compact
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
