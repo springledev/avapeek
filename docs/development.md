@@ -23,7 +23,7 @@ docs/                    This documentation
 
 ## The crypto rule
 
-`frontend/src/crypto/**` must not be modified in pull requests (see [CONTRIBUTING.md](../CONTRIBUTING.md)). New code imports and calls the existing helpers, for example `import { encryptString, decryptString } from '@/crypto/encrypt'`. The server must only ever receive ciphertext for user content (`x_encrypted` + `iv_x` columns).
+`frontend/src/crypto/**` is read-only. These files are reviewed by hand and must not be changed. New code imports and calls the existing helpers, for example `import { encryptString, decryptString } from '@/crypto/encrypt'`. The server must only ever receive ciphertext for user content (`x_encrypted` + `iv_x` columns). Never add plaintext columns for photo or comment content.
 
 ## Dev environment
 
@@ -78,7 +78,11 @@ Every change needs a test. Use factories in backend tests. Mock crypto where nee
 
 - Backend: use `php artisan make:*` generators, explicit return types, Eloquent API resources/existing response shapes. Check sibling files for style.
 - Frontend: Composition API with `<script setup lang="ts">`, 48px touch targets, blur-up image loading via `useLazyDecrypt`.
-- Authorization: check membership via `child_photo` on every photo-related request.
+- Authorization: check membership via `child_photo` on every photo-related request. Photo, comment and tag operations verify membership through `child_photo` and the user's children. No IDOR.
+- Tests: backend changes need a Pest test, frontend changes need a Vitest spec in `frontend/src/__tests__/`.
+- Checks before committing: backend `vendor/bin/pint` and the Pest suite; frontend `npm run type-check && npm run lint && npm run test:unit -- --run`.
+- Dependencies: do not add new ones without a deliberate decision.
+- Commit messages: short and lowercase, past tense, e.g. `fixed tag scoping for shared photos`.
 
 ## Building images locally
 
