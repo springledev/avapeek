@@ -24,7 +24,7 @@ Audience: parents and relatives (landing, why, features, waitlist), self-hosters
 | `/docs/storage` | Storage | Garage, S3, B2, R2, CORS, quota | `docs/storage.md` |
 | `/docs/security` | Security | Key hierarchy, what the server sees, threat model, limitations | `docs/security.md` |
 | `/docs/architecture` | Architecture | Components, upload/view/export flows, PWA, push | `docs/architecture.md` |
-| `/docs/development` | Development | Dev environment and tests (for contributors) | `docs/development.md` |
+| `/docs/development` | Development | Dev environment and tests (for self-hosters building from source) | `docs/development.md` |
 | `/faq` | FAQ and troubleshooting | | `docs/faq.md` |
 | `/hosted` | Hosted version (coming soon) | Short explanation, what it will and will not be, email waitlist | New |
 | `/security-policy` | Reporting vulnerabilities | Link/mirror of the policy | `SECURITY.md` |

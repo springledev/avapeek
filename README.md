@@ -63,9 +63,9 @@ cd avapeek
 | [Why Avapeek?](docs/why-avapeek.md) | How it compares with social media, shared albums and family photo apps |
 | [FAQ and troubleshooting](docs/faq.md) | Common problems |
 
-## Contributing
+## Feedback
 
-Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately as described in [SECURITY.md](SECURITY.md).
+Avapeek is not accepting outside contributions or pull requests at this time. Bug reports are welcome as [GitHub issues](https://github.com/springledev/avapeek/issues). Report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
