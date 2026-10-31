@@ -2,6 +2,7 @@
 
 use App\Models\Child;
 use App\Models\ChildUser;
+use App\Models\EncryptionKey;
 use App\Models\User;
 
 describe('POST /api/children', function () {
@@ -254,6 +255,28 @@ describe('GET /api/children/{child}', function () {
         expect($members)->toHaveCount(2);
         expect(collect($members)->pluck('display_name')->toArray())
             ->toContain('Grandma Sue');
+    });
+
+    it('flags members with a key, awaiting a key, or without a private key yet', function () {
+        $owner = User::factory()->create();
+        $keyed = User::factory()->create();
+        $waiting = User::factory()->create();
+        $noPrivateKey = User::factory()->create(['encrypted_private_key' => null]);
+        $child = Child::factory()->create(['created_by' => $owner->id]);
+        foreach ([[$owner, 'owner'], [$keyed, 'member'], [$waiting, 'member'], [$noPrivateKey, 'member']] as [$u, $role]) {
+            ChildUser::create(['child_id' => $child->id, 'user_id' => $u->id, 'role' => $role]);
+        }
+        foreach ([$owner, $keyed] as $u) {
+            EncryptionKey::create(['child_id' => $child->id, 'user_id' => $u->id, 'encrypted_dek' => 'x', 'wrap_type' => 'kek', 'key_version' => 1]);
+        }
+
+        $members = collect($this->actingAs($owner, 'sanctum')->getJson("/api/children/{$child->id}")->assertOk()->json('data.members'))->keyBy('id');
+
+        expect($members[$owner->id]['has_key'])->toBeTrue()
+            ->and($members[$keyed->id])->toMatchArray(['has_key' => true, 'awaiting_key' => false])
+            ->and($members[$waiting->id])->toMatchArray(['has_key' => false, 'awaiting_key' => true])
+            ->and($members[$noPrivateKey->id])->toMatchArray(['has_key' => false, 'awaiting_key' => false])
+            ->and($members[$waiting->id])->not->toHaveKey('encrypted_private_key');
     });
 
     it('prevents non-members from viewing child details', function () {
