@@ -317,7 +317,7 @@ class MfaController extends Controller
         }
 
         try {
-            $credentialSource = $this->webAuthnService->verifyRegistration($validated['response'], $options);
+            $credentialRecord = $this->webAuthnService->verifyRegistration($validated['response'], $options);
         } catch (AuthenticatorResponseVerificationException $e) {
             Log::warning('Passkey registration failed verification.', [
                 'user_id' => $user->id,
@@ -335,10 +335,10 @@ class MfaController extends Controller
         $passkey = WebAuthnCredential::create([
             'id' => (string) Str::uuid(),
             'user_id' => $user->id,
-            'credential_id' => base64_encode($credentialSource->publicKeyCredentialId),
-            'public_key' => base64_encode($credentialSource->credentialPublicKey),
-            'sign_count' => $credentialSource->counter,
-            'transports' => $credentialSource->transports,
+            'credential_id' => base64_encode($credentialRecord->publicKeyCredentialId),
+            'public_key' => base64_encode($credentialRecord->credentialPublicKey),
+            'sign_count' => $credentialRecord->counter,
+            'transports' => $credentialRecord->transports,
             'user_chosen_name' => $validated['user_chosen_name'] ?? null,
             'last_used_at' => null,
         ]);
@@ -496,27 +496,25 @@ class MfaController extends Controller
             ]);
         }
 
-        $credentialRecord = $this->findCredentialByResponse($user, $passkeyResponse);
+        $storedCredential = $this->findCredentialByResponse($user, $passkeyResponse);
 
-        if ($credentialRecord === null) {
+        if ($storedCredential === null) {
             throw ValidationException::withMessages([
                 'passkey_response' => ['The passkey is not recognized.'],
             ]);
         }
 
-        $credentialSource = $credentialRecord->toPublicKeyCredentialSource();
-
         try {
-            $updatedSource = $this->webAuthnService->verifyAssertion($passkeyResponse, $options, $credentialSource);
+            $verifiedRecord = $this->webAuthnService->verifyAssertion($passkeyResponse, $options, $storedCredential->toCredentialRecord());
         } catch (AuthenticatorResponseVerificationException $e) {
             throw ValidationException::withMessages([
                 'passkey_response' => ['The passkey verification failed.'],
             ]);
         }
 
-        $credentialRecord->sign_count = $updatedSource->counter;
-        $credentialRecord->last_used_at = now();
-        $credentialRecord->save();
+        $storedCredential->sign_count = $verifiedRecord->counter;
+        $storedCredential->last_used_at = now();
+        $storedCredential->save();
 
         Cache::forget($this->passkeyOptionsCacheKey($nonce));
     }

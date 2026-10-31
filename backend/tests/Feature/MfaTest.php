@@ -789,3 +789,156 @@ describe('MFA token design', function () {
             ->assertJsonValidationErrors(['mfa_token']);
     });
 });
+
+/**
+ * A passkey row exactly as webauthn-lib v4 wrote it (base64 raw credential ID, base64 COSE ES256 key),
+ * with the private key the authenticator holds.
+ *
+ * @return array{credential_id: string, public_key: string, private_key: string}
+ */
+function v4StoredPasskeyFixture(): array
+{
+    return [
+        'credential_id' => '/ODhfWktz4XlR3GakDUDkK+G7CPRcgF+7YD33U++JE4=',
+        'public_key' => 'pQECAyYgASFYIFC640HIpUvJ0+YqCOj51ms13jEZ254JCfFV+o7fHmAuIlggqmAfIvRfaO3FVB7JsqCDjm5vjZ7cxESxlYcj/zksSY0=',
+        'private_key' => "-----BEGIN PRIVATE KEY-----\n"
+            ."MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgXRKX4aBf4UfMO9xI\n"
+            ."m7clsHCB7NTca8PZWOQovjMToUOhRANCAARQuuNByKVLydPmKgjo+dZrNd4xGdue\n"
+            ."CQnxVfqO3x5gLqpgHyL0X2jtxVQeybKgg45ub42e3MREsZWHI/85LEmN\n"
+            ."-----END PRIVATE KEY-----\n",
+    ];
+}
+
+/**
+ * Build a signed WebAuthn assertion the way a platform authenticator does.
+ *
+ * @return array<string, mixed>
+ */
+function fakeAssertion(string $challengeB64Url, string $credentialId, string $privateKeyPem, string $userHandle, int $signCount, string $origin = 'http://localhost:5173', string $rpId = 'localhost'): array
+{
+    $b64 = fn (string $raw): string => rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
+
+    $authData = hash('sha256', $rpId, true).chr(0x05).pack('N', $signCount);
+    $clientData = json_encode(['type' => 'webauthn.get', 'challenge' => $challengeB64Url, 'origin' => $origin, 'crossOrigin' => false]);
+    openssl_sign($authData.hash('sha256', $clientData, true), $signature, openssl_pkey_get_private($privateKeyPem), OPENSSL_ALGO_SHA256);
+
+    return [
+        'id' => $b64($credentialId),
+        'rawId' => $b64($credentialId),
+        'type' => 'public-key',
+        'response' => [
+            'clientDataJSON' => $b64($clientData),
+            'authenticatorData' => $b64($authData),
+            'signature' => $b64($signature),
+            'userHandle' => $b64($userHandle),
+        ],
+        'clientExtensionResults' => (object) [],
+        'authenticatorAttachment' => 'platform',
+    ];
+}
+
+describe('Passkey sign-in', function () {
+    beforeEach(function () {
+        $fixture = v4StoredPasskeyFixture();
+        $this->privateKey = $fixture['private_key'];
+        $this->rawCredentialId = base64_decode($fixture['credential_id']);
+        $this->user = User::factory()->create();
+        $this->passkey = WebAuthnCredential::factory()->create([
+            'user_id' => $this->user->id,
+            'credential_id' => $fixture['credential_id'],
+            'public_key' => $fixture['public_key'],
+            'sign_count' => 7,
+            'transports' => ['internal'],
+            'last_used_at' => null,
+        ]);
+        $this->mfaToken = app(MfaTokenService::class)->create($this->user, true);
+        $this->challenge = $this->postJson('/api/auth/mfa/passkey/options', ['mfa_token' => $this->mfaToken])
+            ->assertOk()
+            ->json('options.challenge');
+    });
+
+    it('signs in with a passkey stored before the webauthn-lib v5 upgrade', function () {
+        $this->postJson('/api/auth/mfa/challenge', [
+            'mfa_token' => $this->mfaToken,
+            'method' => 'passkey',
+            'passkey_response' => fakeAssertion($this->challenge, $this->rawCredentialId, $this->privateKey, (string) $this->user->id, 8),
+        ])
+            ->assertOk()
+            ->assertJsonStructure(['user', 'token', 'encryption_keys']);
+
+        $this->passkey->refresh();
+        expect($this->passkey->sign_count)->toBe(8)
+            ->and($this->passkey->last_used_at)->not->toBeNull();
+    });
+
+    it('rejects an assertion whose signature counter did not increase', function () {
+        $this->postJson('/api/auth/mfa/challenge', [
+            'mfa_token' => $this->mfaToken,
+            'method' => 'passkey',
+            'passkey_response' => fakeAssertion($this->challenge, $this->rawCredentialId, $this->privateKey, (string) $this->user->id, 7),
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.passkey_response.0', 'The passkey verification failed.');
+
+        expect($this->passkey->refresh()->sign_count)->toBe(7);
+    });
+
+    it('rejects an assertion signed for another challenge', function () {
+        $otherChallenge = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+
+        $this->postJson('/api/auth/mfa/challenge', [
+            'mfa_token' => $this->mfaToken,
+            'method' => 'passkey',
+            'passkey_response' => fakeAssertion($otherChallenge, $this->rawCredentialId, $this->privateKey, (string) $this->user->id, 8),
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.passkey_response.0', 'The passkey verification failed.');
+    });
+
+    it('rejects an assertion made on another origin', function () {
+        $this->postJson('/api/auth/mfa/challenge', [
+            'mfa_token' => $this->mfaToken,
+            'method' => 'passkey',
+            'passkey_response' => fakeAssertion($this->challenge, $this->rawCredentialId, $this->privateKey, (string) $this->user->id, 8, 'https://evil.example', 'evil.example'),
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.passkey_response.0', 'The passkey verification failed.');
+    });
+
+    it('rejects an assertion carrying another user handle', function () {
+        $this->postJson('/api/auth/mfa/challenge', [
+            'mfa_token' => $this->mfaToken,
+            'method' => 'passkey',
+            'passkey_response' => fakeAssertion($this->challenge, $this->rawCredentialId, $this->privateKey, (string) ($this->user->id + 1), 8),
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.passkey_response.0', 'The passkey verification failed.');
+    });
+
+    it('rejects an assertion with an invalid signature', function () {
+        $otherKey = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+        openssl_pkey_export($otherKey, $otherPem);
+
+        $this->postJson('/api/auth/mfa/challenge', [
+            'mfa_token' => $this->mfaToken,
+            'method' => 'passkey',
+            'passkey_response' => fakeAssertion($this->challenge, $this->rawCredentialId, $otherPem, (string) $this->user->id, 8),
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.passkey_response.0', 'The passkey verification failed.');
+    });
+
+    it('does not accept another user\'s passkey', function () {
+        $otherUser = User::factory()->create();
+        $this->passkey->update(['user_id' => $otherUser->id]);
+        WebAuthnCredential::factory()->create(['user_id' => $this->user->id]);
+
+        $this->postJson('/api/auth/mfa/challenge', [
+            'mfa_token' => $this->mfaToken,
+            'method' => 'passkey',
+            'passkey_response' => fakeAssertion($this->challenge, $this->rawCredentialId, $this->privateKey, (string) $otherUser->id, 8),
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.passkey_response.0', 'The passkey is not recognized.');
+    });
+});

@@ -17,15 +17,16 @@ use Webauthn\AuthenticatorAttestationResponse;
 use Webauthn\AuthenticatorAttestationResponseValidator;
 use Webauthn\AuthenticatorSelectionCriteria;
 use Webauthn\CeremonyStep\CeremonyStepManagerFactory;
+use Webauthn\CredentialRecord;
 use Webauthn\Denormalizer\WebauthnSerializerFactory;
 use Webauthn\Exception\AuthenticatorResponseVerificationException;
+use Webauthn\Exception\WebauthnException;
 use Webauthn\PublicKeyCredential;
 use Webauthn\PublicKeyCredentialCreationOptions;
 use Webauthn\PublicKeyCredentialDescriptor;
 use Webauthn\PublicKeyCredentialParameters;
 use Webauthn\PublicKeyCredentialRequestOptions;
 use Webauthn\PublicKeyCredentialRpEntity;
-use Webauthn\PublicKeyCredentialSource;
 use Webauthn\PublicKeyCredentialUserEntity;
 
 class MfaWebAuthnService
@@ -41,7 +42,7 @@ class MfaWebAuthnService
         ]);
         $this->serializer = (new WebauthnSerializerFactory($attestationStatementSupportManager))->create();
         $this->ceremonyStepManagerFactory = new CeremonyStepManagerFactory;
-        $this->ceremonyStepManagerFactory->setSecuredRelyingPartyId([$this->getRpId()]);
+        $this->ceremonyStepManagerFactory->setAllowedOrigins([$this->getOrigin()]);
     }
 
     public function getRpId(): string
@@ -49,11 +50,6 @@ class MfaWebAuthnService
         $url = parse_url($this->getOrigin());
 
         return $url['host'] ?? 'localhost';
-    }
-
-    public function getRpName(): string
-    {
-        return Config::string('app.name', 'Avapeek');
     }
 
     /**
@@ -104,7 +100,7 @@ class MfaWebAuthnService
             ->all();
 
         $options = PublicKeyCredentialCreationOptions::create(
-            rp: PublicKeyCredentialRpEntity::create($this->getRpName(), $this->getRpId()),
+            rp: PublicKeyCredentialRpEntity::create(id: $this->getRpId()),
             user: $this->getUserEntity($user),
             challenge: $challenge,
             pubKeyCredParams: [
@@ -156,7 +152,7 @@ class MfaWebAuthnService
      *
      * @throws AuthenticatorResponseVerificationException
      */
-    public function verifyRegistration(array $clientData, PublicKeyCredentialCreationOptions $options): PublicKeyCredentialSource
+    public function verifyRegistration(array $clientData, PublicKeyCredentialCreationOptions $options): CredentialRecord
     {
         try {
             $publicKeyCredential = $this->loadClientCredential($clientData);
@@ -169,7 +165,7 @@ class MfaWebAuthnService
         }
 
         $validator = new AuthenticatorAttestationResponseValidator(
-            ceremonyStepManager: $this->ceremonyStepManagerFactory->creationCeremony([$this->getRpId()])
+            ceremonyStepManager: $this->ceremonyStepManagerFactory->creationCeremony()
         );
 
         try {
@@ -186,7 +182,7 @@ class MfaWebAuthnService
      *
      * @throws AuthenticatorResponseVerificationException
      */
-    public function verifyAssertion(array $clientData, PublicKeyCredentialRequestOptions $options, PublicKeyCredentialSource $credentialSource): PublicKeyCredentialSource
+    public function verifyAssertion(array $clientData, PublicKeyCredentialRequestOptions $options, CredentialRecord $credentialRecord): CredentialRecord
     {
         try {
             $publicKeyCredential = $this->loadClientCredential($clientData);
@@ -199,10 +195,17 @@ class MfaWebAuthnService
         }
 
         $validator = new AuthenticatorAssertionResponseValidator(
-            ceremonyStepManager: $this->ceremonyStepManagerFactory->requestCeremony([$this->getRpId()])
+            ceremonyStepManager: $this->ceremonyStepManagerFactory->requestCeremony()
         );
 
-        return $validator->check($credentialSource, $publicKeyCredential->response, $options, $this->getOrigin(), $credentialSource->userHandle);
+        try {
+            return $validator->check($credentialRecord, $publicKeyCredential->response, $options, $this->getOrigin(), $credentialRecord->userHandle);
+        } catch (AuthenticatorResponseVerificationException $e) {
+            throw $e;
+        } catch (WebauthnException $e) {
+            // CounterException (cloned authenticator) is not an AuthenticatorResponseVerificationException.
+            throw AuthenticatorResponseVerificationException::create('Assertion could not be verified.', $e);
+        }
     }
 
     /**
@@ -230,9 +233,21 @@ class MfaWebAuthnService
         return $credential;
     }
 
+    /**
+     * Restore creation options cached as JSON.
+     *
+     * The serializer writes rp.name (defaulted to the RP ID); it is dropped before denormalizing because
+     * setting PublicKeyCredentialRpEntity::$name is deprecated and the ceremony never reads it.
+     */
     public function deserializeCreationOptions(string $json): PublicKeyCredentialCreationOptions
     {
-        $options = $this->serializer->deserialize($json, PublicKeyCredentialCreationOptions::class, 'json');
+        $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+
+        if (is_array($data) && is_array($data['rp'] ?? null)) {
+            unset($data['rp']['name']);
+        }
+
+        $options = $this->serializer->deserialize(json_encode($data, JSON_THROW_ON_ERROR), PublicKeyCredentialCreationOptions::class, 'json');
 
         if (! $options instanceof PublicKeyCredentialCreationOptions) {
             throw new InvalidArgumentException('Invalid creation options.');

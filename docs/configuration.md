@@ -33,7 +33,7 @@ Some values appear in both and must match. After editing `backend/.env`, recreat
 | `APP_KEY` | generated | yes | `base64:` + 32 random bytes. Encrypts sessions and cookies. Changing it signs everyone out; it does **not** touch photo encryption (that is client-side) |
 | `APP_DEBUG` | `false` | no | Never enable in production |
 | `APP_URL` | `https://your-domain.com` | yes | Public URL users type in. Used to build invite links and as the base for presigned URLs with Garage |
-| `FRONTEND_URL` | same as `APP_URL` | yes | Origin the web app is served from. Passkeys (WebAuthn) bind to it, CORS allows it, and `storage:check` uses it as `Origin` |
+| `FRONTEND_URL` | same as `APP_URL` | yes | Origin the web app is served from (scheme, host and port must match exactly what the browser shows). Passkeys (WebAuthn) bind to it, CORS allows it, and `storage:check` uses it as `Origin` |
 | `APP_LOCALE`, `APP_FALLBACK_LOCALE`, `APP_FAKER_LOCALE` | `en`, `en`, `en_US` | no | Laravel locale settings |
 | `APP_MAINTENANCE_DRIVER` | `file` | no | Laravel maintenance mode driver |
 | `BCRYPT_ROUNDS` | `12` | no | Cost of the server-side login password hash |

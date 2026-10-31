@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Symfony\Component\Uid\Uuid;
-use Webauthn\PublicKeyCredentialSource;
+use Webauthn\CredentialRecord;
 use Webauthn\TrustPath\EmptyTrustPath;
 
 /**
@@ -49,9 +49,15 @@ class WebAuthnCredential extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function toPublicKeyCredentialSource(): PublicKeyCredentialSource
+    /**
+     * Rebuild the WebAuthn credential record from the stored columns.
+     *
+     * The columns hold raw library-independent values (base64 credential ID, base64 COSE public key,
+     * signature counter), so rows written under webauthn-lib v4 load unchanged.
+     */
+    public function toCredentialRecord(): CredentialRecord
     {
-        return PublicKeyCredentialSource::create(
+        return CredentialRecord::create(
             publicKeyCredentialId: base64_decode($this->credential_id),
             type: 'public-key',
             transports: $this->transports ?? [],

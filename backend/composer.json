@@ -24,7 +24,7 @@
         "symfony/property-access": "^8.1",
         "symfony/property-info": "^8.1",
         "symfony/serializer": "^8.1",
-        "web-auth/webauthn-lib": "^4"
+        "web-auth/webauthn-lib": "^5.3.5"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
