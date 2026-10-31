@@ -4,3 +4,7 @@ PLAN*.md
 opencode.json
 backend/opencode.json
 .claude/
+AGENTS.md
+backend/AGENTS.md
+backend/.agents/
+backend/boost.json
