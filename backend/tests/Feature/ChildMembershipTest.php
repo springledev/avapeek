@@ -394,6 +394,17 @@ describe('POST /api/children/{child}/access-reminder', function () {
         Queue::assertNothingPushed();
     });
 
+    it('rejects a member who has no key pair yet, since admins could not share with them', function () {
+        $this->member->forceFill(['encrypted_private_key' => null])->save();
+        Queue::fake();
+
+        $this->actingAs($this->member, 'sanctum')
+            ->postJson("/api/children/{$this->child->id}/access-reminder")
+            ->assertStatus(422);
+
+        Queue::assertNothingPushed();
+    });
+
     it('rejects the owner', function () {
         $keyless = Child::factory()->create();
         $owner = familyMember('owner', $keyless);
