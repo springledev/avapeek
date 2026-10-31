@@ -9,7 +9,7 @@ Audit date: 2026-10-27, updated 2026-10-31. Avapeek is released as open source w
 - [x] **`SECURITY.md` contact.** Points to GitHub private vulnerability reporting.
 - [ ] **Enable private vulnerability reporting** in the GitHub repository settings (Security → Private vulnerability reporting), otherwise the `SECURITY.md` link has nowhere to go. *Manual.*
 - [x] **Final GitHub org/repo name.** Kept as `springledev/avapeek`.
-- [ ] **Patch vulnerable backend dependencies.** `composer audit` reports 31 advisories in 9 production packages, including a critical one in `laravel/framework` (fixed in 13.29.0; locked at 13.15.0), plus high in `guzzlehttp/guzzle`, `league/commonmark` and `symfony/http-foundation`. Run `composer update` within the existing constraints and re-run the suite.
+- [x] **Vulnerable dependencies patched.** `composer audit` is clean (Laravel 13.39.0; passkeys moved to webauthn-lib 5), production npm dependencies have no advisories, PHP is pinned to 8.5.12 with `session.upload_progress` and `expose_php` off. One low, build-time-only `deepmerge` advisory (via workbox-build) has no published fix.
 - [ ] **Publish the first release.** `up.sh` pulls `ghcr.io/springledev/avapeek-*:latest` and no tag exists yet. Set the date in the `CHANGELOG.md` 0.1.0 heading, tag `v0.1.0`, let `release.yml` publish images and the GitHub Release, set the GHCR packages to public, verify an anonymous `docker pull`, and test `./up.sh` on a clean machine (amd64 and arm64). *Manual.*
 - [x] **Git author identities.** History rewritten to a single `springledev` identity (backup branch `backup/pre-author-rewrite`). Requires a force-push to existing remotes. *Manual: push.*
 - [x] **Secrets scan.** `gitleaks` over full history: 6 hits, all dummy dev/test values or a documentation example, now listed in `.gitleaksignore`; rescan is clean. Re-run on the exact commit you publish.
@@ -68,6 +68,6 @@ Product risks to be honest about at release
 
 - **Secrets in the working tree and history:** only `*.example` env files are tracked; no `.env`, `.pem`, `.key`, `.sqlite`, `.sql`, `.zip` or photo files were ever committed; `gitleaks` is clean with the documented ignores.
 - **Personal data:** no photos or test images (only app icons). Private IPs appear only in SSRF test fixtures. Git history uses a single noreply identity.
-- **Checks (2026-10-31):** frontend type-check, lint, build and 464 Vitest tests pass; backend Pint and 632 Pest tests pass.
+- **Checks (2026-10-31):** frontend type-check, lint, build and 501 Vitest tests pass; backend Pint and 660 Pest tests pass.
 - **Telemetry:** no analytics, error-reporting or tracking SDK.
 - **Actions:** pinned to commit SHAs with minimal `permissions`.
