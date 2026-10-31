@@ -331,7 +331,7 @@ describe('notification preferences', function () {
             ->getJson('/api/push/preferences')
             ->assertOk()
             ->assertExactJson(['data' => [
-                ['child_id' => $child->id, 'notify_photos' => true, 'notify_comments' => true, 'notify_joins' => true, 'notify_admin_comments' => true],
+                ['child_id' => $child->id, 'notify_photos' => true, 'notify_comments' => true, 'notify_joins' => true, 'notify_admin_comments' => true, 'notify_access_requests' => true, 'notify_access_granted' => true],
             ]]);
 
         expect($strangerChild->id)->not->toBe($child->id);

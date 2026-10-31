@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\EncryptionKey;
 use App\Models\NotificationPreference;
 use App\Models\PushSubscription;
 use Illuminate\Database\Eloquent\Collection;
@@ -52,7 +53,8 @@ class PushRecipientResolver
 
         foreach ($this->resolveItems($type, $events) as $userId => $itemIds) {
             $urls[$userId] = match ($type) {
-                PushBatcher::TYPE_JOINS => count($itemIds) === 1 ? '/settings/children/'.$itemIds[0] : '/settings/children',
+                PushBatcher::TYPE_JOINS, PushBatcher::TYPE_ACCESS_REQUESTED => count($itemIds) === 1 ? '/settings/children/'.$itemIds[0] : '/settings/children',
+                PushBatcher::TYPE_ACCESS_GRANTED => '/feed',
                 PushBatcher::TYPE_ADMIN_COMMENTS => count($itemIds) === 1 ? '/recents?photo='.$itemIds[0] : WebPushService::URL,
                 default => WebPushService::URL,
             };
@@ -77,15 +79,18 @@ class PushRecipientResolver
             PushBatcher::TYPE_COMMENTS => 'notify_comments',
             PushBatcher::TYPE_ADMIN_COMMENTS => 'notify_admin_comments',
             PushBatcher::TYPE_JOINS => 'notify_joins',
+            PushBatcher::TYPE_ACCESS_REQUESTED => 'notify_access_requests',
+            PushBatcher::TYPE_ACCESS_GRANTED => 'notify_access_granted',
             default => 'notify_photos',
         };
-        $adminsOnly = $type === PushBatcher::TYPE_ADMIN_COMMENTS || $type === PushBatcher::TYPE_JOINS;
+        $adminsOnly = in_array($type, [PushBatcher::TYPE_ADMIN_COMMENTS, PushBatcher::TYPE_JOINS, PushBatcher::TYPE_ACCESS_REQUESTED], true);
+        $childScoped = in_array($type, [PushBatcher::TYPE_JOINS, PushBatcher::TYPE_ACCESS_REQUESTED, PushBatcher::TYPE_ACCESS_GRANTED], true);
 
         $itemIds = array_values(array_unique(array_column($events, 0)));
 
         /** @var array<int, list<int>> $childIdsByItem */
         $childIdsByItem = [];
-        if ($type === PushBatcher::TYPE_JOINS) {
+        if ($childScoped) {
             foreach ($itemIds as $childId) {
                 $childIdsByItem[$childId] = [$childId];
             }
@@ -132,7 +137,7 @@ class PushRecipientResolver
         $preferences = NotificationPreference::query()
             ->whereIn('child_id', $childIds)
             ->whereIn('user_id', $subscribedUserIds)
-            ->get(['user_id', 'child_id', 'notify_photos', 'notify_comments', 'notify_joins', 'notify_admin_comments']);
+            ->get(['user_id', 'child_id', 'notify_photos', 'notify_comments', 'notify_joins', 'notify_admin_comments', 'notify_access_requests', 'notify_access_granted']);
         foreach ($preferences as $preference) {
             $key = $preference->user_id.':'.$preference->child_id;
             if (! $preference->{$column}) {
@@ -140,6 +145,18 @@ class PushRecipientResolver
             }
             if (! $preference->notify_admin_comments) {
                 $adminCommentsOff[$key] = true;
+            }
+        }
+
+        // Only admins who can actually decrypt the album can act on an access request.
+        $keyHolders = [];
+        if ($type === PushBatcher::TYPE_ACCESS_REQUESTED) {
+            foreach (DB::table('encryption_keys')
+                ->whereIn('child_id', $childIds)
+                ->whereIn('user_id', $subscribedUserIds)
+                ->where('wrap_type', EncryptionKey::WRAP_KEK)
+                ->get(['child_id', 'user_id']) as $row) {
+                $keyHolders[$row->user_id.':'.$row->child_id] = true;
             }
         }
 
@@ -152,7 +169,13 @@ class PushRecipientResolver
                     $key = $userId.':'.$childId;
                     $isAdmin = in_array($role, ['owner', 'admin'], true);
 
-                    if ($userId === $actorId || ! isset($subscribed[$userId]) || isset($muted[$key])) {
+                    $isExcluded = $type === PushBatcher::TYPE_ACCESS_GRANTED ? $userId !== $actorId : $userId === $actorId;
+
+                    if ($isExcluded || ! isset($subscribed[$userId]) || isset($muted[$key])) {
+                        continue;
+                    }
+
+                    if ($type === PushBatcher::TYPE_ACCESS_REQUESTED && ! isset($keyHolders[$key])) {
                         continue;
                     }
 

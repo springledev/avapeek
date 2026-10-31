@@ -24,6 +24,8 @@ class NotificationPreferenceFactory extends Factory
             'notify_comments' => true,
             'notify_joins' => true,
             'notify_admin_comments' => true,
+            'notify_access_requests' => true,
+            'notify_access_granted' => true,
         ];
     }
 }
