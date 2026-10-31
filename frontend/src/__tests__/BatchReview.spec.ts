@@ -168,4 +168,31 @@ describe('BatchReview', () => {
     expect(document.body.textContent).not.toContain("Choose who's in these photos")
     expect(uploadButton().disabled).toBe(false)
   })
+
+  it('lists locked albums disabled with the reason instead of omitting them', () => {
+    setActivePinia(createPinia())
+    const store = useChildStore()
+    const locked = { ...makeChild(2, 'Noah'), role: 'member' }
+    setChildren(store, [makeChild(1, 'Emma'), locked], [2])
+    const file = new File(['x'], 'a.jpg', { type: 'image/jpeg' })
+    wrapper = mount(BatchReview, { props: { open: true, files: [file] }, attachTo: document.body })
+
+    const list = document.body.querySelector('[data-test="locked-albums"]')!
+    expect(list.textContent).toContain('Noah')
+    expect(list.textContent).toContain('Waiting for access')
+    expect(list.querySelector('button')).toBeNull()
+    expect(document.body.textContent).not.toContain('Add a kid first')
+  })
+
+  it('does not ask to add a kid when every album is still locked', () => {
+    setActivePinia(createPinia())
+    const store = useChildStore()
+    setChildren(store, [{ ...makeChild(2, 'Noah'), role: 'member' }], [2])
+    const file = new File(['x'], 'a.jpg', { type: 'image/jpeg' })
+    wrapper = mount(BatchReview, { props: { open: true, files: [file] }, attachTo: document.body })
+
+    expect(document.body.textContent).toContain('once an album admin shares access')
+    expect(document.body.textContent).not.toContain('Add a kid first')
+    expect(uploadButton().disabled).toBe(true)
+  })
 })
