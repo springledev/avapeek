@@ -94,7 +94,15 @@ function makeChild(role: string): Child {
 }
 
 function member(id: number, name: string, role: string): ChildMember {
-  return { id, display_name: name, role, relationship: null, joined_at: '2026-01-01' }
+  return {
+    id,
+    display_name: name,
+    role,
+    relationship: null,
+    joined_at: '2026-01-01',
+    has_key: true,
+    awaiting_key: false,
+  }
 }
 
 const ME = 1
