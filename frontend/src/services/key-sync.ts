@@ -11,7 +11,13 @@ interface PendingGrant {
   public_key: string
 }
 
-let inFlight: Promise<void> | null = null
+/** Outcome of one sync: grants shared with members, and grants that failed. */
+export interface KeySyncResult {
+  granted: number
+  failed: number
+}
+
+let inFlight: Promise<KeySyncResult> | null = null
 
 /**
  * Keeps album keys flowing between family members, with no manual step:
@@ -23,16 +29,17 @@ let inFlight: Promise<void> | null = null
  *
  * Safe to call often: runs one sync at a time and never throws.
  */
-export function syncEncryptionKeys(): Promise<void> {
+export function syncEncryptionKeys(): Promise<KeySyncResult> {
   inFlight ??= runSync().finally(() => {
     inFlight = null
   })
   return inFlight
 }
 
-async function runSync(): Promise<void> {
+async function runSync(): Promise<KeySyncResult> {
   const authStore = useAuthStore()
-  if (!authStore.kek || !authStore.user) return
+  const result: KeySyncResult = { granted: 0, failed: 0 }
+  if (!authStore.kek || !authStore.user) return result
 
   try {
     await acceptSharedKeys()
@@ -41,9 +48,10 @@ async function runSync(): Promise<void> {
   }
 
   try {
-    await shareKeysWithNewMembers()
+    return await shareKeysWithNewMembers()
   } catch (err) {
     console.error('Failed to share album keys:', err)
+    return { granted: 0, failed: 1 }
   }
 }
 
@@ -84,16 +92,20 @@ async function acceptSharedKeys(): Promise<void> {
   }
 }
 
-async function shareKeysWithNewMembers(): Promise<void> {
+async function shareKeysWithNewMembers(): Promise<KeySyncResult> {
+  const result: KeySyncResult = { granted: 0, failed: 0 }
   const { data } = await api.get<{ data: PendingGrant[] }>('/encryption-keys/pending-grants')
-  if (data.data.length === 0) return
+  if (data.data.length === 0) return result
 
   const childStore = useChildStore()
   for (const grant of data.data) {
     try {
       await childStore.grantAccess(grant.child_id, grant.user_id, grant.public_key)
+      result.granted++
     } catch (err) {
+      result.failed++
       console.error(`Failed to share key for child ${grant.child_id}:`, err)
     }
   }
+  return result
 }

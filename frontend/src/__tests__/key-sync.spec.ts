@@ -132,6 +132,23 @@ describe('syncEncryptionKeys', () => {
     })
   })
 
+  it('reports granted and failed grants without throwing', async () => {
+    signIn()
+    respondWith(
+      [{ child_id: 1, child_name: 'Wren', encrypted_dek: 'own', wrap_type: 'kek', key_version: 1 }],
+      [
+        { child_id: 1, user_id: 9, public_key: 'a' },
+        { child_id: 1, user_id: 10, public_key: 'b' },
+      ],
+    )
+    vi.mocked(api.post).mockImplementation(async (_url: string, data?: unknown) => {
+      if ((data as { user_id?: number }).user_id === 10) throw new Error('boom')
+      return ok({})
+    })
+
+    await expect(syncEncryptionKeys()).resolves.toEqual({ granted: 1, failed: 1 })
+  })
+
   it('runs one sync at a time', async () => {
     signIn()
     respondWith([])

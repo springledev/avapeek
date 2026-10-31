@@ -68,6 +68,10 @@ export interface ChildMember {
   can_upload?: boolean
   joined_at: string
   last_active?: string | null
+  /** The member has an encryption key for this child. */
+  has_key: boolean
+  /** No key yet, but they can receive one: an admin must share access. */
+  awaiting_key: boolean
 }
 
 export interface ChildDetail extends Child {
