@@ -33,6 +33,7 @@ ENV SERVER_NAME=:80
 COPY docker/php/Caddyfile /etc/caddy/Caddyfile
 COPY docker/php/opcache.prod.ini /usr/local/etc/php/conf.d/opcache.ini
 COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+COPY docker/php/security.ini /usr/local/etc/php/conf.d/security.ini
 COPY docker/php/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
