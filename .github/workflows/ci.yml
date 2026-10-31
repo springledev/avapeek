@@ -51,3 +51,40 @@ jobs:
       - run: npm run type-check
       - run: npm run lint
       - run: npm run test:unit -- --run
+
+  compose-smoke:
+    # Builds the production images from source, boots the full stack with the
+    # bundled Garage storage and checks health, storage and the SPA through Caddy.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: avapeek-smoke
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Generate env and start the stack (builds from source)
+        run: ./up.sh --domain localhost --storage garage --build --yes --skip-check
+      - name: Wait for backend /up
+        # Caddy only proxies /api/* to the backend (a bare /up would hit the
+        # SPA), so probe the endpoint inside the backend container like up.sh.
+        run: |
+          for _ in $(seq 1 60); do
+            if docker compose -f docker-compose.prod.yml exec -T backend wget -q -O /dev/null http://localhost/up; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "health endpoint did not respond within 120s" >&2
+          exit 1
+      - name: Check object storage
+        run: docker compose -f docker-compose.prod.yml exec -T backend php artisan storage:check
+      - name: SPA root returns 200
+        run: |
+          status="$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:88/)"
+          echo "GET / -> ${status}"
+          test "${status}" = "200"
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.prod.yml ps -a; docker compose -f docker-compose.prod.yml logs --no-color --tail=200
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down -v --remove-orphans
