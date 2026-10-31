@@ -18,6 +18,7 @@ First public release.
 - Multi-select with bulk download, remove, tag and share to another child
 - Export of a child's photos with names and metadata, so there is no lock-in
 - Web push notifications and in-app notifications for admins when someone joins or comments, with per-user settings
+- Clear waiting state for new members until an admin shares the album key, with a "Remind admins" button, admin badges and banner, and access requested / access granted push notifications
 - Optional two-factor authentication: TOTP, passkeys and recovery codes
 - Password change with re-wrapping of keys, and invite key sharing between members
 - Storage in the bundled Garage or any S3-compatible provider, with `storage:check`, quota reporting and storage reconcile
