@@ -1,14 +1,31 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from '../App.vue'
 import { useAuthStore } from '@/stores/auth'
 import { resyncPushSubscription } from '@/services/push'
+import { useChildStore } from '@/stores/child'
+import { usePendingGrants } from '@/composables/usePendingGrants'
+import { syncEncryptionKeys } from '@/services/key-sync'
+import { api } from '@/services/api'
 import type { User } from '@/types/auth'
 
 vi.mock('@/services/push', () => ({
   resyncPushSubscription: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+}))
+
+vi.mock('@/services/key-sync', () => ({
+  syncEncryptionKeys: vi.fn<() => Promise<{ granted: number; failed: number }>>(async () => ({
+    granted: 0,
+    failed: 0,
+  })),
+}))
+
+vi.mock('@/services/api', () => ({
+  api: {
+    get: vi.fn<(url: string) => Promise<unknown>>(async () => ({ data: { data: [] } })),
+  },
 }))
 
 vi.mock('@/composables/useDarkMode', () => ({
@@ -93,5 +110,55 @@ describe('App', () => {
     await Promise.resolve()
 
     expect(resyncPushSubscription).toHaveBeenCalledOnce()
+  })
+
+  describe('pending grants poll', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    async function mountAs(role: string, pending: number) {
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      useAuthStore().kek = {} as CryptoKey
+      useChildStore().children = [{ id: 1, role } as never]
+      vi.mocked(api.get).mockResolvedValue({
+        data: { data: Array.from({ length: pending }, (_, i) => ({ child_id: 1, user_id: i + 1 })) },
+      })
+      await usePendingGrants().refresh()
+      vi.useFakeTimers()
+      const wrapper = mount(App, {
+        global: {
+          plugins: [pinia, createRouter({ history: createWebHistory(), routes: [] })],
+          stubs: { AppShell: true, Toaster: true },
+        },
+      })
+      await vi.advanceTimersByTimeAsync(0)
+      vi.mocked(syncEncryptionKeys).mockClear()
+      vi.mocked(api.get).mockClear()
+      return wrapper
+    }
+
+    it('re-syncs every 60s for admins with members waiting', async () => {
+      const wrapper = await mountAs('admin', 1)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(syncEncryptionKeys).toHaveBeenCalled()
+      expect(api.get).toHaveBeenCalledWith('/encryption-keys/pending-grants')
+      wrapper.unmount()
+    })
+
+    it('does not poll when nobody is waiting', async () => {
+      const wrapper = await mountAs('owner', 0)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(api.get).not.toHaveBeenCalled()
+      wrapper.unmount()
+    })
+
+    it('does not poll for plain members', async () => {
+      const wrapper = await mountAs('member', 2)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(api.get).not.toHaveBeenCalled()
+      wrapper.unmount()
+    })
   })
 })
