@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
-import { MessageCircle, Check } from '@lucide/vue'
+import { MessageCircle, Check, Lock } from '@lucide/vue'
 import { useLazyDecrypt } from '@/composables/useLazyDecrypt'
 import { useMotionPolicy } from '@/composables/useMotionPolicy'
 import { LONG_PRESS_MS } from '@/composables/useSelection'
+import { useChildStore } from '@/stores/child'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
+import { MSG } from '@/lib/messages'
 import type { Photo } from '@/types/photo'
 
 const props = defineProps<{
@@ -67,6 +69,10 @@ function onContextMenu(event: Event) {
 const { observePhoto, unobserve } = useLazyDecrypt()
 const { resolve } = useMotionPolicy()
 
+const childStore = useChildStore()
+/** No album of this photo has a key for the user yet: say so instead of a blank tile. */
+const isLocked = computed(() => !thumbnailUrl.value && childStore.isPhotoLocked(props.photo))
+
 const elRef = ref<HTMLElement | null>(null)
 const thumbnailUrl = ref<string | null>(null)
 const motionClass = ref('')
@@ -99,6 +105,7 @@ onBeforeUnmount(() => {
     type="button"
     class="tile u-focus-ring"
     :class="{ 'tile--selected': selected }"
+    :aria-label="isLocked ? MSG.tileLocked : undefined"
     :aria-pressed="selectable ? !!selected : undefined"
     @click="onClick"
     @pointerdown="onPointerDown"
@@ -116,6 +123,9 @@ onBeforeUnmount(() => {
       alt=""
       @load="onImgLoad"
     />
+    <div v-else-if="isLocked" class="tile__locked" data-test="tile-locked" aria-hidden="true">
+      <Lock :size="24" />
+    </div>
     <div v-else class="tile__placeholder" aria-hidden="true" />
 
     <span
@@ -205,6 +215,16 @@ onBeforeUnmount(() => {
   inset: 0;
   background: var(--color-surface-2);
   animation: pulse 1.5s ease-in-out infinite;
+}
+
+.tile__locked {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-2);
+  color: var(--color-ink-soft);
 }
 
 .tile__kids {
