@@ -148,6 +148,44 @@ describe('member joined notifications', function () {
         expect(Cache::get('push:events:joins'))->toBe([[$child->id, $joiner->id]]);
     });
 
+    it('records a joins event when registering through an invite', function () {
+        $child = Child::factory()->create();
+        $owner = adminPushUser($child, 'owner');
+        $invite = joinInvite($child, $owner);
+        Queue::fake();
+
+        $this->postJson('/api/auth/register', [
+            'email' => 'reg-join@example.com',
+            'auth_hash' => str_repeat('a', 64),
+            'display_name' => 'Reg Join',
+            'master_key_salt' => str_repeat('b', 64),
+            'public_key' => 'pk',
+            'encrypted_private_key' => 'epk',
+            'invite_token' => $invite->token,
+        ])->assertCreated();
+
+        $joinerId = User::where('email', 'reg-join@example.com')->value('id');
+        Queue::assertPushed(SendPushNotifications::class, fn ($job) => $job->type === 'joins');
+        expect(Cache::get('push:events:joins'))->toBe([[$child->id, $joinerId]]);
+    });
+
+    it('does not fail registration when pushing fails', function () {
+        $child = Child::factory()->create();
+        $owner = adminPushUser($child, 'owner');
+        $invite = joinInvite($child, $owner);
+        $this->mock(PushBatcher::class)->shouldReceive('record')->andThrow(new RuntimeException('cache down'));
+
+        $this->postJson('/api/auth/register', [
+            'email' => 'reg-join2@example.com',
+            'auth_hash' => str_repeat('a', 64),
+            'display_name' => 'Reg Join',
+            'master_key_salt' => str_repeat('b', 64),
+            'public_key' => 'pk',
+            'encrypted_private_key' => 'epk',
+            'invite_token' => $invite->token,
+        ])->assertCreated();
+    });
+
     it('notifies only owners and admins of that child, never the joiner', function () {
         $child = Child::factory()->create();
         $otherChild = Child::factory()->create();
