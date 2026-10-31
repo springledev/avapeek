@@ -19,6 +19,8 @@ const rows = computed(() =>
     notify_comments: preferences.value.get(child.id)?.notify_comments ?? true,
     notify_joins: preferences.value.get(child.id)?.notify_joins ?? true,
     notify_admin_comments: preferences.value.get(child.id)?.notify_admin_comments ?? true,
+    notify_access_requests: preferences.value.get(child.id)?.notify_access_requests ?? true,
+    notify_access_granted: preferences.value.get(child.id)?.notify_access_granted ?? true,
     isAdmin: child.role === 'owner' || child.role === 'admin',
   })),
 )
@@ -38,6 +40,8 @@ async function onToggleType(childId: number, key: PreferenceKey) {
     notify_comments: row.notify_comments,
     notify_joins: row.notify_joins,
     notify_admin_comments: row.notify_admin_comments,
+    notify_access_requests: row.notify_access_requests,
+    notify_access_granted: row.notify_access_granted,
     [key]: !row[key],
   }
   savingChildId.value = childId
@@ -187,10 +191,44 @@ onMounted(async () => {
                 <span class="notify__knob" />
               </button>
             </label>
+            <label class="notify__option">
+              <span>Access requests</span>
+              <button
+                type="button"
+                role="switch"
+                class="notify__switch"
+                :class="{ 'notify__switch--on': row.notify_access_requests }"
+                :aria-checked="row.notify_access_requests"
+                :aria-label="`Access requests for ${row.name}`"
+                :disabled="savingChildId !== null"
+                data-testid="push-access-requests-toggle"
+                @click="onToggleType(row.id, 'notify_access_requests')"
+              >
+                <span class="notify__knob" />
+              </button>
+            </label>
+          </div>
+          <div class="notify__switches">
+            <label class="notify__option">
+              <span>Access shared with me</span>
+              <button
+                type="button"
+                role="switch"
+                class="notify__switch"
+                :class="{ 'notify__switch--on': row.notify_access_granted }"
+                :aria-checked="row.notify_access_granted"
+                :aria-label="`Access shared with me for ${row.name}`"
+                :disabled="savingChildId !== null"
+                data-testid="push-access-granted-toggle"
+                @click="onToggleType(row.id, 'notify_access_granted')"
+              >
+                <span class="notify__knob" />
+              </button>
+            </label>
           </div>
           <p v-if="row.isAdmin" class="notify__desc">
             As an admin you also hear when someone joins (see them under Settings, Kids, then
-            {{ row.name }}) and when a member comments on a photo (tap to open it).
+            {{ row.name }}) and when a member comments on a photo (tap to open it). You are also told when a member is waiting for access, so you can share it.
           </p>
         </div>
       </template>

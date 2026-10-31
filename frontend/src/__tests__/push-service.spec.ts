@@ -191,6 +191,8 @@ describe('services/push', () => {
       notify_comments: false,
       notify_joins: true,
       notify_admin_comments: false,
+      notify_access_requests: true,
+      notify_access_granted: true,
     }
     mocked.get.mockResolvedValueOnce({
       data: { data: [{ child_id: 1, ...prefs }] },

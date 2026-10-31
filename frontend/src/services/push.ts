@@ -12,6 +12,8 @@ export interface ChildPushPreference {
   notify_comments: boolean
   notify_joins: boolean
   notify_admin_comments: boolean
+  notify_access_requests: boolean
+  notify_access_granted: boolean
 }
 
 const ENABLED_KEY = 'avapeek-push-enabled'

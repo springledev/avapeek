@@ -8,7 +8,7 @@
  * only honoured when it matches a strict allowlist of in-app paths.
  */
 
-export type PushType = 'photos' | 'comments' | 'admin_comments' | 'joins'
+export type PushType = 'photos' | 'comments' | 'admin_comments' | 'joins' | 'access_requested' | 'access_granted'
 
 /** Default click target: the unseen feed. */
 export const PUSH_CLICK_URL = '/recents'
@@ -16,6 +16,7 @@ export const PUSH_CLICK_URL = '/recents'
 /** In-app paths a push may deep-link to (numeric ids only, no other query or host). */
 const ALLOWED_CLICK_URLS: readonly RegExp[] = [
   /^\/recents$/,
+  /^\/feed$/,
   /^\/recents\?photo=\d{1,12}$/,
   /^\/settings\/children$/,
   /^\/settings\/children\/\d{1,12}$/,
@@ -53,13 +54,30 @@ const COPY: Record<PushType, { title: string; body: string; tag: string }> = {
   },
   joins: {
     title: 'Someone joined your family',
-    body: 'A new member accepted your invite. Tap to see who in Settings, Kids.',
+    body: 'Open Avapeek to give them access to the photos.',
     tag: 'avapeek-joins',
+  },
+  access_requested: {
+    title: 'Someone is waiting for access',
+    body: "A family member can't see photos yet. Open Avapeek to share access.",
+    tag: 'avapeek-access-requested',
+  },
+  access_granted: {
+    title: 'You can see the photos now',
+    body: 'An admin shared access with you. Tap to open your feed.',
+    tag: 'avapeek-access-granted',
   },
 }
 
 function isPushType(value: unknown): value is PushType {
-  return value === 'photos' || value === 'comments' || value === 'admin_comments' || value === 'joins'
+  return (
+    value === 'photos' ||
+    value === 'comments' ||
+    value === 'admin_comments' ||
+    value === 'joins' ||
+    value === 'access_requested' ||
+    value === 'access_granted'
+  )
 }
 
 /**
