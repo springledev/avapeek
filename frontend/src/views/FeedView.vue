@@ -17,6 +17,7 @@ import UiEmptyState from '@/components/ui/UiEmptyState.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import CreateChildSheet from '@/components/CreateChildSheet.vue'
 import MemberAccessBanner from '@/components/MemberAccessBanner.vue'
+import AdminPendingAccessBanner from '@/components/AdminPendingAccessBanner.vue'
 import BulkActions from '@/components/BulkActions.vue'
 import { MSG } from '@/lib/messages'
 import { apiErrorMessage } from '@/lib/util'
@@ -278,6 +279,8 @@ async function updateDate(photoId: number, takenAt: string) {
       :child-id="child.id"
       :child-name="child.name"
     />
+
+    <AdminPendingAccessBanner />
 
     <FeedToolbar />
 
