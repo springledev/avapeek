@@ -21,7 +21,7 @@ This guide takes you from a fresh server to a running Avapeek. The short version
 | **Prebuilt images (default)** | `up.sh` pulls `ghcr.io/springledev/avapeek-backend`, `-frontend`, `-garage-init` | Normal installs. No compiler toolchain, fast |
 | **Build from source** (`--build`) | Images are built locally from this checkout | You changed the code, or no release has been published for your architecture |
 
-Pin a release by setting `AVAPEEK_VERSION=0.2.0` in the root `.env` (default `latest`).
+Pin a release by setting `AVAPEEK_VERSION=0.1.0` in the root `.env` (default `latest`).
 
 ## Install with `up.sh`
 
@@ -153,7 +153,7 @@ git pull          # updates up.sh, compose files and docs
 ./up.sh           # pulls newer images, recreates containers, runs migrations
 ```
 
-Using a pinned `AVAPEEK_VERSION`? Change it in `.env` first. Secrets and settings are untouched. With `--build`, the images are rebuilt from your updated checkout. Read the release notes for any manual steps.
+Releases follow [SemVer](https://semver.org/) and are tagged `vX.Y.Z`; the image tag is the version without the `v`. Pinning `AVAPEEK_VERSION` to an exact version is recommended so upgrades happen when you choose. To upgrade a pinned install, change it in `.env` first. Secrets and settings are untouched. With `--build`, the images are rebuilt from your updated checkout. Read the release notes for any manual steps.
 
 ## Backups
 

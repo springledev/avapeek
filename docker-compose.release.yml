@@ -12,7 +12,7 @@
 # merged config, ALWAYS pass --no-build to `up` so Compose uses these images.
 #
 # Pick a release with AVAPEEK_VERSION in the root .env (default: latest), e.g.
-# AVAPEEK_VERSION=0.2.0. Images are published by .github/workflows/release.yml.
+# AVAPEEK_VERSION=0.1.0. Images are published by .github/workflows/release.yml.
 #
 # MAINTAINERS: whenever docker-compose.prod.yml gains a service that has a
 # `build:` section (e.g. scheduler or queue), add a matching entry here using
