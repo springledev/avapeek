@@ -8,6 +8,7 @@ import { useGridDensity } from '@/composables/useGridDensity'
 import { useNetwork } from '@/composables/useNetwork'
 import AppShell from '@/components/AppShell.vue'
 import OfflineBanner from '@/components/OfflineBanner.vue'
+import { usePendingGrants } from '@/composables/usePendingGrants'
 import { syncEncryptionKeys } from '@/services/key-sync'
 import { resyncPushSubscription } from '@/services/push'
 
@@ -16,6 +17,7 @@ const childStore = useChildStore()
 const { initDarkMode } = useDarkMode()
 const { initDensity } = useGridDensity()
 const { initNetwork, cleanup } = useNetwork()
+const { pendingCount, refresh: refreshPendingGrants } = usePendingGrants()
 
 initDarkMode()
 initDensity()
@@ -26,10 +28,17 @@ const KEY_SYNC_INTERVAL_MS = 60_000
 const KEY_WAIT_INTERVAL_MS = 15_000
 let lastKeySync = 0
 let keyWaitTimer: ReturnType<typeof setInterval> | null = null
+let grantTimer: ReturnType<typeof setInterval> | null = null
 
 /** Albums the user joined but cannot open yet: an admin still has to share the key. */
 function hasLockedJoinedAlbum(): boolean {
   return childStore.children.some((c) => c.role !== 'owner' && !childStore.hasOwnKey(c.id))
+}
+
+/** Whether the user can share album keys, and someone is still waiting for one. */
+function hasPendingGrantsToShare(): boolean {
+  const administers = childStore.children.some((c) => c.role === 'owner' || c.role === 'admin')
+  return administers && pendingCount.value > 0
 }
 
 /** Shares and accepts album keys whenever keys become available or the app comes back into view. */
@@ -37,6 +46,13 @@ function syncKeys() {
   if (!authStore.kek) return
   lastKeySync = Date.now()
   void syncEncryptionKeys()
+}
+
+/** Re-runs the sync for admins with members waiting, then updates the pending count. */
+function syncPendingGrants() {
+  if (!authStore.kek) return
+  lastKeySync = Date.now()
+  void syncEncryptionKeys().then(refreshPendingGrants)
 }
 
 function onVisibilityChange() {
@@ -61,6 +77,9 @@ onMounted(async () => {
   keyWaitTimer = setInterval(() => {
     if (document.visibilityState === 'visible' && hasLockedJoinedAlbum()) syncKeys()
   }, KEY_WAIT_INTERVAL_MS)
+  grantTimer = setInterval(() => {
+    if (document.visibilityState === 'visible' && hasPendingGrantsToShare()) syncPendingGrants()
+  }, KEY_SYNC_INTERVAL_MS)
   await authStore.restoreKEK()
   syncKeys()
 })
@@ -68,6 +87,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   if (keyWaitTimer) clearInterval(keyWaitTimer)
+  if (grantTimer) clearInterval(grantTimer)
   cleanup()
 })
 </script>
