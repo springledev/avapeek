@@ -79,7 +79,6 @@ Every change needs a test. Use factories in backend tests. Mock crypto where nee
 - Backend: use `php artisan make:*` generators, explicit return types, Eloquent API resources/existing response shapes. Check sibling files for style.
 - Frontend: Composition API with `<script setup lang="ts">`, 48px touch targets, blur-up image loading via `useLazyDecrypt`.
 - Authorization: check membership via `child_photo` on every photo-related request.
-- `AGENTS.md` files describe the (optional) AI-assisted workflow some maintainers use; contributors do not need it.
 
 ## Building images locally
 
