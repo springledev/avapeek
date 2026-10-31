@@ -1,0 +1,89 @@
+name: Bug report
+description: Report a reproducible bug in Avapeek
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not report security vulnerabilities here.** Report them privately as described in [SECURITY.md](https://github.com/springledev/avapeek/blob/master/SECURITY.md) (GitHub private vulnerability reporting).
+
+        **Never paste secrets, `.env` contents, passwords, recovery codes, API keys, or photos.** Redact anything sensitive from logs before pasting them.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What went wrong? Describe the actual behaviour.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behaviour
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The smallest set of steps that reproduces the problem.
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See error
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Avapeek version or commit
+      description: A release tag (for example v1.2.0) or the git commit hash you are running.
+      placeholder: "v1.2.0 or 7667d1a"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      options:
+        - up.sh with release images
+        - up.sh --build
+        - docker compose manually
+        - Other (describe in "What happened?")
+    validations:
+      required: true
+
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Storage
+      options:
+        - Bundled Garage
+        - External S3-compatible (AWS S3, Backblaze B2, Cloudflare R2, other)
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: browser-os
+    attributes:
+      label: Browser and OS
+      description: Include the browser name and version, and the operating system.
+      placeholder: "Firefox 140 on Fedora 44"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste relevant log output. Check it for secrets, tokens, and personal data first. Do not paste `.env` contents or photos.
+      render: shell
+    validations:
+      required: false
