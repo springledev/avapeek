@@ -1,0 +1,7 @@
+# Known false positives: dummy dev/test values and a documentation example, not credentials.
+a23d78eafbf1b89c86e76c82905cf332c7380247:backend/database/factories/UserFactory.php:generic-api-key:17
+df0389a41638fd6395da93061d8dbc670f8690b0:backend/database/factories/UserFactory.php:generic-api-key:17
+4bca88282776920c0c6c9c354eb6092de250b59b:.env.dev.example:generic-api-key:22
+e65349bdb69bd2ecb090207f09f0881e5e5975de:.env.dev.example:generic-api-key:22
+0425091de11f4caadf1b5144b0769f0c351311e7:backend/.agents/skills/laravel-best-practices/rules/config.md:generic-api-key:30
+5434e12e336b7c7d4ab31f3c5795e78fcea22c9b:backend/.agents/skills/laravel-best-practices/rules/config.md:generic-api-key:30
