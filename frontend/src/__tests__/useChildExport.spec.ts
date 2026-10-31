@@ -132,8 +132,9 @@ beforeEach(() => {
   apiGetMock = vi.mocked(api.get)
   apiGetMock.mockReset()
   apiGetMock.mockImplementation(async (url, config) => {
-    const afterId = config?.params?.after_id ?? 0
-    const limit = config?.params?.limit ?? 100
+    const params = (config?.params ?? {}) as { after_id?: number; limit?: number }
+    const afterId = params.after_id ?? 0
+    const limit = params.limit ?? 100
     if (url.endsWith('/export/photos')) {
       const rest = photos.filter((p) => p.id > afterId)
       const page = rest.slice(0, limit)
