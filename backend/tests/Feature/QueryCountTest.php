@@ -84,6 +84,19 @@ describe('query count regressions', function () {
         }
     });
 
+    it('keeps GET /api/children/{child} query count independent of the number of members', function () {
+        [$smallOwner, [$smallChild]] = childrenFixture(1);
+        [$largeOwner, [$largeChild]] = childrenFixture(1);
+        foreach (range(1, 5) as $ignored) {
+            ChildUser::create(['child_id' => $largeChild->id, 'user_id' => User::factory()->create()->id, 'role' => 'member']);
+        }
+
+        $small = countQueries(fn () => $this->actingAs($smallOwner, 'sanctum')->getJson("/api/children/{$smallChild->id}")->assertOk());
+        $large = countQueries(fn () => $this->actingAs($largeOwner, 'sanctum')->getJson("/api/children/{$largeChild->id}")->assertOk());
+
+        expect($large)->toBe($small);
+    });
+
     it('returns the correct photo_count on the child detail endpoint', function () {
         [$user, [$child]] = childrenFixture(1);
 

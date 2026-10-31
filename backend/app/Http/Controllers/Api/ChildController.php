@@ -150,11 +150,17 @@ class ChildController extends Controller
         if (in_array($userRole, ['owner', 'admin'], true)) {
             $child->load([
                 'users' => function ($query) {
-                    $query->select('users.id', 'display_name', 'role', 'relationship');
+                    $query->select('users.id', 'display_name', 'role', 'relationship', 'encrypted_private_key');
                 },
             ]);
 
-            $members = $child->users->map(function ($user) {
+            $keyedUserIds = array_flip(
+                $child->encryptionKeys()->pluck('user_id')->map(fn ($id): int => (int) $id)->all()
+            );
+
+            $members = $child->users->map(function ($user) use ($keyedUserIds) {
+                $hasKey = isset($keyedUserIds[$user->id]);
+
                 return [
                     'id' => $user->id,
                     'display_name' => $user->display_name,
@@ -163,6 +169,8 @@ class ChildController extends Controller
                     'can_upload' => $this->canUpload($user->pivot->role, $user->pivot->can_upload),
                     'joined_at' => $user->pivot->joined_at,
                     'last_active' => $user->last_active_at?->toISOString(),
+                    'has_key' => $hasKey,
+                    'awaiting_key' => ! $hasKey && $user->encrypted_private_key !== null,
                 ];
             });
         }
