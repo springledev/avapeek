@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\AuthSessionService;
 use App\Services\MfaTokenService;
 use App\Services\PasswordProofService;
+use App\Services\PushBatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -103,6 +104,14 @@ class AuthController extends Controller
                 'child_slug' => $invite->child->slug,
             ]];
         });
+
+        if ($acceptedChild !== null) {
+            try {
+                app(PushBatcher::class)->record(PushBatcher::TYPE_JOINS, $acceptedChild['child_id'], $user->id);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         return response()->json([
             'user' => $this->authSession->userPayload($user),
