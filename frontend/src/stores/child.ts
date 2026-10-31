@@ -16,6 +16,11 @@ import {
 import type { Child, ChildDetail, ChildMember, InviteResponse } from '@/types/child'
 import type { EncryptionKey } from '@/types/auth'
 
+export type AccessReminderResult =
+  | { status: 'sent' }
+  | { status: 'already_sent'; retryAfter: number | null }
+  | { status: 'error'; message: string }
+
 export const useChildStore = defineStore('child', () => {
   const children = ref<Child[]>([])
   const currentChildId = ref<number | null>(null)
@@ -63,6 +68,34 @@ export const useChildStore = defineStore('child', () => {
   const uploadableChildren = computed(() =>
     children.value.filter((c) => hasOwnKey(c.id) && canUploadTo(c.id)),
   )
+
+  /**
+   * Albums the user joined but cannot open yet: not the owner, and no KEK-wrapped key.
+   * An album admin has to share the key. Same definition as the key-wait poll in App.vue.
+   */
+  const lockedChildren = computed(() =>
+    children.value.filter((c) => c.role !== 'owner' && !hasOwnKey(c.id)),
+  )
+
+  function isChildLocked(childId: number): boolean {
+    return lockedChildren.value.some((c) => c.id === childId)
+  }
+
+  /** Asks the album's admins to share the key. Never throws. */
+  async function sendAccessReminder(childId: number): Promise<AccessReminderResult> {
+    try {
+      await api.post(`/children/${childId}/access-reminder`)
+      return { status: 'sent' }
+    } catch (err) {
+      const response = (
+        err as { response?: { status?: number; data?: { retry_after?: number; message?: string } } }
+      ).response
+      if (response?.status === 429) {
+        return { status: 'already_sent', retryAfter: response.data?.retry_after ?? null }
+      }
+      return { status: 'error', message: apiErrorMessage(err, 'Could not send the reminder.') }
+    }
+  }
 
   /** Whether the user may upload to and manage tags in this child (owners and admins always). */
   function canUploadTo(childId: number): boolean {
@@ -525,6 +558,9 @@ export const useChildStore = defineStore('child', () => {
     retryKeySetup,
     finishKeySetup,
     hasOwnKey,
+    lockedChildren,
+    isChildLocked,
+    sendAccessReminder,
     uploadableChildren,
     canUploadTo,
     canManageTags,
