@@ -31,6 +31,7 @@ vi.mock('@/stores/child', () => ({
       { id: 2, name: 'Bo', avatar_color: null },
     ],
     tryGetChildDEK: async () => null,
+    isPhotoLocked: () => false,
     canUploadTo: () => true,
     canManageTags: true,
     canUploadAnywhere: true,
