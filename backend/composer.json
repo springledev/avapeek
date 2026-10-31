@@ -1,11 +1,14 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "springledev/avapeek",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "Avapeek API: self-hosted, end-to-end encrypted family photo sharing",
     "keywords": [
-        "laravel",
-        "framework"
+        "photos",
+        "family",
+        "end-to-end-encryption",
+        "self-hosted",
+        "privacy"
     ],
     "license": "AGPL-3.0-or-later",
     "require": {
