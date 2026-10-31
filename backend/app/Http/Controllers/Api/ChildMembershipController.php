@@ -177,16 +177,18 @@ class ChildMembershipController extends Controller
             return response()->json(['message' => 'You already have access to this album.'], 422);
         }
 
+        if ($user->encrypted_private_key === null) {
+            return response()->json(['message' => 'Sign in again to finish setting up your encryption keys first.'], 422);
+        }
+
         $limiterKey = "access-reminder:{$user->id}:{$child->id}";
 
-        if (RateLimiter::tooManyAttempts($limiterKey, 1)) {
+        if (RateLimiter::hit($limiterKey, self::ACCESS_REMINDER_SECONDS) > 1) {
             return response()->json([
                 'message' => 'You already sent a reminder recently.',
                 'retry_after' => RateLimiter::availableIn($limiterKey),
             ], 429);
         }
-
-        RateLimiter::hit($limiterKey, self::ACCESS_REMINDER_SECONDS);
 
         try {
             $batcher->record(PushBatcher::TYPE_ACCESS_REQUESTED, $child->id, $user->id);
