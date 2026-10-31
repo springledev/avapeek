@@ -8,7 +8,7 @@ import { useTagsStore } from '@/stores/tags'
 import { usePrefetch } from '@/composables/usePrefetch'
 import { useSetupState } from '@/composables/useSetupState'
 import { useSelection } from '@/composables/useSelection'
-import { Image } from '@lucide/vue'
+import { Image, Lock } from '@lucide/vue'
 import FeedToolbar from '@/components/feed/FeedToolbar.vue'
 import PhotoTile from '@/components/feed/PhotoTile.vue'
 import OnThisDayCard from '@/components/feed/OnThisDayCard.vue'
@@ -16,6 +16,7 @@ import PhotoViewer from '@/components/PhotoViewer.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import CreateChildSheet from '@/components/CreateChildSheet.vue'
+import MemberAccessBanner from '@/components/MemberAccessBanner.vue'
 import BulkActions from '@/components/BulkActions.vue'
 import { MSG } from '@/lib/messages'
 import { apiErrorMessage } from '@/lib/util'
@@ -47,6 +48,14 @@ function onBulkRemoved(deleted: number[], detachedCount: number) {
 
 const showFinishSetup = computed(
   () => childStore.childrenLoaded && !setup.isComplete.value && !setup.isDismissed.value,
+)
+
+/** Every album the user belongs to is still waiting for an admin to share its key. */
+const allChildrenLocked = computed(
+  () =>
+    childStore.childrenLoaded &&
+    childStore.hasChildren &&
+    childStore.lockedChildren.length === childStore.children.length,
 )
 
 const selectedPhoto = ref<Photo | null>(null)
@@ -263,6 +272,13 @@ async function updateDate(photoId: number, takenAt: string) {
       </div>
     </section>
 
+    <MemberAccessBanner
+      v-for="child in childStore.lockedChildren"
+      :key="child.id"
+      :child-id="child.id"
+      :child-name="child.name"
+    />
+
     <FeedToolbar />
 
     <OnThisDayCard v-if="!hasActiveFilters" @open="openMemory" />
@@ -288,6 +304,17 @@ async function updateDate(photoId: number, takenAt: string) {
         <UiButton variant="accent" size="lg" @click="showCreateChild = true">
           Add your first kid
         </UiButton>
+      </template>
+    </UiEmptyState>
+
+    <UiEmptyState
+      v-else-if="feedStore.photos.length === 0 && !hasActiveFilters && allChildrenLocked"
+      :title="MSG.accessLockedEmptyTitle"
+      :message="MSG.accessLockedEmptyBody"
+      data-test="feed-locked-empty"
+    >
+      <template #icon>
+        <Lock :size="48" />
       </template>
     </UiEmptyState>
 
