@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@lucide/vue": "^1.22.0",
-    "@simplewebauthn/browser": "^11.0.0",
+    "@simplewebauthn/browser": "^14.0.0",
     "axios": "^1.16.1",
     "client-zip": "2.5.1",
     "exifr": "7.1.3",
