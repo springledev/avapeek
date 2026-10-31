@@ -36,3 +36,10 @@ First public release.
 - Push endpoints are guarded against SSRF
 - Strict Content-Security-Policy and other security headers on the bundled Caddy, with the storage origin derived automatically for external S3 providers
 - Security reports go through private vulnerability reporting
+
+### Known limitations
+
+- Some metadata is plaintext: child names, photo dates, sizes and types, membership, and comment timing
+- No key rotation when a member is removed or leaves; removal revokes app access, not cryptographic access
+- No password recovery, and the cryptography has not been independently audited
+- See [docs/security.md](docs/security.md) and [docs/roadmap.md](docs/roadmap.md) for details
