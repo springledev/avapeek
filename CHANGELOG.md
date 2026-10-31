@@ -34,4 +34,5 @@ First public release.
 - Per-photo keys are wrapped by per-child keys, which are wrapped by the user key, using random IVs
 - Photo access is checked through child membership on every request
 - Push endpoints are guarded against SSRF
+- Strict Content-Security-Policy and other security headers on the bundled Caddy, with the storage origin derived automatically for external S3 providers
 - Security reports go through private vulnerability reporting
