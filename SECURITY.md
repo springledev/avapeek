@@ -4,9 +4,9 @@
 
 Please report security issues privately. Do **not** open a public issue or pull request.
 
-**TODO (maintainer): replace this placeholder before publishing.** Contact: `security@example.invalid` (or enable GitHub private vulnerability reporting for `springledev/avapeek` and link it here).
+Use GitHub private vulnerability reporting: open the [Security tab](https://github.com/springledev/avapeek/security) of the repository and choose **Report a vulnerability** ([direct link](https://github.com/springledev/avapeek/security/advisories/new)).
 
-Please include what you found, steps to reproduce, and the affected version. We aim to acknowledge reports within a few days. Because Avapeek is a small project run by volunteers, fix timelines depend on severity and availability.
+Please include what you found, steps to reproduce, and the affected version. I aim to acknowledge reports within a few days. Avapeek is maintained by a single developer, so fix timelines depend on severity and availability.
 
 ## Scope
 
