@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\SendPushNotifications;
 use App\Models\Child;
 use App\Models\ChildUser;
 use App\Models\EncryptionKey;
@@ -7,7 +8,10 @@ use App\Models\Invite;
 use App\Models\Photo;
 use App\Models\Tag;
 use App\Models\User;
+use App\Services\PushBatcher;
 use Database\Factories\UserFactory;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 
 function familyMember(string $role, Child $child): User
@@ -354,5 +358,105 @@ describe('POST /api/children/{child}/invite role escalation', function () {
         $this->actingAs($this->admin, 'sanctum')->postJson($url, ['role' => 'admin'])->assertForbidden();
         $this->actingAs($this->admin, 'sanctum')->postJson($url, ['role' => 'member'])->assertCreated();
         $this->actingAs($this->owner, 'sanctum')->postJson($url, ['role' => 'admin'])->assertCreated();
+    });
+});
+
+describe('POST /api/children/{child}/access-reminder', function () {
+    beforeEach(function () {
+        config(['push.enabled' => true]);
+        Cache::flush();
+        $this->child = Child::factory()->create();
+        $this->owner = familyMember('owner', $this->child);
+        giveKeys($this->child, $this->owner);
+        $this->member = familyMember('member', $this->child);
+    });
+
+    it('records an access_requested event for a member without a key', function () {
+        Queue::fake();
+
+        $this->actingAs($this->member, 'sanctum')
+            ->postJson(route('children.access-reminder', $this->child))
+            ->assertStatus(202)
+            ->assertExactJson(['sent' => true]);
+
+        Queue::assertPushed(SendPushNotifications::class, fn ($job) => $job->type === 'access_requested');
+        expect(Cache::get('push:events:access_requested'))->toBe([[$this->child->id, $this->member->id]]);
+    });
+
+    it('rejects a member who already has a key', function () {
+        giveKeys($this->child, $this->member);
+        Queue::fake();
+
+        $this->actingAs($this->member, 'sanctum')
+            ->postJson("/api/children/{$this->child->id}/access-reminder")
+            ->assertStatus(422);
+
+        Queue::assertNothingPushed();
+    });
+
+    it('rejects the owner', function () {
+        $keyless = Child::factory()->create();
+        $owner = familyMember('owner', $keyless);
+
+        $this->actingAs($owner, 'sanctum')
+            ->postJson("/api/children/{$keyless->id}/access-reminder")
+            ->assertStatus(422);
+    });
+
+    it('rejects non-members', function () {
+        $stranger = User::factory()->create();
+        Queue::fake();
+
+        $this->actingAs($stranger, 'sanctum')
+            ->postJson("/api/children/{$this->child->id}/access-reminder")
+            ->assertForbidden();
+
+        Queue::assertNothingPushed();
+    });
+
+    it('requires authentication', function () {
+        $this->postJson("/api/children/{$this->child->id}/access-reminder")->assertUnauthorized();
+    });
+
+    it('limits a user to one reminder per child per day with retry_after', function () {
+        $this->actingAs($this->member, 'sanctum')
+            ->postJson("/api/children/{$this->child->id}/access-reminder")
+            ->assertStatus(202);
+
+        $response = $this->actingAs($this->member, 'sanctum')
+            ->postJson("/api/children/{$this->child->id}/access-reminder")
+            ->assertStatus(429);
+
+        expect($response->json('retry_after'))->toBeInt()->toBeGreaterThan(0)->toBeLessThanOrEqual(86400);
+    });
+
+    it('does not share the limit across children or users', function () {
+        $otherChild = Child::factory()->create();
+        ChildUser::create(['child_id' => $otherChild->id, 'user_id' => $this->member->id, 'role' => 'member']);
+        $second = familyMember('member', $this->child);
+
+        $this->actingAs($this->member, 'sanctum')->postJson("/api/children/{$this->child->id}/access-reminder")->assertStatus(202);
+        $this->actingAs($this->member, 'sanctum')->postJson("/api/children/{$otherChild->id}/access-reminder")->assertStatus(202);
+        $this->actingAs($second, 'sanctum')->postJson("/api/children/{$this->child->id}/access-reminder")->assertStatus(202);
+    });
+
+    it('cannot be used against a child the caller does not belong to (IDOR)', function () {
+        $otherChild = Child::factory()->create();
+        familyMember('owner', $otherChild);
+        Queue::fake();
+
+        $this->actingAs($this->member, 'sanctum')
+            ->postJson("/api/children/{$otherChild->id}/access-reminder")
+            ->assertForbidden();
+
+        Queue::assertNothingPushed();
+    });
+
+    it('still answers 202 when pushing fails', function () {
+        $this->mock(PushBatcher::class)->shouldReceive('record')->andThrow(new RuntimeException('cache down'));
+
+        $this->actingAs($this->member, 'sanctum')
+            ->postJson("/api/children/{$this->child->id}/access-reminder")
+            ->assertStatus(202);
     });
 });

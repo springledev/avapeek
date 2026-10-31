@@ -134,6 +134,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         });
 
         Route::post('/children/{child}/leave', [ChildMembershipController::class, 'leave']);
+        Route::post('/children/{child}/access-reminder', [ChildMembershipController::class, 'requestAccessReminder'])
+            ->name('children.access-reminder');
 
         // Owner only
         Route::middleware('child.owner')->group(function () {

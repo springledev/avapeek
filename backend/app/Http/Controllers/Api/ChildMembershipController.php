@@ -9,12 +9,16 @@ use App\Models\EncryptionKey;
 use App\Models\Invite;
 use App\Models\User;
 use App\Services\PasswordProofService;
+use App\Services\PushBatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 
 class ChildMembershipController extends Controller
 {
+    private const ACCESS_REMINDER_SECONDS = 86400;
+
     public function __construct(private PasswordProofService $passwordProofs) {}
 
     /**
@@ -153,6 +157,44 @@ class ChildMembershipController extends Controller
 
             return response()->json(['message' => 'You have left this child.']);
         });
+    }
+
+    /**
+     * Ask the album's admins to share the album key with the caller.
+     *
+     * Only a member who has no key yet (and is not the owner) may ask, once per
+     * 24 hours per album. The admins get a generic push; nothing about the
+     * caller is sent.
+     */
+    public function requestAccessReminder(Request $request, Child $child, PushBatcher $batcher): JsonResponse
+    {
+        $user = $request->user();
+
+        $isOwner = ChildUser::where('child_id', $child->id)->where('user_id', $user->id)->value('role') === 'owner';
+        $hasKey = EncryptionKey::where('child_id', $child->id)->where('user_id', $user->id)->exists();
+
+        if ($isOwner || $hasKey) {
+            return response()->json(['message' => 'You already have access to this album.'], 422);
+        }
+
+        $limiterKey = "access-reminder:{$user->id}:{$child->id}";
+
+        if (RateLimiter::tooManyAttempts($limiterKey, 1)) {
+            return response()->json([
+                'message' => 'You already sent a reminder recently.',
+                'retry_after' => RateLimiter::availableIn($limiterKey),
+            ], 429);
+        }
+
+        RateLimiter::hit($limiterKey, self::ACCESS_REMINDER_SECONDS);
+
+        try {
+            $batcher->record(PushBatcher::TYPE_ACCESS_REQUESTED, $child->id, $user->id);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return response()->json(['sent' => true], 202);
     }
 
     /**
