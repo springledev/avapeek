@@ -14,7 +14,7 @@ function goToFeed() {
 
 <template>
   <div class="welcome">
-    <UiEmptyState :title="MSG.onboardingWelcome">
+    <UiEmptyState :title="MSG.onboardingWelcome" :message="MSG.welcomeWaiting">
       <template #icon>
         <Image :size="64" />
       </template>

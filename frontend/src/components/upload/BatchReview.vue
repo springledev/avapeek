@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { X } from '@lucide/vue'
+import { X, Lock } from '@lucide/vue'
 import { useChildStore } from '@/stores/child'
 import UiSheet from '@/components/ui/UiSheet.vue'
 import UiChip from '@/components/ui/UiChip.vue'
@@ -10,6 +10,7 @@ import TagChip from '@/components/TagChip.vue'
 import { useTagsStore } from '@/stores/tags'
 import { normalizeTagName } from '@/lib/tags'
 import CreateChildSheet from '@/components/CreateChildSheet.vue'
+import { MSG } from '@/lib/messages'
 import type { Child } from '@/types/child'
 
 const props = defineProps<{
@@ -49,6 +50,11 @@ watch(
 function onChildCreated(child: Child) {
   if (!selectedChildIds.value.includes(child.id)) selectedChildIds.value.push(child.id)
 }
+
+/** Albums the user may upload to but cannot open yet: shown disabled, with the reason. */
+const lockedUploadTargets = computed(() =>
+  childStore.lockedChildren.filter((c) => childStore.canUploadTo(c.id)),
+)
 
 const objectUrls = computed(() => props.files.map((f) => URL.createObjectURL(f)))
 
@@ -97,12 +103,17 @@ function formatBytes(bytes: number): string {
 <template>
   <UiSheet :open="open" title="Review photos" @close="emit('close')">
     <div class="batch">
-      <div v-if="childStore.uploadableChildren.length === 0" class="batch__no-kids">
+      <div v-if="childStore.uploadableChildren.length === 0 && lockedUploadTargets.length === 0"
+        class="batch__no-kids">
         <p class="batch__hint">
           Photos live in a kid's album. Add a kid first, then choose who is in these photos.
         </p>
         <UiButton variant="accent" @click="showCreateChild = true">Add a kid</UiButton>
       </div>
+
+      <p v-else-if="childStore.uploadableChildren.length === 0" class="batch__hint">
+        Photos can be added once an album admin shares access with you.
+      </p>
 
       <p v-else-if="needsChildChoice" class="batch__hint">Choose who's in these photos</p>
 
@@ -118,6 +129,19 @@ function formatBytes(bytes: number): string {
           @toggle="toggleChild(child.id)"
         />
       </div>
+
+      <ul v-if="lockedUploadTargets.length > 0" class="batch__locked" data-test="locked-albums">
+        <li
+          v-for="child in lockedUploadTargets"
+          :key="child.id"
+          class="batch__locked-item"
+          aria-disabled="true"
+        >
+          <Lock :size="16" aria-hidden="true" />
+          <span>{{ child.name }}</span>
+          <span class="batch__locked-reason">{{ MSG.uploadLockedReason }}</span>
+        </li>
+      </ul>
 
       <div v-if="selectedChildIds.length > 0" class="batch__tags">
         <div v-if="tagNames.length > 0" class="batch__tag-chips">
@@ -200,6 +224,32 @@ function formatBytes(bytes: number): string {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+.batch__locked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.batch__locked-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--target-min);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-2);
+  color: var(--color-ink-soft);
+  font-size: var(--text-body);
+  opacity: 0.8;
+}
+
+.batch__locked-reason {
+  font-size: var(--text-meta);
 }
 
 .batch__grid {
