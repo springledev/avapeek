@@ -33,9 +33,13 @@ export default defineConfig({
       : []),
   ],
   resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
-    },
+    alias: [
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+      // The default heic-to build compiles its decoder with `new Function` inside a
+      // blob: worker, which the Content-Security-Policy (no 'unsafe-eval') blocks.
+      // The csp build is the same decoder and API without dynamic code generation.
+      { find: /^heic-to$/, replacement: 'heic-to/csp' },
+    ],
   },
   server: {
     proxy: {

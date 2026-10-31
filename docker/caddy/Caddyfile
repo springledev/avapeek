@@ -6,10 +6,6 @@
         }
     }
 
-    # NOTE: if a Content-Security-Policy with connect-src/img-src is ever added,
-    # it must include the object storage origin (the browser fetches presigned
-    # URLs directly from the provider when using AWS S3 / B2 / R2).
-
     # Proxy Garage bucket requests — used for presigned URLs.
     # Override the Host header so Garage's signature validation matches.
     # Only used with the self-hosted Garage profile; with an external S3
@@ -27,11 +23,31 @@
         }
     }
 
+    # Security headers for every response (SPA, API, storage proxy).
+    #
+    # Content-Security-Policy: the KEK lives in localStorage, so injected script
+    # would be a full compromise. Only same-origin scripts and styles run; no
+    # inline code, no eval. Exceptions, each needed by the app:
+    #   img-src blob: data:  decrypted photos are blob: URLs; the TOTP QR code and
+    #                        small inlined assets are data: URLs
+    #   worker-src blob:     the HEIC decoder (heic-to/csp) runs in a blob: worker
+    #   connect-src {file.*} the browser GETs/PUTs presigned URLs on the storage
+    #                        provider. The backend writes that origin to
+    #                        /csp/storage-origin on start (storage:csp-origin);
+    #                        it is empty or the app origin with bundled Garage.
+    # No upgrade-insecure-requests: TLS is terminated outside this stack and plain
+    # http://localhost:88 / LAN installs must keep working.
+    #
+    # `defer` applies these after the upstream response, so they replace any
+    # header of the same name set by nginx, FrankenPHP or Garage.
     header {
-        X-Frame-Options "SAMEORIGIN"
+        defer
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' {file./csp/storage-origin}; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+        X-Frame-Options "DENY"
         X-Content-Type-Options "nosniff"
-        X-XSS-Protection "1; mode=block"
-        Referrer-Policy "strict-origin-when-cross-origin"
+        X-XSS-Protection "0"
+        Referrer-Policy "no-referrer"
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()"
         -Server
     }
 

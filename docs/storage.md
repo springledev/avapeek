@@ -175,4 +175,4 @@ curl -I "<printed url>"
 
 A `404` with an S3 `NoSuchKey` body means routing and signature are fine; `403 SignatureDoesNotMatch` means the proxy Host header or `AWS_TEMPORARY_URL` is wrong.
 
-If you add a Content-Security-Policy later, its `connect-src` and `img-src` must include the storage origin.
+The bundled Caddy's Content-Security-Policy adds the storage origin to `connect-src` automatically (the backend derives it from these settings on start). After changing `AWS_BUCKET`, `AWS_ENDPOINT`, `AWS_DEFAULT_REGION` or `AWS_USE_PATH_STYLE_ENDPOINT`, restart the backend so the origin is re-derived. If photos stop loading, look for "Refused to connect … Content Security Policy" in the browser console and check `php artisan storage:csp-origin`.

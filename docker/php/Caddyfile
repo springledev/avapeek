@@ -19,11 +19,14 @@
 
 	# Security headers (duplicated by reverse proxy in production;
 	# needed when FrankenPHP is exposed directly, e.g. in dev)
+	# No Content-Security-Policy here: this server returns JSON and ciphertext, and
+	# in dev Laravel's debug error page needs inline script/style. The production
+	# Caddy (docker/caddy/Caddyfile) sets the CSP for everything it serves.
 	header {
-		X-Frame-Options "SAMEORIGIN"
+		X-Frame-Options "DENY"
 		X-Content-Type-Options "nosniff"
-		X-XSS-Protection "1; mode=block"
-		Referrer-Policy "strict-origin-when-cross-origin"
+		X-XSS-Protection "0"
+		Referrer-Policy "no-referrer"
 	}
 
 	# Deny hidden files

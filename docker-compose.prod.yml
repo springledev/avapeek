@@ -10,6 +10,11 @@ services:
       - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+      # Storage origin for the Content-Security-Policy, written by the backend
+      # on start (see CSP_STORAGE_ORIGIN_FILE below).
+      - csp:/csp:ro
+    depends_on:
+      - backend
     healthcheck:
       test: ["CMD", "caddy", "version"]
       interval: 30s
@@ -27,8 +32,13 @@ services:
     restart: unless-stopped
     env_file:
       - backend/.env
+    environment:
+      # The entrypoint writes the presigned-URL origin(s) here for Caddy's
+      # Content-Security-Policy connect-src (external S3 providers).
+      CSP_STORAGE_ORIGIN_FILE: /csp/storage-origin
     volumes:
       - storage:/app/storage
+      - csp:/csp
       # Read-only view of Garage's data volume so STORAGE_VOLUME_PATH=/garage-data
       # can derive the quota. Empty (harmless) when the garage profile is off.
       - garage_data:/garage-data:ro
@@ -202,6 +212,7 @@ volumes:
   storage:
   caddy_data:
   caddy_config:
+  csp:
 
 networks:
   app-network:

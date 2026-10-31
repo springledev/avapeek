@@ -105,7 +105,8 @@ It does **not** obtain certificates. Put a TLS-terminating proxy in front of por
 
 - forward all paths, including `/photos/*`;
 - allow request bodies of at least 64 MB (the backend accepts uploads up to 64 MB);
-- keep the original `Host` header or not, both work; but the public URL must equal `APP_URL`.
+- keep the original `Host` header or not, both work; but the public URL must equal `APP_URL`;
+- don't strip the security headers Caddy adds (Content-Security-Policy and others). If you replace the bundled Caddy with your own proxy, copy the `header` block from `docker/caddy/Caddyfile` and use the output of `docker compose -f docker-compose.prod.yml exec backend php artisan storage:csp-origin` in `connect-src`.
 
 Caddy on the host (automatic certificates):
 
