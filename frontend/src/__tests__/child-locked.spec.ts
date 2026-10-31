@@ -51,7 +51,7 @@ describe('child store locked albums', () => {
     ]
     auth.setEncryptionKeys([
       { child_id: 3, child_name: 'C', encrypted_dek: 'x', wrap_type: 'kek', key_version: 1 },
-      { child_id: 2, child_name: 'B', encrypted_dek: 'x', wrap_type: 'public', key_version: 1 },
+      { child_id: 2, child_name: 'B', encrypted_dek: 'x', wrap_type: 'public_key', key_version: 1 },
     ])
 
     expect(store.lockedChildren.map((c) => c.id)).toEqual([2])
