@@ -1,0 +1,117 @@
+/*
+ * Plain, readable theme. Colours follow frontend/src/assets/tokens.css;
+ * text links use the AA-checked accent ink, never the bright accent fill.
+ * System fonts only: nothing is loaded from third parties.
+ */
+
+:root {
+  --vp-font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, Roboto, sans-serif;
+  --vp-font-family-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-alt: #faf6f1;
+  --vp-c-bg-soft: #f3ede3;
+  --vp-c-text-1: #2e2016;
+  --vp-c-text-2: #6e5d4f;
+  --vp-c-divider: #e7dccf;
+  --vp-c-gutter: #e7dccf;
+
+  --vp-c-brand-1: #a84e12;
+  --vp-c-brand-2: #8f420f;
+  --vp-c-brand-3: #a84e12;
+  --vp-c-brand-soft: #fce7d2;
+
+  --vp-code-bg: #f3ede3;
+  --vp-code-block-bg: #faf6f1;
+  --vp-custom-block-tip-bg: #fce7d2;
+  --vp-button-brand-bg: #a84e12;
+  --vp-button-brand-hover-bg: #8f420f;
+}
+
+.dark {
+  --vp-c-bg: #191411;
+  --vp-c-bg-alt: #140f0c;
+  --vp-c-bg-soft: #251c16;
+  --vp-c-text-1: #faf3ea;
+  --vp-c-text-2: #c9b8a4;
+  --vp-c-divider: #3c2d21;
+  --vp-c-gutter: #000000;
+
+  --vp-c-brand-1: #ffc287;
+  --vp-c-brand-2: #ffd2a6;
+  --vp-c-brand-3: #ffb067;
+  --vp-c-brand-soft: #3d2c1b;
+
+  --vp-code-bg: #2e241b;
+  --vp-code-block-bg: #140f0c;
+  --vp-custom-block-tip-bg: #3d2c1b;
+  --vp-button-brand-bg: #ffb067;
+  --vp-button-brand-text: #2e1a0a;
+  --vp-button-brand-hover-bg: #ffc287;
+  --vp-button-brand-hover-text: #2e1a0a;
+}
+
+/* No smooth-scroll hijacking, and respect reduced motion everywhere. */
+html {
+  scroll-behavior: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Links read as links. */
+.vp-doc a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.vp-doc a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* Wide tables (env vars) scroll inside themselves on phones. */
+.vp-doc table {
+  display: block;
+  overflow-x: auto;
+}
+
+/* Home page: a plain list of entry points instead of feature cards. */
+.vp-doc .entry-points {
+  list-style: none;
+  padding-left: 0;
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.vp-doc .entry-points li {
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.vp-doc .entry-points li + li {
+  margin-top: 0;
+}
+
+.vp-doc .entry-points a {
+  font-weight: 600;
+}
+
+.vp-doc .entry-points p {
+  margin: 2px 0 0;
+  color: var(--vp-c-text-2);
+  font-size: 15px;
+}
+
+.vp-doc .lead {
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+}

@@ -1,6 +1,6 @@
-# avapeek.com website plan
+# Website plan
 
-Status: plan only. Nothing here is built yet.
+The site lives at `https://avapeek.com/` (docs under `/docs/`) and is built with VitePress from `website/` (see `website/scripts/sync-docs.mjs`, which pulls the public `docs/*.md`, `SECURITY.md` and `CHANGELOG.md` in at build time). Built so far: home, docs, hosted (coming soon, no waitlist), security policy, changelog. CI builds it on every PR; deployment is not set up yet. `springle.dev/avapeek` gets a single project page linking here. Hosted instances will use a separate domain, not subdomains of avapeek.com, so tenants never share a site with each other or with this website.
 
 ## Goals
 
