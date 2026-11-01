@@ -12,7 +12,35 @@ permissions:
   packages: write
 
 jobs:
+  verify:
+    # Runs before any image is pushed, so a tag that does not match the
+    # version or changelog publishes nothing.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check tag matches frontend/package.json
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version="$(jq -r .version frontend/package.json)"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match frontend/package.json version $pkg_version" >&2
+            exit 1
+          fi
+
+      - name: Check CHANGELOG.md has a dated section for this version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if ! grep -F "## [${version}] - " CHANGELOG.md | grep -Eq -- ' - [0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+            echo "CHANGELOG.md needs a '## [${version}] - YYYY-MM-DD' heading" >&2
+            exit 1
+          fi
+
   images:
+    needs: verify
+    # verify is skipped for workflow_dispatch runs, which push sha-tagged images only.
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -68,15 +96,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Check tag matches frontend/package.json
-        run: |
-          tag_version="${GITHUB_REF_NAME#v}"
-          pkg_version="$(jq -r .version frontend/package.json)"
-          if [ "$tag_version" != "$pkg_version" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match frontend/package.json version $pkg_version" >&2
-            exit 1
-          fi
 
       - name: Extract release notes from CHANGELOG.md
         run: |
