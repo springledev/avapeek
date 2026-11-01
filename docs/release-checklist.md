@@ -22,11 +22,12 @@ Release hygiene
 - [x] **`CHANGELOG.md` and versioning.** SemVer, the `vX.Y.Z` tag is the source of truth, `frontend/package.json` is 0.1.0, and `release.yml` checks the tag matches and creates a GitHub Release from the changelog section.
 - [x] **Boilerplate sub-READMEs replaced**, and `backend/composer.json` renamed to `springledev/avapeek` with a real description.
 - [ ] **Screenshots for the README** ("Screenshots: _to be added._"). Use seeded demo data with no real people, light and dark, mobile and desktop. *Manual.*
-- [ ] **Hosted-version mention and website link** in the README once the domain is decided.
+- [ ] **Website link in the README.** The site is `https://avapeek.com/` (VitePress in `website/`); add the link once it is deployed.
+- [ ] **Deploy the website** to avapeek.com (static `website/.vitepress/dist`), plus a one-page project summary at springle.dev/avapeek.
 - [x] **Docker compose smoke test in CI** (builds from source with `up.sh --build`, waits for `/up`, runs `storage:check`, checks the SPA returns 200). Not yet run on GitHub; check the first run.
 - [x] **Dependabot** for Composer, npm, GitHub Actions, Dockerfiles and compose images (weekly, minor/patch grouped).
 - [ ] **Pin Docker image digests** and let Dependabot bump them; check that `docker/garage` init scripts do not log secrets.
-- [ ] **Branch protection and required checks** on `master` (frontend, backend, compose-smoke). *Manual, GitHub settings.*
+- [ ] **Branch protection and required checks** on `master` (backend, frontend, website, compose-smoke) plus a tag ruleset for `v*`. *Manual, GitHub settings.*
 
 Internal files that should not ship
 - [x] `AGENTS.md`, `backend/AGENTS.md`, `backend/.agents/**` and `backend/boost.json` are untracked and git-ignored (still on disk). They remain in **history**; rewrite history to drop them if that matters.
@@ -62,7 +63,7 @@ Product risks to be honest about at release
 - [ ] SBOM published with each release.
 - [ ] Translations / i18n plan.
 - [ ] Automated accessibility checks and an end-to-end browser test (Playwright) of register, upload, invite and view.
-- [ ] Add `docs/website` build to CI once the website exists (see [website-plan.md](website-plan.md)).
+- [x] Website build in CI (`website` job; fails on dead links). See [website-plan.md](website-plan.md).
 
 ## Verified clean
 
