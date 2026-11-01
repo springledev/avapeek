@@ -148,7 +148,7 @@ services:
 
   # --- Redis 8.2 ---
   redis:
-    image: redis:8.2.10-alpine
+    image: redis:8.10.3-alpine
     container_name: avapeek_redis
     restart: unless-stopped
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
@@ -165,7 +165,7 @@ services:
   # --- Garage (self-hosted S3-compatible object storage) ---
   garage:
     profiles: ["garage"]
-    image: dxflrs/garage:v2.4.1
+    image: dxflrs/garage:v2.5.0
     container_name: avapeek_garage
     restart: unless-stopped
     environment:
