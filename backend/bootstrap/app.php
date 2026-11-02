@@ -22,6 +22,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'child.owner' => EnsureChildOwner::class,
         ]);
 
+        // The API has no login page to redirect guests to (the SPA has its own),
+        // so unauthenticated requests always get a JSON 401 instead of trying
+        // route('login') and failing with a 500.
+        $middleware->redirectGuestsTo(fn (): ?string => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontFlash([

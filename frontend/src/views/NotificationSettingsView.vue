@@ -77,7 +77,7 @@ onMounted(async () => {
 
     <p v-if="push.available.value === false" class="notify__note" data-testid="push-unavailable">
       {{
-        push.supported.value
+        push.supported.value || push.needsInstall.value
           ? 'Notifications are not turned on for this server.'
           : 'This browser does not support notifications.'
       }}
