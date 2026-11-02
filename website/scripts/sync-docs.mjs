@@ -8,23 +8,26 @@ const websiteRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = join(websiteRoot, '..')
 const srcDir = join(websiteRoot, 'src')
 
-/** Docs published on the site. Internal planning pages are left out on purpose. */
+/**
+ * Docs published on the site. Internal planning pages are left out on purpose,
+ * and the long technical pages (security, architecture, development, why) are
+ * replaced on the site by shorter pages in website/src/ that link to GitHub.
+ */
 const publishedDocs = [
-  'why-avapeek.md',
   'installation.md',
   'configuration.md',
   'storage.md',
-  'security.md',
-  'architecture.md',
-  'development.md',
   'faq.md',
   'roadmap.md',
 ]
 
-/** Links that point outside docs/ in the repository, mapped to site pages. */
+/** Links that point at pages not copied from docs/, mapped to site pages. */
 const linkRewrites = [
   ['](../README.md#quickstart)', '](/#quickstart)'],
   ['](../SECURITY.md)', '](/security-policy)'],
+  ['](security.md', '](/security'],
+  ['](docs/security.md', '](/security'],
+  ['](why-avapeek.md', '](/why'],
 ]
 
 const rewriteLinks = (markdown) =>
