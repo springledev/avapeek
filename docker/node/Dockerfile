@@ -11,7 +11,7 @@ COPY frontend/ .
 RUN npm run build
 
 # Production stage
-FROM nginx:1.30.6-alpine
+FROM nginx:1.31.8-alpine
 
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY docker/nginx/frontend.conf /etc/nginx/conf.d/default.conf
