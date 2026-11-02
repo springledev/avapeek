@@ -10,26 +10,15 @@ editLink: false
 
 # Avapeek
 
-<p class="lead">End-to-end encrypted family photo sharing that you host yourself. Share photos of your children with grandparents, relatives and friends without trusting a server with them.</p>
+<p class="lead">End-to-end encrypted family photo sharing. Share photos of your children with grandparents, relatives and friends, and nobody else.</p>
 
-Photos, thumbnails, EXIF data, tags and comments are encrypted in the browser before they are uploaded. The database, the backups and the object storage only ever hold ciphertext. You run it on a small VPS, a NAS or a Raspberry Pi.
+Photos, EXIF data, tags and comments are encrypted in the browser before they are uploaded, so the server only ever stores data it cannot read. Run it yourself on a small VPS, a NAS or a Raspberry Pi. Avapeek is open source (AGPL-3.0-or-later).
 
-Avapeek is open source (AGPL-3.0-or-later). The current version is in the [changelog](/changelog).
+- **Private by design.** No ads, no trackers, nothing to train an AI on. See [how the encryption works](/security).
+- **Yours.** Pick your own storage, and any member can export everything.
+- **Family only.** One group per child, invite-only. No public profiles, no followers.
 
-## What it is
-
-- **Private by design.** Encryption happens on the device. No ads, no trackers, nothing to train an AI on.
-- **Yours.** Self-hosted, with storage you choose: the bundled [Garage](https://garagehq.deuxfleurs.fr/) or any S3-compatible provider. Any member can export everything.
-- **Family only.** One group per child, invite-only, with owner, admin and member roles and optional view-only members. No public profiles, no followers.
-
-## What it is not
-
-- **Not protected against a malicious server operator.** The app that does the encryption is delivered by the server. When you self-host, that operator is you. See the [threat model](/docs/security#threat-model).
-- **No password recovery.** A forgotten password means that person's photos cannot be decrypted. See [password loss](/docs/security#password-loss).
-- **Not fully metadata-private.** Child names, photo dates and sizes, and who belongs to which child are not encrypted today.
-- **Not audited.** The crypto design is documented but has not had an independent review.
-
-The full comparison with social media, shared albums and family photo apps is in [Why Avapeek?](/docs/why-avapeek)
+Two things to know up front: there is **no password reset**, and the project has **not been independently audited** yet. More in [Why Avapeek?](/why)
 
 ## Quickstart
 
@@ -52,12 +41,10 @@ It holds the wrapped encryption keys. Losing it means losing every photo, even i
 ## Documentation
 
 <ul class="entry-points">
-  <li><a href="./docs/installation">Installation</a><p>Requirements, <code>up.sh</code>, manual install, TLS, upgrades, backups, uninstall.</p></li>
-  <li><a href="./docs/configuration">Configuration</a><p>Every environment variable.</p></li>
-  <li><a href="./docs/storage">Storage</a><p>Garage, AWS S3, Backblaze B2, Cloudflare R2, CORS and quota.</p></li>
-  <li><a href="./docs/security">Security model</a><p>Key hierarchy, what the server can see, threat model and limitations.</p></li>
+  <li><a href="./docs/installation">Installation</a><p>Requirements, <code>up.sh</code>, TLS, upgrades and backups.</p></li>
+  <li><a href="./docs/storage">Storage</a><p>Garage, AWS S3, Backblaze B2 or Cloudflare R2.</p></li>
+  <li><a href="./security">How the encryption works</a><p>What is encrypted and what the server can see.</p></li>
   <li><a href="./docs/faq">FAQ and troubleshooting</a><p>Common problems and their fixes.</p></li>
-  <li><a href="./docs/architecture">Architecture</a><p>Components and the upload, view and export flows.</p></li>
 </ul>
 
 ## Feedback
