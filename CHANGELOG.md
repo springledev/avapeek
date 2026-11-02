@@ -12,6 +12,11 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 - Release images are built on native amd64 and arm64 runners instead of under emulation, and a release is only published once both architectures are available for every image
 - Documentation is published at [avapeek.com](https://avapeek.com), including a getting started guide for invited family members
 
+### Fixed
+
+- On iPhone and iPad, Settings now shows Notifications in a Safari tab too, with a hint to add Avapeek to the Home Screen first, instead of hiding it
+- Logged-out API requests without a JSON `Accept` header return a 401 instead of a 500
+
 ## [0.1.0] - 2026-11-02
 
 First public release.
