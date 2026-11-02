@@ -4,6 +4,8 @@
 
 **End-to-end encrypted family photo sharing, self-hosted.**
 
+Website and documentation: **[avapeek.com](https://avapeek.com)**. Invited by your family? See [Getting started for families](https://avapeek.com/families).
+
 Avapeek lets you share photos of your children with grandparents, relatives and friends without trusting a server with them. Photos, thumbnails, EXIF data and comments are encrypted in the browser before they are uploaded. The database, the backups and the object storage only ever hold ciphertext. (A malicious or compromised server operator is a different matter: see the security notes below.) You run all of it yourself, on a small VPS, a NAS or a Raspberry Pi.
 
 > Screenshots: _to be added._

@@ -44,7 +44,11 @@ export default defineConfig({
     ['meta', { name: 'theme-color', content: '#faf6f1' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:site_name', content: 'Avapeek' }],
-    ['meta', { property: 'og:image', content: 'https://avapeek.com/icon-192.png' }],
+    ['meta', { property: 'og:image', content: 'https://avapeek.com/og-image.png' }],
+    ['meta', { property: 'og:image:width', content: '1200' }],
+    ['meta', { property: 'og:image:height', content: '630' }],
+    ['meta', { property: 'og:image:alt', content: 'The Avapeek logo and name' }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
   ],
 
   markdown: {
@@ -70,9 +74,11 @@ export default defineConfig({
         items: [
           { text: 'Overview', link: '/' },
           { text: 'Why Avapeek?', link: '/why' },
+          { text: 'Getting started for families', link: '/families' },
           { text: 'Hosted version', link: '/hosted' },
           { text: 'Roadmap and known issues', link: '/docs/roadmap' },
           { text: 'Changelog', link: '/changelog' },
+          { text: 'Privacy', link: '/privacy' },
         ],
       },
       {
@@ -113,7 +119,7 @@ export default defineConfig({
     outline: { level: [2, 3], label: 'On this page' },
 
     footer: {
-      message: 'Released under the AGPL-3.0-or-later license.',
+      message: 'Released under the AGPL-3.0-or-later license. · <a href="/privacy">Privacy</a>',
       copyright: '<a href="https://springle.dev/">springle.dev</a>',
     },
   },

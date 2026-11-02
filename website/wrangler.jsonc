@@ -12,5 +12,7 @@
   "routes": [{ "pattern": "avapeek.com", "custom_domain": true }],
   // Only serve on avapeek.com, not on *.workers.dev or preview URLs.
   "workers_dev": false,
+  // No request logs (the privacy page at /privacy says so).
+  "observability": { "enabled": false },
   "preview_urls": false
 }
