@@ -1,0 +1,16 @@
+// Cloudflare Worker serving the static VitePress build at https://avapeek.com/.
+// Deployed by .github/workflows/website-deploy.yml after a merge to master.
+{
+  "name": "avapeek-website",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": ".vitepress/dist",
+    // cleanUrls: /docs/installation serves docs/installation.html
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "routes": [{ "pattern": "avapeek.com", "custom_domain": true }],
+  // Only serve on avapeek.com, not on *.workers.dev or preview URLs.
+  "workers_dev": false,
+  "preview_urls": false
+}
