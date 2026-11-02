@@ -1,7 +1,17 @@
-# Known false positives: dummy dev/test values and a documentation example, not credentials.
-a23d78eafbf1b89c86e76c82905cf332c7380247:backend/database/factories/UserFactory.php:generic-api-key:17
+# Known gitleaks false positives (reviewed 2026-11-02). Fingerprints are
+# <commit>:<file>:<rule>:<line>; a new commit that adds a real secret is still reported.
+
+# Test-only passkey fixture key for a simulated authenticator.
+621cd8ef6efb5e4d73a0e9f7f913711269126c1a:backend/tests/Feature/MfaTest.php:private-key:804
+5aa92340ee9141c47d8d102ea77616ff8da225aa:backend/tests/Feature/MfaTest.php:private-key:804
+
+# Fixed auth hash the user factory gives every test user.
+e56e1c6cc7920c7f309fe1de0e43f452b0acfb09:backend/database/factories/UserFactory.php:generic-api-key:17
 df0389a41638fd6395da93061d8dbc670f8690b0:backend/database/factories/UserFactory.php:generic-api-key:17
-4bca88282776920c0c6c9c354eb6092de250b59b:.env.dev.example:generic-api-key:22
+
+# Dummy dev value (00112233…) in the example env file.
+c58513d9d3fa85c807d5df29c602e8a2c41418bd:.env.dev.example:generic-api-key:22
 e65349bdb69bd2ecb090207f09f0881e5e5975de:.env.dev.example:generic-api-key:22
-0425091de11f4caadf1b5144b0769f0c351311e7:backend/.agents/skills/laravel-best-practices/rules/config.md:generic-api-key:30
+
+# "Don't do this" example in Laravel Boost docs, only reachable through old PR refs.
 5434e12e336b7c7d4ab31f3c5795e78fcea22c9b:backend/.agents/skills/laravel-best-practices/rules/config.md:generic-api-key:30
