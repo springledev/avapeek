@@ -205,7 +205,7 @@ You need the **same `APP_KEY` and `backend/.env`** as before, and users still ne
    docker compose -f docker-compose.prod.yml exec -T postgres sh -c \
      'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner' < avapeek-<timestamp>.dump
    ```
-5. Bring the stack up and apply migrations newer than the dump: `docker compose -f docker-compose.prod.yml exec backend php artisan migrate --force`.
+5. Bring the rest of the stack up with `./up.sh`. It keeps your existing `.env` files, uses the same images as before and runs `php artisan migrate --force`, which applies any migrations newer than the dump.
 6. Reconcile usage and list orphaned photo objects: `docker compose -f docker-compose.prod.yml exec backend php artisan storage:reconcile`.
 7. Log in and open a photo to confirm it decrypts.
 

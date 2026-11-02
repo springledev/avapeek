@@ -13,13 +13,13 @@ Generated from `backend/composer.lock` (`packages` only, no `packages-dev`) and 
 
 ## Summary
 
-- Total components: 331 (Composer: 110, npm: 221)
+- Total components: 330 (Composer: 110, npm: 220)
 
 ### Counts by license
 
 | License | Count |
 |---|---:|
-| MIT | 291 |
+| MIT | 290 |
 | MPL-2.0 | 12 |
 | BSD-3-Clause | 9 |
 | ISC | 9 |
@@ -209,7 +209,7 @@ Generated from `backend/composer.lock` (`packages` only, no `packages-dev`) and 
 | @simplewebauthn/browser | 11.0.0 | MIT | <https://registry.npmjs.org/@simplewebauthn/browser/-/browser-11.0.0.tgz> |
 | @simplewebauthn/types | 11.0.0 | MIT | <https://registry.npmjs.org/@simplewebauthn/types/-/types-11.0.0.tgz> |
 | @types/estree | 1.0.10 | MIT | <https://registry.npmjs.org/@types/estree/-/estree-1.0.10.tgz> |
-| @types/node | 24.19.2 | MIT | <https://registry.npmjs.org/@types/node/-/node-24.19.2.tgz> |
+| @types/node | 26.6.6 | MIT | <https://registry.npmjs.org/@types/node/-/node-26.6.6.tgz> |
 | @types/trusted-types | 2.0.7 | MIT | <https://registry.npmjs.org/@types/trusted-types/-/trusted-types-2.0.7.tgz> |
 | @vue-macros/common | 3.1.4 | MIT | <https://registry.npmjs.org/@vue-macros/common/-/common-3.1.4.tgz> |
 | @vue/compiler-core | 3.5.44 | MIT | <https://registry.npmjs.org/@vue/compiler-core/-/compiler-core-3.5.44.tgz> |
@@ -280,7 +280,7 @@ Generated from `backend/composer.lock` (`packages` only, no `packages-dev`) and 
 | has-symbols | 1.1.0 | MIT | <https://registry.npmjs.org/has-symbols/-/has-symbols-1.1.0.tgz> |
 | has-tostringtag | 1.0.2 | MIT | <https://registry.npmjs.org/has-tostringtag/-/has-tostringtag-1.0.2.tgz> |
 | hasown | 2.0.4 | MIT | <https://registry.npmjs.org/hasown/-/hasown-2.0.4.tgz> |
-| heic-to | 1.5.2 | LGPL-3.0 | <https://registry.npmjs.org/heic-to/-/heic-to-1.5.2.tgz> |
+| heic-to | 1.6.7 | LGPL-3.0 | <https://registry.npmjs.org/heic-to/-/heic-to-1.6.7.tgz> |
 | hookable | 5.5.3 | MIT | <https://registry.npmjs.org/hookable/-/hookable-5.5.3.tgz> |
 | https-proxy-agent | 5.0.1 | MIT | <https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-5.0.1.tgz> |
 | is-fullwidth-code-point | 3.0.0 | MIT | <https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-3.0.0.tgz> |
@@ -306,7 +306,6 @@ Generated from `backend/composer.lock` (`packages` only, no `packages-dev`) and 
 | mime-db | 1.52.0 | MIT | <https://registry.npmjs.org/mime-db/-/mime-db-1.52.0.tgz> |
 | mime-types | 2.1.35 | MIT | <https://registry.npmjs.org/mime-types/-/mime-types-2.1.35.tgz> |
 | mitt | 3.0.1 | MIT | <https://registry.npmjs.org/mitt/-/mitt-3.0.1.tgz> |
-| mitt | 2.1.0 | MIT | <https://registry.npmjs.org/mitt/-/mitt-2.1.0.tgz> |
 | mlly | 1.8.2 | MIT | <https://registry.npmjs.org/mlly/-/mlly-1.8.2.tgz> |
 | ms | 2.1.3 | MIT | <https://registry.npmjs.org/ms/-/ms-2.1.3.tgz> |
 | muggle-string | 0.4.1 | MIT | <https://registry.npmjs.org/muggle-string/-/muggle-string-0.4.1.tgz> |
@@ -352,14 +351,14 @@ Generated from `backend/composer.lock` (`packages` only, no `packages-dev`) and 
 | tinyglobby | 0.2.17 | MIT | <https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz> |
 | typescript | 6.0.3 | Apache-2.0 | <https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz> |
 | ufo | 1.6.4 | MIT | <https://registry.npmjs.org/ufo/-/ufo-1.6.4.tgz> |
-| undici-types | 7.24.6 | MIT | <https://registry.npmjs.org/undici-types/-/undici-types-7.24.6.tgz> |
+| undici-types | 8.9.0 | MIT | <https://registry.npmjs.org/undici-types/-/undici-types-8.9.0.tgz> |
 | unplugin | 3.7.0 | MIT | <https://registry.npmjs.org/unplugin/-/unplugin-3.7.0.tgz> |
 | unplugin-utils | 0.3.2 | MIT | <https://registry.npmjs.org/unplugin-utils/-/unplugin-utils-0.3.2.tgz> |
 | vite | 8.3.5 | MIT | <https://registry.npmjs.org/vite/-/vite-8.3.5.tgz> |
 | vue | 3.5.44 | MIT | <https://registry.npmjs.org/vue/-/vue-3.5.44.tgz> |
 | vue-router | 5.4.0 | MIT | <https://registry.npmjs.org/vue-router/-/vue-router-5.4.0.tgz> |
 | vue-sonner | 2.0.9 | MIT | <https://registry.npmjs.org/vue-sonner/-/vue-sonner-2.0.9.tgz> |
-| vue-virtual-scroller | 2.0.1 | MIT | <https://registry.npmjs.org/vue-virtual-scroller/-/vue-virtual-scroller-2.0.1.tgz> |
+| vue-virtual-scroller | 3.0.5 | MIT | <https://registry.npmjs.org/vue-virtual-scroller/-/vue-virtual-scroller-3.0.5.tgz> |
 | webpack-virtual-modules | 0.6.2 | MIT | <https://registry.npmjs.org/webpack-virtual-modules/-/webpack-virtual-modules-0.6.2.tgz> |
 | which-module | 2.0.1 | ISC | <https://registry.npmjs.org/which-module/-/which-module-2.0.1.tgz> |
 | workbox-core | 7.4.1 | MIT | <https://registry.npmjs.org/workbox-core/-/workbox-core-7.4.1.tgz> |
