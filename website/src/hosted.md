@@ -6,12 +6,21 @@ next: false
 
 # Hosted version
 
-A hosted Avapeek is planned for people who cannot or do not want to run a server. **It is not available yet**, and there is no sign-up list. Watch the [GitHub repository](https://github.com/springledev/avapeek) (Watch → Custom → Releases) to hear when that changes.
+A hosted Avapeek is planned for people who would rather not run a server. **It is not available yet**, and there is no sign-up list. Watch the [GitHub repository](https://github.com/springledev/avapeek) (Watch → Custom → Releases) to hear when that changes.
 
-## What it will and will not change
+## What I will not be able to see
 
-The encryption works the same way: photos, thumbnails, EXIF data, tags and comments are encrypted in your browser, and the hosting provider stores only ciphertext.
+The hosted version uses the same encryption as the self-hosted one. Everything below is encrypted in your browser before it is uploaded, so I cannot see:
 
-What changes is who runs the server. The app that does the encryption is delivered by the server, so with a hosted version you trust the operator not to serve modified code that could read your password or photos. When you self-host, that operator is you. This limit is described in the [threat model](/docs/security#threat-model).
+- your photos, thumbnails and previews
+- EXIF data, including where a photo was taken
+- original filenames
+- tag names
+- comments
+- your password or any of your keys
 
-If that trade-off does not suit you, the [self-hosted install](/docs/installation) is and will stay free and fully featured.
+To run the service I can see account details such as your email address, child names, who is in which family, and photo dates and sizes. [How the encryption works](/security) explains this in more detail.
+
+## Prefer to run it yourself?
+
+The [self-hosted install](/docs/installation) is and will stay free and fully featured.

@@ -62,7 +62,7 @@ Suggested repo layout: a `website/` directory in the main repo (so docs and site
 
 1. Screenshots and a short screen recording (README says "to be added"): feed, upload, invite flow, child settings, mobile PWA install.
 2. Landing page copy and a one-paragraph "how it works" with a simple diagram of the key hierarchy (password to key to child key to photo key).
-3. Hosted version page and waitlist: what it will be, pricing intentions (if decided), and a statement that hosted users must trust the operator not to serve modified code (see the threat model).
+3. Hosted version page and waitlist: what it will be, pricing intentions (if decided), and a plain list of what the operator cannot see. Keep the server-trust caveat to self-hosting and the full threat model, not the hosted page.
 4. A non-technical "Getting started for families" page: how an invited grandparent signs up, installs the PWA to the home screen, and what happens if they forget their password.
 5. "How does end-to-end encryption work" plain-language explainer (security.md is accurate but technical).
 6. Changelog / release notes and a version badge (no CHANGELOG or tags exist yet).
