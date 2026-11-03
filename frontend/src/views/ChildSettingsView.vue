@@ -13,6 +13,8 @@ import UiLoadError from '@/components/ui/UiLoadError.vue'
 import ChildExportSheet from '@/components/ChildExportSheet.vue'
 import PasswordConfirmSheet from '@/components/PasswordConfirmSheet.vue'
 import { syncEncryptionKeys } from '@/services/key-sync'
+import { invalidatePendingGrants } from '@/services/pending-grants'
+import { fetchPendingInvites as loadPendingInvites, invalidatePendingInvites } from '@/services/pending-invites'
 import { apiErrorMessage, copyInviteLink as copyInviteLinkToClipboard, firstValidationError } from '@/lib/util'
 import type { ChildMember, InviteResponse } from '@/types/child'
 
@@ -38,6 +40,7 @@ const members = ref<ChildMember[]>([])
 const membersLoaded = ref(false)
 const membersFailed = ref(false)
 const isLoadingMembers = ref(false)
+
 const ROLE_ORDER: Record<string, number> = { owner: 0, admin: 1, member: 2 }
 
 const sortedMembers = computed(() =>
@@ -172,6 +175,7 @@ async function shareAccessNow() {
   if (isSharingAccess.value) return
   isSharingAccess.value = true
   try {
+    invalidatePendingGrants()
     const result = await syncEncryptionKeys()
     if (result.failed > 0) {
       toast.error(ACCESS_SHARE_FAILED_MSG)
@@ -186,8 +190,8 @@ async function shareAccessNow() {
 
 async function fetchPendingInvites() {
   try {
-    const { data } = await api.get('/invites/pending')
-    pendingChildInvites.value = data.data.filter(
+    const invites = await loadPendingInvites()
+    pendingChildInvites.value = invites.filter(
       (i: { child_name: string }) => i.child_name === child.value?.name,
     )
   } catch {
@@ -226,6 +230,7 @@ async function copyPendingInvite(token: string) {
 async function revokeInvite(inviteId: number) {
   try {
     await api.delete(`/invites/${inviteId}`)
+    invalidatePendingInvites()
     pendingChildInvites.value = pendingChildInvites.value.filter((i) => i.id !== inviteId)
     toast.success(MSG.inviteRevoked)
   } catch (err: unknown) {
@@ -293,6 +298,7 @@ async function removeSelectedMember() {
 
   try {
     await api.delete(`/children/${childId.value}/members/${member.id}`)
+    invalidatePendingGrants()
     members.value = members.value.filter((m) => m.id !== member.id)
     closeMemberSheet()
     toast.success(`${member.display_name} has been removed.`)

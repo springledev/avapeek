@@ -34,7 +34,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        RateLimiter::for('api', fn (Request $request) => Limit::perMinute(60)->by($request->user()?->id ?: $request->ip()));
+        // A full page load is about 9 requests and a viewer step about 2, so 180 a minute
+        // covers flicking through a photo a second with room to spare. Sensitive routes keep
+        // the stricter limiters below on top of this one.
+        RateLimiter::for('api', fn (Request $request) => Limit::perMinute(180)->by($request->user()?->id ?: $request->ip()));
 
         RateLimiter::for('auth', fn (Request $request) => Limit::perMinute(5)->by('login:'.$request->ip()));
 

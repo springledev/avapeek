@@ -52,7 +52,7 @@ function syncKeys() {
 function syncPendingGrants() {
   if (!authStore.kek) return
   lastKeySync = Date.now()
-  void syncEncryptionKeys().then(refreshPendingGrants)
+  void syncEncryptionKeys().then(() => refreshPendingGrants())
 }
 
 function onVisibilityChange() {

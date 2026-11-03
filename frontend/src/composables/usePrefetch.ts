@@ -1,9 +1,6 @@
 import { useFeedStore } from '@/stores/feed'
-import { useCommentsStore } from '@/stores/comments'
 import { warmCache } from '@/lib/cache/decrypted-cache'
 import { getPEKForPhoto, fetchAndDecrypt } from '@/services/storage'
-import { api } from '@/services/api'
-import type { Photo } from '@/types/photo'
 
 export function usePrefetch() {
   const feedStore = useFeedStore()
@@ -14,10 +11,8 @@ export function usePrefetch() {
     prefetching = true
 
     try {
-      const params = feedStore.buildParams(feedStore.page + 1)
-
-      const response = await api.get('/photos', { params })
-      const data = response.data.data as Photo[] // thumbnail fields only; tags are not decrypted here
+      // Kept in the feed store, so scrolling to this page does not request it again.
+      const data = await feedStore.prefetchNextPage() // thumbnail fields only; tags are not decrypted here
 
       await warmCache(
         data.map((photo) => ({
@@ -34,12 +29,6 @@ export function usePrefetch() {
           },
         })),
       )
-
-      try {
-        void useCommentsStore().prefetchComments(data)
-      } catch {
-        // comments warm-up must never break thumbnail prefetch
-      }
     } catch {
       // ponytail: best-effort prefetch
     } finally {

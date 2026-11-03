@@ -1,10 +1,5 @@
 import { computed, ref } from 'vue'
-import { api } from '@/services/api'
-
-interface PendingGrant {
-  child_id: number
-  user_id: number
-}
+import { fetchPendingGrants, invalidatePendingGrants } from '@/services/pending-grants'
 
 /** Shared across the banner and App.vue so both see the same pending count. */
 const pendingUserIds = ref<number[]>([])
@@ -16,16 +11,18 @@ const pendingUserIds = ref<number[]>([])
 export function usePendingGrants() {
   const pendingCount = computed(() => pendingUserIds.value.length)
 
-  async function refresh(): Promise<void> {
+  /** Reads the list; reuses a recent one unless `force` is set. */
+  async function refresh(options: { force?: boolean } = {}): Promise<void> {
     try {
-      const { data } = await api.get<{ data: PendingGrant[] }>('/encryption-keys/pending-grants')
-      pendingUserIds.value = [...new Set(data.data.map((grant) => grant.user_id))]
+      const grants = await fetchPendingGrants(options)
+      pendingUserIds.value = [...new Set(grants.map((grant) => grant.user_id))]
     } catch (err) {
       console.error('Failed to load pending access grants:', err)
     }
   }
 
   function reset(): void {
+    invalidatePendingGrants()
     pendingUserIds.value = []
   }
 

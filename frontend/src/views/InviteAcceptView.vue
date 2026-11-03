@@ -70,7 +70,7 @@ async function acceptInvite() {
     removePendingInviteToken()
     // Show the new album and pick up its key right away if an admin has already shared it.
     void childStore
-      .fetchChildren()
+      .fetchChildren({ force: true })
       .catch(() => undefined)
       .then(() => syncEncryptionKeys())
     router.push('/welcome')

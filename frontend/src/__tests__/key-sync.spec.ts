@@ -50,6 +50,7 @@ import { api } from '@/services/api'
 import { toast } from 'vue-sonner'
 import { useAuthStore } from '@/stores/auth'
 import { syncEncryptionKeys } from '@/services/key-sync'
+import { invalidatePendingGrants } from '@/services/pending-grants'
 import type { EncryptionKey } from '@/types/auth'
 
 function ok<T>(data: T): AxiosResponse<T> {
@@ -80,6 +81,7 @@ function signIn() {
 
 describe('syncEncryptionKeys', () => {
   beforeEach(() => {
+    invalidatePendingGrants()
     setActivePinia(createPinia())
     vi.mocked(api.get).mockReset()
     vi.mocked(api.post).mockReset()
