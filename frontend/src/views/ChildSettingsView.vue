@@ -24,6 +24,8 @@ const currentUser = computed(() => authStore.user)
 
 const childId = computed(() => Number(route.params.id))
 const child = computed(() => childStore.children.find((c) => c.id === childId.value) || null)
+const albumLabel = computed(() => (child.value?.name ? `${child.value.name}'s album` : 'this album'))
+const deleteSheetTitle = computed(() => `Delete ${albumLabel.value}?`)
 
 const showInviteSheet = ref(false)
 const inviteRole = ref('member')
@@ -105,13 +107,14 @@ async function confirmDelete() {
   if (!deleteNameMatches.value) return
   isDeleting.value = true
   deleteError.value = ''
+  const deletedAlbumLabel = albumLabel.value
   try {
     await childStore.deleteChild(childId.value)
     showDeleteSheet.value = false
-    toast.success('Kid deleted.')
+    toast.success(`Deleted ${deletedAlbumLabel}.`)
     router.push('/settings/children')
   } catch (err: unknown) {
-    deleteError.value = apiErrorMessage(err, 'Failed to delete kid.')
+    deleteError.value = apiErrorMessage(err, 'Failed to delete album.')
   } finally {
     isDeleting.value = false
   }
@@ -349,17 +352,17 @@ async function confirmTransfer(password: string) {
 async function leaveFamily() {
   if (
     !confirm(
-      `Leave ${child.value?.name}? You will lose access to its photos in the app. Photos are not re-encrypted, so anything already saved to your devices stays readable there.`,
+      `Leave ${albumLabel.value}? You will lose access to its photos in the app. Photos are not re-encrypted, so anything already saved to your devices stays readable there.`,
     )
   ) {
     return
   }
 
-  const childName = child.value?.name
+  const leftAlbumLabel = albumLabel.value
   try {
     await childStore.leaveChild(childId.value)
     closeMemberSheet()
-    toast.success(childName ? `You've left ${childName}.` : "You've left.")
+    toast.success(`You've left ${leftAlbumLabel}.`)
     router.push('/settings/children')
   } catch (err: unknown) {
     toast.error(apiErrorMessage(err, "Couldn't leave — try again"))
@@ -467,11 +470,11 @@ function formatLastActive(dateStr: string | null): string {
       </div>
 
       <div v-if="currentUserRole && currentUserRole !== 'owner'" class="child-settings__section">
-        <h3 class="child-settings__section-title">Leave</h3>
+        <h3 class="child-settings__section-title">Leave album</h3>
         <p class="invite-sheet__hint child-settings__leave-hint">
-          You lose access to this kid's photos in the app. Photos are not re-encrypted.
+          You lose access to the photos in {{ albumLabel }} in the app. Photos are not re-encrypted.
         </p>
-        <UiButton variant="danger" @click="leaveFamily">Leave this kid</UiButton>
+        <UiButton variant="danger" @click="leaveFamily">Leave {{ albumLabel }}</UiButton>
       </div>
 
       <div class="child-settings__section">
@@ -488,7 +491,7 @@ function formatLastActive(dateStr: string | null): string {
 
       <div v-if="canDelete" class="child-settings__section">
         <h3 class="child-settings__section-title">Danger zone</h3>
-        <UiButton variant="danger" @click="openDeleteSheet">Delete this kid</UiButton>
+        <UiButton variant="danger" @click="openDeleteSheet">Delete {{ albumLabel }}</UiButton>
       </div>
 
       <div v-if="pendingChildInvites.length > 0" class="child-settings__section">
@@ -527,7 +530,7 @@ function formatLastActive(dateStr: string | null): string {
         ><span v-if="selectedMember.relationship"> · {{ selectedMember.relationship }}</span>
       </p>
       <template v-if="selectedIsSelf">
-        <UiButton variant="danger" @click="leaveFamily">Leave this kid</UiButton>
+        <UiButton variant="danger" @click="leaveFamily">Leave {{ albumLabel }}</UiButton>
       </template>
       <template v-else>
         <template v-if="canSetUpload">
@@ -617,11 +620,11 @@ function formatLastActive(dateStr: string | null): string {
     </form>
   </UiSheet>
 
-  <UiSheet :open="showDeleteSheet" title="Delete this kid?" @close="showDeleteSheet = false">
+  <UiSheet :open="showDeleteSheet" :title="deleteSheetTitle" @close="showDeleteSheet = false">
     <div v-if="deleteError" class="invite-sheet__error" role="alert">{{ deleteError }}</div>
     <form class="invite-sheet__form" @submit.prevent="confirmDelete">
       <p class="invite-sheet__hint">
-        This removes {{ child?.name }}'s album for everyone. Photos that are only in this album are
+        This removes {{ albumLabel }} for everyone. Photos that are only in this album are
         permanently deleted. Photos shared with other kids are kept for them. This cannot be undone.
       </p>
       <div class="invite-sheet__field">

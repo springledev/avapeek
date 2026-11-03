@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Changed
+
+- Leaving or deleting a child now refers to their album, such as "Leave Emma's album", across the settings page and its confirmations
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed
