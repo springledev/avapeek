@@ -21,6 +21,7 @@ import { useChildStore } from '@/stores/child'
 import { useGridDensity, type FeedDensity } from '@/composables/useGridDensity'
 import { useDarkMode } from '@/composables/useDarkMode'
 import { usePushNotifications } from '@/composables/usePushNotifications'
+import QuotaBar from '@/components/QuotaBar.vue'
 
 const route = useRoute()
 const childStore = useChildStore()
@@ -196,6 +197,11 @@ onMounted(() => {
         </router-link>
       </template>
 
+      <div class="settings__storage" data-testid="settings-storage">
+        <p class="settings__label">Storage</p>
+        <QuotaBar />
+      </div>
+
       <button type="button" class="settings__row settings__row--danger" @click="handleLogout">
         <div class="settings__icon settings__icon--danger">
           <LogOut :size="20" />
@@ -317,6 +323,12 @@ a.settings__row:hover {
 
 .settings__row--danger:hover {
   background: var(--color-surface-2);
+}
+
+.settings__storage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .settings__text {

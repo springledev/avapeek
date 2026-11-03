@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+
+- Settings now shows how much storage is used, with a retry when it cannot be loaded
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed

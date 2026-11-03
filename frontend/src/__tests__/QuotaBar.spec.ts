@@ -41,4 +41,36 @@ describe('QuotaBar', () => {
     expect(wrapper.text()).not.toContain('free')
     expect(wrapper.find('.h-1\\.5').exists()).toBe(false)
   })
+
+  it('requests the system-wide /quota endpoint', async () => {
+    mockQuota({ used_bytes: 0, limit_bytes: null, percentage: null })
+    mount(QuotaBar)
+    await flushPromises()
+
+    expect(api.get).toHaveBeenCalledWith('/quota')
+  })
+
+  it('shows an unavailable message, not numbers, when the fetch fails, and retries', async () => {
+    vi.mocked(api.get).mockRejectedValueOnce(new Error('boom'))
+    const wrapper = mount(QuotaBar)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="quota-error"]').text()).toContain('Storage usage unavailable')
+    expect(wrapper.text()).not.toContain('0.0 KB')
+
+    mockQuota({ used_bytes: 1024 * 1024, limit_bytes: null, percentage: null })
+    await wrapper.find('[data-testid="quota-error"] button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="quota-error"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('1.0 MB used')
+  })
+
+  it('treats a malformed response as a failure', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: {} })
+    const wrapper = mount(QuotaBar)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="quota-error"]').exists()).toBe(true)
+  })
 })
