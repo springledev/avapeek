@@ -322,4 +322,14 @@ describe('LoginView', () => {
     expect(wrapper.text()).toContain('Too many incorrect codes. Try again in 15 minutes.')
     expect(wrapper.find('#mfa-code').exists()).toBe(true)
   })
+
+  it('tells the user they need HTTPS on an insecure origin', async () => {
+    Object.defineProperty(window, 'isSecureContext', { value: false, configurable: true })
+    try {
+      const { wrapper } = await mountLoginView()
+      expect(wrapper.get('[data-test="insecure-context"]').text()).toContain('This needs HTTPS')
+    } finally {
+      Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true })
+    }
+  })
 })

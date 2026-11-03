@@ -10,6 +10,7 @@ import { MIN_PASSWORD_LENGTH } from '@/lib/password-rules'
 import type { InvitePreview } from '@/types/child'
 import UiButton from '@/components/ui/UiButton.vue'
 import AuthCard from '@/components/AuthCard.vue'
+import InsecureContextNotice from '@/components/InsecureContextNotice.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -167,6 +168,7 @@ async function handleSubmit() {
 
 <template>
   <AuthCard>
+    <InsecureContextNotice />
     <div v-if="!isReady" class="register__loading" aria-busy="true" aria-label="Loading" />
     <div v-else-if="isGated" class="register__step">
       <div class="register__header">

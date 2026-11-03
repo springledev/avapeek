@@ -24,6 +24,8 @@ export const useFeedStore = defineStore('feed', () => {
   const page = ref(1)
   const hasMore = ref(true)
   const isLoading = ref(false)
+  /** True when the last fetch failed. Photos already loaded are kept, so a failed refresh never empties the screen. */
+  const loadFailed = ref(false)
 
   /**
    * Query params for a feed page. Tag names never leave the client: they are resolved
@@ -51,11 +53,11 @@ export const useFeedStore = defineStore('feed', () => {
   async function fetchPhotos(reset = true): Promise<void> {
     if (reset) {
       page.value = 1
-      photos.value = []
       hasMore.value = true
     }
 
     isLoading.value = true
+    loadFailed.value = false
 
     try {
       const response = await api.get<PhotoListResponse>('/photos', {
@@ -72,6 +74,8 @@ export const useFeedStore = defineStore('feed', () => {
       hasMore.value = response.data.meta.current_page < response.data.meta.last_page
     } catch (err) {
       console.error('Failed to fetch feed photos:', err)
+      loadFailed.value = true
+      if (!reset) page.value--
     } finally {
       isLoading.value = false
     }
@@ -109,6 +113,7 @@ export const useFeedStore = defineStore('feed', () => {
     page,
     hasMore,
     isLoading,
+    loadFailed,
     buildParams,
     fetchPhotos,
     fetchMore,

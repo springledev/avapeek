@@ -37,6 +37,11 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 - After uploading, the "photos added" notice has a View button that opens Recents, where the new photos are at the top
 - Settings now shows how much storage is used, with a retry when it cannot be loaded
 - Settings now shows the app version, to include in bug reports
+- Sign-in and registration now explain that Avapeek needs HTTPS when opened over plain HTTP, and link to the installation guide
+
+### Fixed
+
+- A failed load of the feed, recent uploads, kids list or member list now shows an error with a retry button instead of an empty state, and a failed refresh no longer clears photos already on screen
 
 ## [0.1.1] - 2026-11-02
 
