@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Changed
+
+- Removed the non-functional favorite heart from the photo viewer
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed

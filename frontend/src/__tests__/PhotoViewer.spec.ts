@@ -190,6 +190,15 @@ describe('PhotoViewer', () => {
     wrapper.unmount()
   })
 
+  it('does not render a favorite button', async () => {
+    vi.mocked(api.get).mockResolvedValue(ok(makeListResponse([])))
+    const { wrapper } = mountViewer(makePhoto())
+    await flushPromises()
+
+    expect(wrapper.find('[aria-label="Favorite"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('condensed action row exposes a MessageSquare button with the count and a ⋮ menu', async () => {
     await mockThreeComments()
     const { wrapper } = mountViewer(makePhoto())

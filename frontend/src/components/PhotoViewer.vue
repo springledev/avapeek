@@ -8,7 +8,6 @@ import {
   Minus,
   Plus,
   Download,
-  Heart,
   Pencil,
   Info,
   Tag,
@@ -949,9 +948,6 @@ onBeforeUnmount(() => {
         >
           <MessageSquare :size="20" />
           <span v-if="totalComments > 0" class="viewer__action-count">{{ totalComments }}</span>
-        </button>
-        <button type="button" class="viewer__action-btn u-focus-ring" aria-label="Favorite">
-          <Heart :size="20" />
         </button>
         <span class="viewer__actions-spacer" aria-hidden="true" />
         <button
