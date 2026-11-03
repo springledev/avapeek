@@ -23,6 +23,9 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 ### Fixed
 
 - Login, registration, MFA and invite preview rate limits apply per client instead of being shared by the whole instance, and forged forwarding headers cannot get around them
+### Changed
+
+- Leaving or deleting a child now refers to their album, such as "Leave Emma's album", across the settings page and its confirmations
 
 ## [0.1.1] - 2026-11-02
 
