@@ -115,3 +115,19 @@ test('the trusted proxy can only set the client IP, not the scheme, host or port
         ->getJson('http://avapeek.test/_test/origin')
         ->assertJsonPath('origin', 'http://avapeek.test');
 });
+
+test('the bundled Caddy trusts no upstream by default and hands the backend its own verdict', function () {
+    $caddyfile = file_get_contents(base_path('../docker/caddy/Caddyfile'));
+    $compose = file_get_contents(base_path('../docker-compose.prod.yml'));
+
+    expect($caddyfile)
+        ->toContain('trusted_proxies static {$UPSTREAM_TRUSTED_PROXIES}'.PHP_EOL)
+        ->toContain('trusted_proxies_strict')
+        ->toContain('client_ip_headers {$UPSTREAM_CLIENT_IP_HEADER:X-Forwarded-For}')
+        ->toContain('header_up X-Forwarded-For {client_ip}')
+        ->toContain('header_up -CF-Connecting-IP')
+        ->and($compose)
+        ->toContain('UPSTREAM_TRUSTED_PROXIES: ${UPSTREAM_TRUSTED_PROXIES:-}'.PHP_EOL)
+        ->toContain('UPSTREAM_CLIENT_IP_HEADER: ${UPSTREAM_CLIENT_IP_HEADER:-X-Forwarded-For}')
+        ->toContain('BACKEND_TRUSTED_PROXIES: caddy');
+});
