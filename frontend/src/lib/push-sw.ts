@@ -54,12 +54,12 @@ const COPY: Record<PushType, { title: string; body: string; tag: string }> = {
   },
   joins: {
     title: 'Someone joined your family',
-    body: 'Open Avapeek to give them access to the photos.',
+    body: 'Open Avapeek to approve or decline them.',
     tag: 'avapeek-joins',
   },
   access_requested: {
     title: 'Someone is waiting for access',
-    body: "A family member can't see photos yet. Open Avapeek to share access.",
+    body: "A family member can't see photos yet. Open Avapeek to approve or decline them.",
     tag: 'avapeek-access-requested',
   },
   access_granted: {

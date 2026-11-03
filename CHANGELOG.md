@@ -7,6 +7,7 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 ### Changed
 
 - Admins now approve or decline each person waiting for an album, seeing their name and the album; a key is only shared on Approve, and declining removes them from the album
+- Waiting screens and notifications now say an admin has to approve you, or that you can approve or decline someone
 
 ## [0.1.1] - 2026-11-02
 
