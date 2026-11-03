@@ -29,7 +29,7 @@ vi.mock('@/crypto/keychain', async (importOriginal) => ({
 }))
 
 vi.mock('@/services/key-sync', () => ({
-  syncEncryptionKeys: vi.fn<() => Promise<{ granted: number; failed: number }>>(),
+  syncEncryptionKeys: vi.fn<() => Promise<void>>(),
 }))
 
 import { api } from '@/services/api'
@@ -93,7 +93,7 @@ describe('AdminPendingAccessBanner', () => {
   beforeEach(() => {
     vi.mocked(api.get).mockReset()
     vi.mocked(syncEncryptionKeys).mockReset()
-    vi.mocked(syncEncryptionKeys).mockResolvedValue({ granted: 0, failed: 0 })
+    vi.mocked(syncEncryptionKeys).mockResolvedValue(undefined)
     vi.mocked(api.post).mockReset()
     vi.mocked(api.post).mockResolvedValue(ok({}))
     vi.mocked(api.delete).mockReset()

@@ -1,57 +1,35 @@
 import { toast } from 'vue-sonner'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
-import { useChildStore } from '@/stores/child'
 import { rewrapSharedDEK, unwrapPrivateKey } from '@/crypto/keychain'
 import type { EncryptionKey } from '@/types/auth'
 
-interface PendingGrant {
-  child_id: number
-  user_id: number
-  public_key: string
-}
-
-/** Outcome of one sync: grants shared with members, and grants that failed. */
-export interface KeySyncResult {
-  granted: number
-  failed: number
-}
-
-let inFlight: Promise<KeySyncResult> | null = null
+let inFlight: Promise<void> | null = null
 
 /**
- * Keeps album keys flowing between family members, with no manual step:
+ * Re-wraps keys another member shared to this user's public key with the
+ * user's KEK, so the album opens like any other.
  *
- * 1. Keys another member shared to this user's public key are re-wrapped
- *    with the user's KEK, so the album opens like any other.
- * 2. If this user administers an album, members who joined but have no key
- *    yet get it shared to their public key.
+ * This never shares a key with anyone else: that takes an admin's click on
+ * Approve (see `usePendingGrants`).
  *
  * Safe to call often: runs one sync at a time and never throws.
  */
-export function syncEncryptionKeys(): Promise<KeySyncResult> {
+export function syncEncryptionKeys(): Promise<void> {
   inFlight ??= runSync().finally(() => {
     inFlight = null
   })
   return inFlight
 }
 
-async function runSync(): Promise<KeySyncResult> {
+async function runSync(): Promise<void> {
   const authStore = useAuthStore()
-  const result: KeySyncResult = { granted: 0, failed: 0 }
-  if (!authStore.kek || !authStore.user) return result
+  if (!authStore.kek || !authStore.user) return
 
   try {
     await acceptSharedKeys()
   } catch (err) {
     console.error('Failed to accept shared album keys:', err)
-  }
-
-  try {
-    return await shareKeysWithNewMembers()
-  } catch (err) {
-    console.error('Failed to share album keys:', err)
-    return { granted: 0, failed: 1 }
   }
 }
 
@@ -90,22 +68,4 @@ async function acceptSharedKeys(): Promise<void> {
       action: { label: 'Refresh', onClick: () => window.location.reload() },
     })
   }
-}
-
-async function shareKeysWithNewMembers(): Promise<KeySyncResult> {
-  const result: KeySyncResult = { granted: 0, failed: 0 }
-  const { data } = await api.get<{ data: PendingGrant[] }>('/encryption-keys/pending-grants')
-  if (data.data.length === 0) return result
-
-  const childStore = useChildStore()
-  for (const grant of data.data) {
-    try {
-      await childStore.grantAccess(grant.child_id, grant.user_id, grant.public_key)
-      result.granted++
-    } catch (err) {
-      result.failed++
-      console.error(`Failed to share key for child ${grant.child_id}:`, err)
-    }
-  }
-  return result
 }

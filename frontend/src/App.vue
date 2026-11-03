@@ -17,7 +17,11 @@ const childStore = useChildStore()
 const { initDarkMode } = useDarkMode()
 const { initDensity } = useGridDensity()
 const { initNetwork, cleanup } = useNetwork()
-const { pendingCount, refresh: refreshPendingGrants } = usePendingGrants()
+const {
+  pendingCount,
+  refresh: refreshPendingGrants,
+  reset: resetPendingGrants,
+} = usePendingGrants()
 
 initDarkMode()
 initDensity()
@@ -35,20 +39,26 @@ function hasLockedJoinedAlbum(): boolean {
   return childStore.children.some((c) => c.role !== 'owner' && !childStore.hasOwnKey(c.id))
 }
 
-/** Whether the user can share album keys, and someone is still waiting for one. */
-function hasPendingGrantsToShare(): boolean {
-  const administers = childStore.children.some((c) => c.role === 'owner' || c.role === 'admin')
-  return administers && pendingCount.value > 0
+function administersAlbum(): boolean {
+  return childStore.children.some((c) => c.role === 'owner' || c.role === 'admin')
 }
 
-/** Shares and accepts album keys whenever keys become available or the app comes back into view. */
+/** Whether the user can share album keys, and someone is still waiting for one. */
+function hasPendingGrantsToShare(): boolean {
+  return administersAlbum() && pendingCount.value > 0
+}
+
+/**
+ * Accepts album keys shared with this user whenever keys become available or
+ * the app comes back into view. Admins also get an updated list of who is waiting.
+ */
 function syncKeys() {
   if (!authStore.kek) return
   lastKeySync = Date.now()
-  void syncEncryptionKeys()
+  void syncEncryptionKeys().then(() => (administersAlbum() ? refreshPendingGrants() : undefined))
 }
 
-/** Re-runs the sync for admins with members waiting, then updates the pending count. */
+/** Re-runs the sync for admins with members waiting, then updates who is waiting. */
 function syncPendingGrants() {
   if (!authStore.kek) return
   lastKeySync = Date.now()
@@ -66,8 +76,9 @@ watch(() => authStore.kek, syncKeys)
 // Also runs after an in-app sign-in, which doesn't remount the app.
 watch(
   () => authStore.isAuthenticated,
-  (isAuthenticated) => {
+  (isAuthenticated, wasAuthenticated) => {
     if (isAuthenticated) void resyncPushSubscription().catch(() => undefined)
+    else if (wasAuthenticated) resetPendingGrants()
   },
   { immediate: true },
 )
