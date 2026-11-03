@@ -17,9 +17,6 @@ const pendingGrants = createSharedRequest(async () => {
   return data.data
 }, PENDING_GRANTS_TTL_MS)
 
-/** Whether the list was fetched recently enough that `fetchPendingGrants` makes no request. */
-export const hasFreshPendingGrants = pendingGrants.isFresh
-
 /** Members waiting for an album key; callers share one request and a recent result. */
 export const fetchPendingGrants = pendingGrants.get
 
