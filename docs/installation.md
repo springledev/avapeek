@@ -50,6 +50,7 @@ Non-interactive form:
 | `--domain HOST` | Public hostname. `photos.example.com` becomes `https://photos.example.com`. `localhost` or an IP becomes `http://HOST:88` |
 | `--url URL` | Full public URL; overrides `--domain` (use for a non-standard HTTPS port) |
 | `--storage garage\|external` | Bundled Garage, or an external S3 provider (sets `COMPOSE_PROFILES`) |
+| `--demo` | Add a made-up family to a new instance, see [demo data](#try-it-with-demo-data) |
 | `--build` | Build images from source instead of pulling |
 | `--yes`, `-y` | Never prompt |
 | `--env-only` (`--dry-run`) | Only write/complete the `.env` files; start nothing |
@@ -58,6 +59,24 @@ Non-interactive form:
 For `--storage external`, `up.sh` clears the Garage defaults (`STORAGE_VOLUME_PATH`, `AWS_ENDPOINT`, `AWS_TEMPORARY_URL`, path-style) and then stops if the credentials are empty. Edit `backend/.env` using [storage.md](storage.md), configure bucket CORS, and re-run `./up.sh`. It also sets `STORAGE_VOLUME_PATH` empty only if it still has the shipped value `/garage-data`; a value you set yourself is kept.
 
 The first user to open the site can register freely; every later account needs an invite. See [First account](#first-account).
+
+### Try it with demo data
+
+To look around before setting up anything real, install on your own machine with demo data:
+
+```sh
+./up.sh --domain localhost --storage garage --yes --demo
+```
+
+This adds a made-up family: two children, four accounts with different roles, and 36 generated pictures with tags and comments, all encrypted the same way as real photos. The command prints the accounts and their shared password. Try signing in as the owner and as the view-only grandparent. **Anyone who can reach the instance can use these accounts, so do not do this on a public server.**
+
+When you are done, either [uninstall](#uninstall), or keep the install and start for real:
+
+```sh
+docker compose -f docker-compose.prod.yml exec backend php artisan avapeek:demo-clear
+```
+
+It lists what it will delete and asks you to confirm (`--force` skips the question in scripts). It removes the demo accounts, their children, photos and stored files, and you can then register your first account as usual. Only demo data is touched: real accounts and their photos stay, and the command refuses to run at all if real data is tied to the demo family, for example a real account uploaded into a demo child, or a demo child was transferred to a real account. Demo data can only be added while the instance has no accounts.
 
 ## Manual install (without `up.sh`)
 

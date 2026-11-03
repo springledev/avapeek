@@ -13,6 +13,7 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 ### Fixed
 
 - Turning on notifications can no longer hang with the toggle greyed out: if the browser does not finish a step within 10 seconds, the app stops and says which step failed
+- `php artisan avapeek:demo-seed` fills an empty instance with a made-up family (generated pictures, encrypted exactly as the browser does) and `avapeek:demo-clear` removes it again, so you can try Avapeek before committing to it. `./up.sh --demo` does this as part of the install
 
 ## [0.1.1] - 2026-11-02
 

@@ -48,6 +48,8 @@ cd avapeek
 # register the first account: it is the only account that can sign up freely
 ```
 
+Want to look around first? Add `--demo` to get a made-up family with photos, comments and tags to click through ([try before you commit](docs/installation.md#try-it-with-demo-data)).
+
 `up.sh` generates all secrets, pulls the prebuilt images from `ghcr.io/springledev`, starts the stack, waits for it to be healthy and runs the database migrations. To upgrade, run `git pull` and then `./up.sh` again (see [upgrading](docs/installation.md#upgrading)). For a real domain with HTTPS, see the [installation guide](docs/installation.md#tls-and-reverse-proxies).
 
 > **Back up your database.** It holds the wrapped encryption keys; losing it means losing every photo, even if the bucket survives. See [backups](docs/installation.md#backups).
