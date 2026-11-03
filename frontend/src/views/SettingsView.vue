@@ -15,6 +15,7 @@ import {
   LogOut,
 } from '@lucide/vue'
 import { api } from '@/services/api'
+import { fetchPendingInvites as loadPendingInvites, invalidatePendingInvites } from '@/services/pending-invites'
 import { toast } from 'vue-sonner'
 import { signOut } from '@/lib/sign-out'
 import { useChildStore } from '@/stores/child'
@@ -52,8 +53,7 @@ const pendingInvites = ref<
 
 async function fetchPendingInvites() {
   try {
-    const { data } = await api.get('/invites/pending')
-    pendingInvites.value = data.data
+    pendingInvites.value = await loadPendingInvites()
   } catch {
     /**/
   }
@@ -62,6 +62,7 @@ async function fetchPendingInvites() {
 async function revokeInvite(id: number) {
   try {
     await api.delete(`/invites/${id}`)
+    invalidatePendingInvites()
     pendingInvites.value = pendingInvites.value.filter((i) => i.id !== id)
     toast.success(MSG.inviteRevoked)
   } catch (err: unknown) {

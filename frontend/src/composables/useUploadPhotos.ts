@@ -193,7 +193,7 @@ export function useUploadPhotos() {
 
       if (succeeded > 0) {
         feedStore.fetchPhotos()
-        childStore.fetchChildren().catch(() => {})
+        childStore.fetchChildren({ force: true }).catch(() => {})
       }
     } finally {
       isUploading.value = false

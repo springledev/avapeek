@@ -32,9 +32,13 @@ export function cleanTagName(name: string): string {
   return name.trim().replace(/\s+/g, ' ').slice(0, MAX_TAG_LENGTH)
 }
 
+/** After a failed background load, screens wait this long before asking for the same tags again. */
+const TAG_RETRY_DELAY_MS = 30_000
+
 export const useTagsStore = defineStore('tags', () => {
   const byChild = ref<Map<number, DecryptedChildTag[]>>(new Map())
   const loading = new Map<number, Promise<void>>()
+  const failedAt = new Map<number, number>()
   const creating = new Map<string, Promise<DecryptedChildTag>>()
 
   function tagsFor(childId: number): DecryptedChildTag[] {
@@ -69,13 +73,20 @@ export const useTagsStore = defineStore('tags', () => {
     return run
   }
 
+  /** Background load for the screens that list tags; a failed child is not retried right away. */
   async function loadAll(childIds: number[]): Promise<void> {
+    const now = Date.now()
     await Promise.all(
-      childIds.map((id) =>
-        loadForChild(id).catch((err: unknown) => {
-          console.error('Failed to load tags:', err)
-        }),
-      ),
+      childIds
+        .filter((id) => now - (failedAt.get(id) ?? -Infinity) >= TAG_RETRY_DELAY_MS)
+        .map((id) =>
+          loadForChild(id)
+            .then(() => failedAt.delete(id))
+            .catch((err: unknown) => {
+              failedAt.set(id, Date.now())
+              console.error('Failed to load tags:', err)
+            }),
+        ),
     )
   }
 

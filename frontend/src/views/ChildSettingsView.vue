@@ -13,6 +13,7 @@ import ChildExportSheet from '@/components/ChildExportSheet.vue'
 import PasswordConfirmSheet from '@/components/PasswordConfirmSheet.vue'
 import { syncEncryptionKeys } from '@/services/key-sync'
 import { invalidatePendingGrants } from '@/services/pending-grants'
+import { fetchPendingInvites as loadPendingInvites, invalidatePendingInvites } from '@/services/pending-invites'
 import { apiErrorMessage, firstValidationError } from '@/lib/util'
 import type { ChildMember, InviteResponse } from '@/types/child'
 
@@ -163,8 +164,8 @@ async function shareAccessNow() {
 
 async function fetchPendingInvites() {
   try {
-    const { data } = await api.get('/invites/pending')
-    pendingChildInvites.value = data.data.filter(
+    const invites = await loadPendingInvites()
+    pendingChildInvites.value = invites.filter(
       (i: { child_name: string }) => i.child_name === child.value?.name,
     )
   } catch {
@@ -195,6 +196,7 @@ async function createInvite() {
 async function revokeInvite(inviteId: number) {
   try {
     await api.delete(`/invites/${inviteId}`)
+    invalidatePendingInvites()
     pendingChildInvites.value = pendingChildInvites.value.filter((i) => i.id !== inviteId)
     toast.success(MSG.inviteRevoked)
   } catch (err: unknown) {
