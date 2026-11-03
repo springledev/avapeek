@@ -15,6 +15,7 @@ import OnThisDayCard from '@/components/feed/OnThisDayCard.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
 import UiButton from '@/components/ui/UiButton.vue'
+import UiLoadError from '@/components/ui/UiLoadError.vue'
 import CreateChildSheet from '@/components/CreateChildSheet.vue'
 import MemberAccessBanner from '@/components/MemberAccessBanner.vue'
 import AdminPendingAccessBanner from '@/components/AdminPendingAccessBanner.vue'
@@ -109,7 +110,7 @@ const hasActiveFilters = computed(
 
 onMounted(async () => {
   if (feedStore.photos.length === 0 && !feedStore.isLoading) {
-    await feedStore.fetchPhotos()
+    await feedStore.fetchPhotos(true, true)
   }
 })
 
@@ -290,6 +291,12 @@ async function updateDate(photoId: number, takenAt: string) {
       <div v-for="i in 8" :key="i" class="tile-skeleton" />
     </div>
 
+    <UiLoadError
+      v-else-if="feedStore.loadFailed && feedStore.photos.length === 0"
+      title="Couldn't load your photos"
+      @retry="feedStore.fetchPhotos()"
+    />
+
     <UiEmptyState
       v-else-if="
         feedStore.photos.length === 0 &&
@@ -340,6 +347,14 @@ async function updateDate(photoId: number, takenAt: string) {
     />
 
     <div v-else>
+      <UiLoadError
+        v-if="feedStore.loadFailed"
+        compact
+        title="Couldn't refresh your photos"
+        message="Showing what was loaded earlier."
+        :retrying="feedStore.isLoading"
+        @retry="feedStore.fetchPhotos()"
+      />
       <div v-for="group in groupedPhotos" :key="group.key" class="feed-group">
         <div class="feed-group__head">
           <h2 class="feed-group__heading">{{ group.label }}</h2>

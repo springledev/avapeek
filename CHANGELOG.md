@@ -4,6 +4,43 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-03
+
+### Added
+
+- `up.sh` generates the Web Push (VAPID) key pair when none is set, so push notifications work on new installs without a manual step. It also sets `VAPID_SUBJECT` to the instance's `https://` URL while it is still the placeholder. Existing keys are never replaced, and `PUSH_ENABLED=false` keeps push off
+- `php artisan avapeek:demo-seed` fills an empty instance with a made-up family (generated pictures, encrypted exactly as the browser does) and `avapeek:demo-clear` removes it again, so you can try Avapeek before committing to it. `./up.sh --demo` does this as part of the install
+- Documentation for letting your family reach a self-hosted install from outside your home: Cloudflare Tunnel, Cloudflare Access, a VPN or your own reverse proxy, with the trade-offs of each
+- `UPSTREAM_TRUSTED_PROXIES` and `UPSTREAM_CLIENT_IP_HEADER` settings for installs behind a TLS proxy or Cloudflare Tunnel, off by default
+- The photo Info panel shows the date taken, who uploaded the photo and its original filename
+- Settings now shows how much storage is used, with a retry when it cannot be loaded
+- Settings now shows the app version, to include in bug reports
+- Sign-in and registration now explain that Avapeek needs HTTPS when opened over plain HTTP, and link to the installation guide
+- Pending invites can be copied again with a Copy link button, in Settings and in kid settings
+
+### Changed
+
+- Admins now approve or decline each person waiting for an album, seeing their name and the album; a key is only shared on Approve, and declining removes them from the album
+- Waiting screens and notifications now say an admin has to approve you, or that you can approve or decline someone
+- Leaving or deleting a child now refers to their album, such as "Leave Emma's album", across the settings page and its confirmations
+- Removed the non-functional favorite heart from the photo viewer
+- The "On this day" card on the feed is now a compact single-row strip of small thumbnails so it no longer pushes the feed off the first screen
+- After uploading, the "photos added" notice has a View button that opens Recents, where the new photos are at the top
+- The family list in kid settings is ordered owner first, then admins, then members
+- The feed no longer requests the same page twice on load or when you scroll, and no longer fetches comments for photos you have not opened
+- Waiting family members are checked for far less often when moving between pages, which keeps the app well inside the request limit
+- Kids and pending invites are loaded once and shared between Settings pages instead of being requested again on each page, and tag lists that fail to load are not retried straight away
+- The API allows 180 requests a minute per user instead of 60, so flicking quickly through photos no longer hits the limit; sign-in and other sensitive routes keep their stricter limits
+
+### Fixed
+
+- Login, registration, MFA and invite preview rate limits apply per client instead of being shared by the whole instance, and forged forwarding headers cannot get around them
+- A failed load of the feed, recent uploads, kids list or member list now shows an error with a retry button instead of an empty state, and a failed refresh no longer clears photos already on screen
+- The service worker never finished installing on any device, because the app icons were listed twice in its precache. Push notifications and the offline app shell now work
+- Turning on notifications can no longer hang with the toggle greyed out: if the browser does not finish a step within 10 seconds, the app stops and says which step failed
+- The frontend container healthcheck now uses `127.0.0.1` instead of `localhost`, so installs on IPv6-capable hosts no longer report the frontend as unhealthy
+- View-only members no longer see the invite link button in kid settings, which they could not use
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed

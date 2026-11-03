@@ -200,11 +200,17 @@ class InviteController extends Controller
     /**
      * List pending invites sent by the current user.
      *
-     * Returns invites that haven't been accepted, revoked, or expired.
+     * Returns invites that haven't been accepted, revoked, or expired, and only
+     * for children where the caller is currently an owner or admin.
      */
     public function pending(Request $request): JsonResponse
     {
-        $invites = Invite::where('invited_by', $request->user()->id)
+        $userId = $request->user()->id;
+
+        $invites = Invite::where('invited_by', $userId)
+            ->whereIn('child_id', ChildUser::where('user_id', $userId)
+                ->whereIn('role', ['owner', 'admin'])
+                ->select('child_id'))
             ->whereNull('accepted_at')
             ->whereNull('revoked_at')
             ->where('expires_at', '>', now())

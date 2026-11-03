@@ -15,13 +15,17 @@ import {
   LogOut,
 } from '@lucide/vue'
 import { api } from '@/services/api'
+import { fetchPendingInvites as loadPendingInvites, invalidatePendingInvites } from '@/services/pending-invites'
 import { toast } from 'vue-sonner'
 import { signOut } from '@/lib/sign-out'
+import { copyInviteLink } from '@/lib/util'
 import { useChildStore } from '@/stores/child'
 import { useGridDensity, type FeedDensity } from '@/composables/useGridDensity'
 import { useDarkMode } from '@/composables/useDarkMode'
 import { usePushNotifications } from '@/composables/usePushNotifications'
+import QuotaBar from '@/components/QuotaBar.vue'
 
+const appVersion = __APP_VERSION__
 const route = useRoute()
 const childStore = useChildStore()
 const { density, setDensity } = useGridDensity()
@@ -52,16 +56,24 @@ const pendingInvites = ref<
 
 async function fetchPendingInvites() {
   try {
-    const { data } = await api.get('/invites/pending')
-    pendingInvites.value = data.data
+    pendingInvites.value = await loadPendingInvites()
   } catch {
     /**/
+  }
+}
+
+async function copyPendingInvite(token: string) {
+  if (await copyInviteLink(token)) {
+    toast.success(MSG.inviteLinkCopied)
+  } else {
+    toast.error(MSG.inviteLinkCopyFailed)
   }
 }
 
 async function revokeInvite(id: number) {
   try {
     await api.delete(`/invites/${id}`)
+    invalidatePendingInvites()
     pendingInvites.value = pendingInvites.value.filter((i) => i.id !== id)
     toast.success(MSG.inviteRevoked)
   } catch (err: unknown) {
@@ -196,6 +208,11 @@ onMounted(() => {
         </router-link>
       </template>
 
+      <div class="settings__storage" data-testid="settings-storage">
+        <p class="settings__label">Storage</p>
+        <QuotaBar />
+      </div>
+
       <button type="button" class="settings__row settings__row--danger" @click="handleLogout">
         <div class="settings__icon settings__icon--danger">
           <LogOut :size="20" />
@@ -204,6 +221,8 @@ onMounted(() => {
           <p class="settings__label">Log out</p>
         </div>
       </button>
+
+      <p class="settings__version" data-testid="settings-version">Avapeek v{{ appVersion }}</p>
     </div>
 
     <div v-if="!hasSubRoute && isAdmin && pendingInvites.length > 0" class="settings__invites">
@@ -219,6 +238,14 @@ onMounted(() => {
           <span class="settings__invite-expires"
             >Expires {{ new Date(inv.expires_at).toLocaleDateString() }}</span
           >
+          <button
+            type="button"
+            class="settings__action"
+            data-testid="copy-invite-link"
+            @click="copyPendingInvite(inv.token)"
+          >
+            Copy link
+          </button>
           <button type="button" class="settings__revoke" @click="revokeInvite(inv.id)">
             Revoke
           </button>
@@ -317,6 +344,20 @@ a.settings__row:hover {
 
 .settings__row--danger:hover {
   background: var(--color-surface-2);
+}
+
+.settings__storage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings__version {
+  margin: var(--space-2) 0 0;
+  text-align: center;
+  font-size: var(--text-meta);
+  color: var(--color-ink-soft);
+  user-select: all;
 }
 
 .settings__text {
@@ -448,7 +489,9 @@ a.settings__row:hover {
   color: var(--color-ink-soft);
 }
 
+.settings__action,
 .settings__revoke {
+  min-height: 48px;
   border: 0;
   background: transparent;
   color: var(--color-danger);
@@ -460,6 +503,11 @@ a.settings__row:hover {
   border-radius: var(--radius-card);
 }
 
+.settings__action {
+  color: var(--color-ink);
+}
+
+.settings__action:hover,
 .settings__revoke:hover {
   background: var(--color-surface-2);
 }

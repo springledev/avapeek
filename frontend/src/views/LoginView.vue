@@ -15,6 +15,7 @@ import { api } from '@/services/api'
 import { apiErrorMessage } from '@/lib/util'
 import UiButton from '@/components/ui/UiButton.vue'
 import AuthCard from '@/components/AuthCard.vue'
+import InsecureContextNotice from '@/components/InsecureContextNotice.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -246,6 +247,7 @@ watch([step, mfaMethod], focusCodeInput)
 
 <template>
   <AuthCard>
+    <InsecureContextNotice />
     <div v-if="step === 1" class="login__step">
       <div class="login__header">
         <h1 class="login__title">Welcome back</h1>

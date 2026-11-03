@@ -7,6 +7,7 @@ import CreateChildSheet from '@/components/CreateChildSheet.vue'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
+import UiLoadError from '@/components/ui/UiLoadError.vue'
 
 const childStore = useChildStore()
 
@@ -29,9 +30,20 @@ async function finishSetup(childId: number) {
   }
 }
 
+const loadFailed = ref(false)
+
+async function loadChildren() {
+  loadFailed.value = false
+  try {
+    await childStore.fetchChildren()
+  } catch {
+    loadFailed.value = true
+  }
+}
+
 onMounted(async () => {
   if (childStore.children.length === 0) {
-    await childStore.fetchChildren()
+    await loadChildren()
   }
 })
 </script>
@@ -46,8 +58,15 @@ onMounted(async () => {
       </UiButton>
     </div>
 
+    <UiLoadError
+      v-if="loadFailed && childStore.children.length === 0"
+      title="Couldn't load your kids"
+      :retrying="childStore.isLoading"
+      @retry="loadChildren"
+    />
+
     <UiEmptyState
-      v-if="childStore.children.length === 0"
+      v-else-if="childStore.children.length === 0 && childStore.childrenLoaded"
       title="No kids yet"
       message="Create a profile to start building their photo album."
     >
@@ -56,7 +75,7 @@ onMounted(async () => {
       </template>
     </UiEmptyState>
 
-    <div v-else class="kids__list">
+    <div v-else-if="childStore.children.length > 0" class="kids__list">
       <div v-for="child in childStore.children" :key="child.id" class="kids__item">
         <router-link :to="`/settings/children/${child.id}`" class="kids__row">
           <UiAvatar :id="child.id" :name="child.name" :color-hex="child.avatar_color" :size="40" />

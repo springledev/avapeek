@@ -276,7 +276,7 @@ describe('child membership', () => {
       expect(
         wrapper.findAll('button.child-settings__member').some((b) => b.text().includes('Me')),
       ).toBe(false)
-      expect(buttonTexts(wrapper)).not.toContain('Leave this kid')
+      expect(buttonTexts(wrapper)).not.toContain("Leave Emma's album")
     })
 
     it('admin can set upload access of and remove members, and leave from their own row', async () => {
@@ -298,13 +298,13 @@ describe('child membership', () => {
       await wrapper.find('.member-sheet').find('button').trigger('click')
       await flushPromises()
       await openMember(wrapper, 'Me')
-      expect(sheetActions(wrapper)).toEqual(['Leave this kid'])
+      expect(sheetActions(wrapper)).toEqual(["Leave Emma's album"])
     })
 
     it('plain member gets a standalone Leave and no member rows', async () => {
       const { wrapper } = await mountView('member', [])
       expect(wrapper.findAll('button.child-settings__member')).toHaveLength(0)
-      expect(buttonTexts(wrapper)).toContain('Leave this kid')
+      expect(buttonTexts(wrapper)).toContain("Leave Emma's album")
       expect(wrapper.text()).not.toContain('No family members yet.')
     })
 
@@ -470,7 +470,7 @@ describe('child membership', () => {
       )
       const { wrapper } = await mountView('member', [])
 
-      await button(wrapper, 'Leave this kid').trigger('click')
+      await button(wrapper, "Leave Emma's album").trigger('click')
       await flushPromises()
 
       expect(confirm).toHaveBeenCalledTimes(1)
@@ -481,7 +481,7 @@ describe('child membership', () => {
       const { wrapper, router, childStore } = await mountView('member', [])
       vi.mocked(api.post).mockResolvedValue(ok({ message: 'ok' }))
 
-      await button(wrapper, 'Leave this kid').trigger('click')
+      await button(wrapper, "Leave Emma's album").trigger('click')
       await flushPromises()
 
       const message = vi.mocked(confirm).mock.calls[0]?.[0] ?? ''
@@ -498,7 +498,7 @@ describe('child membership', () => {
       const { wrapper, router } = await mountView('admin', [member(ME, 'Me', 'admin')])
       vi.mocked(api.post).mockRejectedValue(new Error('boom'))
 
-      await button(wrapper, 'Leave this kid').trigger('click')
+      await button(wrapper, "Leave Emma's album").trigger('click')
       await flushPromises()
 
       expect(toast.error).toHaveBeenCalled()
@@ -516,7 +516,7 @@ describe('child membership', () => {
       const plain = await mountView('member', [])
       const leave = plain.wrapper
         .findAllComponents(UiButton)
-        .find((b) => b.text() === 'Leave this kid')
+        .find((b) => b.text() === "Leave Emma's album")
       expect(leave).toBeDefined()
     })
 

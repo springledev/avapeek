@@ -54,6 +54,16 @@ The dev backend container overrides `DB_HOST`, `REDIS_HOST` and the S3 settings 
 
 Presigned photo URLs in dev point at `AWS_TEMPORARY_URL` (default `http://localhost:8000`), which proxies `/photos/*` to Garage. Run `php artisan storage:check` to verify storage.
 
+## Demo data
+
+```sh
+docker compose -f docker-compose.dev.yml exec backend php artisan avapeek:demo-seed            # a made-up family, 36 photos
+docker compose -f docker-compose.dev.yml exec backend php artisan avapeek:demo-seed --photos=500   # more, e.g. for feed performance
+docker compose -f docker-compose.dev.yml exec backend php artisan avapeek:demo-clear
+```
+
+Seeding only runs on an instance with no accounts; all accounts share one password, printed by the command. It covers an owner, an admin, a view-only member and a member waiting for the album key (they keep waiting until an admin approves them). `App\Services\Demo\DemoCrypto` writes the same formats as `frontend/src/crypto/`. It is the only server-side encryption code and only ever handles made-up content; `DemoDataTest` pins it to known answers from the browser code, so update that test if the formats change.
+
 ## Tests and checks
 
 Backend (from `backend/`, or via `docker compose exec backend`):

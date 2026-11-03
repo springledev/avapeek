@@ -6,6 +6,10 @@ services:
     restart: unless-stopped
     ports:
       - "88:80"
+    environment:
+      # Upstream trust is off unless set in the root .env (docs/configuration.md#client-ip).
+      UPSTREAM_TRUSTED_PROXIES: ${UPSTREAM_TRUSTED_PROXIES:-}
+      UPSTREAM_CLIENT_IP_HEADER: ${UPSTREAM_CLIENT_IP_HEADER:-X-Forwarded-For}
     volumes:
       - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -36,6 +40,8 @@ services:
       # The entrypoint writes the presigned-URL origin(s) here for Caddy's
       # Content-Security-Policy connect-src (external S3 providers).
       CSP_STORAGE_ORIGIN_FILE: /csp/storage-origin
+      # Only Caddy reaches this container and only Caddy may name the client IP.
+      BACKEND_TRUSTED_PROXIES: caddy
     volumes:
       - storage:/app/storage
       - csp:/csp
@@ -120,7 +126,7 @@ services:
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/"]
       interval: 30s
       timeout: 5s
       retries: 3

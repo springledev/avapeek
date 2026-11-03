@@ -18,7 +18,7 @@ Bug reports go through GitHub issues. Security issues go through [SECURITY.md](.
 
 - **No Content-Security-Policy outside the bundled Caddy.** The CSP and other security headers are sent by the bundled Caddy. If you put the app behind a different web server, you must set equivalent headers yourself. HSTS is also left to your TLS proxy.
 - **Some metadata is plaintext.** Child names, photo dates, sizes, MIME types, membership and comment timing are visible to whoever holds the database.
-- **Login throttle is per IP.** There is no per-account lockout for the password step, only for MFA codes.
+- **Login throttle is per client IP.** Devices sharing an address (a home network) share the limit, and there is no per-account lockout for the password step, only for MFA codes. Behind a proxy or tunnel it is per proxy until you set [`UPSTREAM_TRUSTED_PROXIES`](configuration.md#client-ip).
 - **Password strength is checked in the browser only,** because the server never sees the password.
 - **No password recovery and no audit log.** A forgotten password means unreadable data.
 - **Exports and cached images are plaintext on the device.** Exported files, the decrypted image cache and the share inbox are not encrypted at rest by Avapeek.

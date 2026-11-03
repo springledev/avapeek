@@ -8,6 +8,7 @@ use App\Models\EncryptionKey;
 use App\Models\Invite;
 use App\Models\User;
 use App\Services\AuthSessionService;
+use App\Services\Demo\DemoDataService;
 use App\Services\MfaTokenService;
 use App\Services\PasswordProofService;
 use App\Services\PushBatcher;
@@ -50,7 +51,7 @@ class AuthController extends Controller
         }
 
         $validated = $request->validate([
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users', DemoDataService::NOT_DEMO_EMAIL_RULE],
             'auth_hash' => ['required', 'string', 'regex:'.PasswordProofService::AUTH_HASH_REGEX],
             'display_name' => ['required', 'string', 'max:100', 'regex:/^[\pL\pN\s\-.,\']+$/u'],
             'master_key_salt' => ['required', 'string', 'max:64', 'regex:/^[a-f0-9]+$/i'],
@@ -233,7 +234,7 @@ class AuthController extends Controller
 
         $validated = $request->validate([
             'display_name' => ['sometimes', 'string', 'max:100', 'regex:/^[\pL\pN\s\-.,\']+$/u'],
-            'email' => ['sometimes', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'email' => ['sometimes', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id), DemoDataService::NOT_DEMO_EMAIL_RULE],
         ]);
 
         if (array_key_exists('display_name', $validated)) {

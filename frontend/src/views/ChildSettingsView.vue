@@ -9,10 +9,13 @@ import { toast } from 'vue-sonner'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiSheet from '@/components/ui/UiSheet.vue'
+import UiLoadError from '@/components/ui/UiLoadError.vue'
 import ChildExportSheet from '@/components/ChildExportSheet.vue'
 import PasswordConfirmSheet from '@/components/PasswordConfirmSheet.vue'
-import { syncEncryptionKeys } from '@/services/key-sync'
-import { apiErrorMessage, firstValidationError } from '@/lib/util'
+import AdminPendingAccessBanner from '@/components/AdminPendingAccessBanner.vue'
+import { invalidatePendingGrants } from '@/services/pending-grants'
+import { fetchPendingInvites as loadPendingInvites, invalidatePendingInvites } from '@/services/pending-invites'
+import { apiErrorMessage, copyInviteLink as copyInviteLinkToClipboard, firstValidationError } from '@/lib/util'
 import type { ChildMember, InviteResponse } from '@/types/child'
 
 const route = useRoute()
@@ -24,6 +27,8 @@ const currentUser = computed(() => authStore.user)
 
 const childId = computed(() => Number(route.params.id))
 const child = computed(() => childStore.children.find((c) => c.id === childId.value) || null)
+const albumLabel = computed(() => (child.value?.name ? `${child.value.name}'s album` : 'this album'))
+const deleteSheetTitle = computed(() => `Delete ${albumLabel.value}?`)
 
 const showInviteSheet = ref(false)
 const inviteRole = ref('member')
@@ -32,8 +37,24 @@ const inviteRelationship = ref('')
 const inviteResult = ref<InviteResponse | null>(null)
 
 const members = ref<ChildMember[]>([])
+const membersLoaded = ref(false)
+const membersFailed = ref(false)
+const isLoadingMembers = ref(false)
+
+const ROLE_ORDER: Record<string, number> = { owner: 0, admin: 1, member: 2 }
+
+const sortedMembers = computed(() =>
+  [...members.value].sort((a, b) => (ROLE_ORDER[a.role] ?? 3) - (ROLE_ORDER[b.role] ?? 3)),
+)
+
 const pendingChildInvites = ref<
-  Array<{ id: number; role: string; relationship: string | null; expires_at: string }>
+  Array<{
+    id: number
+    role: string
+    relationship: string | null
+    token: string
+    expires_at: string
+  }>
 >([])
 
 const currentUserRole = computed(() => {
@@ -105,13 +126,14 @@ async function confirmDelete() {
   if (!deleteNameMatches.value) return
   isDeleting.value = true
   deleteError.value = ''
+  const deletedAlbumLabel = albumLabel.value
   try {
     await childStore.deleteChild(childId.value)
     showDeleteSheet.value = false
-    toast.success('Kid deleted.')
+    toast.success(`Deleted ${deletedAlbumLabel}.`)
     router.push('/settings/children')
   } catch (err: unknown) {
-    deleteError.value = apiErrorMessage(err, 'Failed to delete kid.')
+    deleteError.value = apiErrorMessage(err, 'Failed to delete album.')
   } finally {
     isDeleting.value = false
   }
@@ -125,44 +147,26 @@ onMounted(async () => {
 })
 
 async function fetchMembers() {
+  isLoadingMembers.value = true
+  membersFailed.value = false
   try {
     const response = await api.get<{ data: { members: ChildMember[] } }>(
       `/children/${childId.value}`,
     )
     members.value = response.data.data.members || []
+    membersLoaded.value = true
   } catch (err) {
     console.error('Failed to fetch members:', err)
-  }
-}
-
-const ACCESS_SHARED_MSG = 'Access shared with your family.'
-const ACCESS_SHARE_FAILED_MSG = "Couldn't share access — try again"
-const isSharingAccess = ref(false)
-
-const hasAwaitingMembers = computed(
-  () => canManageMembers.value && members.value.some((m) => m.awaiting_key),
-)
-
-async function shareAccessNow() {
-  if (isSharingAccess.value) return
-  isSharingAccess.value = true
-  try {
-    const result = await syncEncryptionKeys()
-    if (result.failed > 0) {
-      toast.error(ACCESS_SHARE_FAILED_MSG)
-    } else {
-      toast.success(ACCESS_SHARED_MSG)
-    }
-    await fetchMembers()
+    membersFailed.value = true
   } finally {
-    isSharingAccess.value = false
+    isLoadingMembers.value = false
   }
 }
 
 async function fetchPendingInvites() {
   try {
-    const { data } = await api.get('/invites/pending')
-    pendingChildInvites.value = data.data.filter(
+    const invites = await loadPendingInvites()
+    pendingChildInvites.value = invites.filter(
       (i: { child_name: string }) => i.child_name === child.value?.name,
     )
   } catch {
@@ -190,9 +194,18 @@ async function createInvite() {
   }
 }
 
+async function copyPendingInvite(token: string) {
+  if (await copyInviteLinkToClipboard(token)) {
+    toast.success(MSG.inviteLinkCopied)
+  } else {
+    toast.error(MSG.inviteLinkCopyFailed)
+  }
+}
+
 async function revokeInvite(inviteId: number) {
   try {
     await api.delete(`/invites/${inviteId}`)
+    invalidatePendingInvites()
     pendingChildInvites.value = pendingChildInvites.value.filter((i) => i.id !== inviteId)
     toast.success(MSG.inviteRevoked)
   } catch (err: unknown) {
@@ -260,6 +273,7 @@ async function removeSelectedMember() {
 
   try {
     await api.delete(`/children/${childId.value}/members/${member.id}`)
+    invalidatePendingGrants()
     members.value = members.value.filter((m) => m.id !== member.id)
     closeMemberSheet()
     toast.success(`${member.display_name} has been removed.`)
@@ -349,17 +363,17 @@ async function confirmTransfer(password: string) {
 async function leaveFamily() {
   if (
     !confirm(
-      `Leave ${child.value?.name}? You will lose access to its photos in the app. Photos are not re-encrypted, so anything already saved to your devices stays readable there.`,
+      `Leave ${albumLabel.value}? You will lose access to its photos in the app. Photos are not re-encrypted, so anything already saved to your devices stays readable there.`,
     )
   ) {
     return
   }
 
-  const childName = child.value?.name
+  const leftAlbumLabel = albumLabel.value
   try {
     await childStore.leaveChild(childId.value)
     closeMemberSheet()
-    toast.success(childName ? `You've left ${childName}.` : "You've left.")
+    toast.success(`You've left ${leftAlbumLabel}.`)
     router.push('/settings/children')
   } catch (err: unknown) {
     toast.error(apiErrorMessage(err, "Couldn't leave — try again"))
@@ -419,7 +433,7 @@ function formatLastActive(dateStr: string | null): string {
         <div v-if="members.length > 0" class="child-settings__members">
           <component
             :is="memberHasActions(member) ? 'button' : 'div'"
-            v-for="member in members"
+            v-for="member in sortedMembers"
             :key="member.id"
             :type="memberHasActions(member) ? 'button' : undefined"
             class="child-settings__member"
@@ -451,30 +465,34 @@ function formatLastActive(dateStr: string | null): string {
               >Waiting for access</span
             >
           </component>
-          <UiButton
-            v-if="hasAwaitingMembers"
-            variant="subtle"
-            class="child-settings__share-access"
-            :disabled="isSharingAccess"
-            data-testid="share-access-now"
-            @click="shareAccessNow"
-          >
-            {{ isSharingAccess ? 'Sharing access…' : 'Share access now' }}
-          </UiButton>
+          <AdminPendingAccessBanner
+            v-if="canManageMembers"
+            :child-id="childId"
+            @changed="fetchMembers"
+          />
         </div>
-        <p v-else-if="canManageMembers" class="child-settings__empty">No family members yet.</p>
+        <UiLoadError
+          v-else-if="membersFailed"
+          compact
+          title="Couldn't load the member list"
+          :retrying="isLoadingMembers"
+          @retry="fetchMembers"
+        />
+        <p v-else-if="canManageMembers && membersLoaded" class="child-settings__empty">
+          No family members yet.
+        </p>
         <p v-else class="child-settings__empty">Only owners and admins can see the member list.</p>
       </div>
 
       <div v-if="currentUserRole && currentUserRole !== 'owner'" class="child-settings__section">
-        <h3 class="child-settings__section-title">Leave</h3>
+        <h3 class="child-settings__section-title">Leave album</h3>
         <p class="invite-sheet__hint child-settings__leave-hint">
-          You lose access to this kid's photos in the app. Photos are not re-encrypted.
+          You lose access to the photos in {{ albumLabel }} in the app. Photos are not re-encrypted.
         </p>
-        <UiButton variant="danger" @click="leaveFamily">Leave this kid</UiButton>
+        <UiButton variant="danger" @click="leaveFamily">Leave {{ albumLabel }}</UiButton>
       </div>
 
-      <div class="child-settings__section">
+      <div v-if="canManageMembers" class="child-settings__section">
         <h3 class="child-settings__section-title">Invite</h3>
         <UiButton variant="accent" @click="showInviteSheet = true"> Generate invite link </UiButton>
       </div>
@@ -488,7 +506,7 @@ function formatLastActive(dateStr: string | null): string {
 
       <div v-if="canDelete" class="child-settings__section">
         <h3 class="child-settings__section-title">Danger zone</h3>
-        <UiButton variant="danger" @click="openDeleteSheet">Delete this kid</UiButton>
+        <UiButton variant="danger" @click="openDeleteSheet">Delete {{ albumLabel }}</UiButton>
       </div>
 
       <div v-if="pendingChildInvites.length > 0" class="child-settings__section">
@@ -502,6 +520,14 @@ function formatLastActive(dateStr: string | null): string {
               <span class="child-settings__pending-expires"
                 >Expires {{ new Date(inv.expires_at).toLocaleDateString() }}</span
               >
+              <button
+                type="button"
+                class="child-settings__action"
+                data-testid="copy-invite-link"
+                @click="copyPendingInvite(inv.token)"
+              >
+                Copy link
+              </button>
               <button type="button" class="child-settings__revoke" @click="revokeInvite(inv.id)">
                 Revoke
               </button>
@@ -527,7 +553,7 @@ function formatLastActive(dateStr: string | null): string {
         ><span v-if="selectedMember.relationship"> · {{ selectedMember.relationship }}</span>
       </p>
       <template v-if="selectedIsSelf">
-        <UiButton variant="danger" @click="leaveFamily">Leave this kid</UiButton>
+        <UiButton variant="danger" @click="leaveFamily">Leave {{ albumLabel }}</UiButton>
       </template>
       <template v-else>
         <template v-if="canSetUpload">
@@ -617,11 +643,11 @@ function formatLastActive(dateStr: string | null): string {
     </form>
   </UiSheet>
 
-  <UiSheet :open="showDeleteSheet" title="Delete this kid?" @close="showDeleteSheet = false">
+  <UiSheet :open="showDeleteSheet" :title="deleteSheetTitle" @close="showDeleteSheet = false">
     <div v-if="deleteError" class="invite-sheet__error" role="alert">{{ deleteError }}</div>
     <form class="invite-sheet__form" @submit.prevent="confirmDelete">
       <p class="invite-sheet__hint">
-        This removes {{ child?.name }}'s album for everyone. Photos that are only in this album are
+        This removes {{ albumLabel }} for everyone. Photos that are only in this album are
         permanently deleted. Photos shared with other kids are kept for them. This cannot be undone.
       </p>
       <div class="invite-sheet__field">
@@ -769,10 +795,6 @@ function formatLastActive(dateStr: string | null): string {
   font-weight: 600;
 }
 
-.child-settings__share-access {
-  min-height: var(--target-min);
-}
-
 .child-settings__leave-hint {
   margin-bottom: var(--space-3);
 }
@@ -826,7 +848,9 @@ function formatLastActive(dateStr: string | null): string {
   margin: 0;
 }
 
+.child-settings__action,
 .child-settings__revoke {
+  min-height: 48px;
   border: 0;
   background: transparent;
   color: var(--color-danger);
@@ -839,6 +863,11 @@ function formatLastActive(dateStr: string | null): string {
   flex-shrink: 0;
 }
 
+.child-settings__action {
+  color: var(--color-ink);
+}
+
+.child-settings__action:hover,
 .child-settings__revoke:hover {
   background: var(--color-surface-2);
 }

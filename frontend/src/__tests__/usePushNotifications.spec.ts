@@ -112,6 +112,21 @@ describe('usePushNotifications', () => {
     expect(push.busy.value).toBe(false)
   })
 
+  it.each([
+    ['service-worker-timeout', /background service did not start/],
+    ['subscribe-timeout', /did not finish setting up notifications/],
+  ])('explains a stuck %s step and stops being busy', async (code, message) => {
+    mocked.subscribe.mockRejectedValue(new Error(code))
+    const push = usePushNotifications()
+    await push.init()
+
+    await push.enable()
+
+    expect(push.subscribed.value).toBe(false)
+    expect(push.error.value).toMatch(message)
+    expect(push.busy.value).toBe(false)
+  })
+
   it('shows a generic error when subscribing fails', async () => {
     mocked.subscribe.mockRejectedValue(new Error('boom'))
     const push = usePushNotifications()

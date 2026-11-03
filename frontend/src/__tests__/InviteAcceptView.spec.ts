@@ -109,7 +109,7 @@ describe('InviteAcceptView', () => {
   it('is honest that the album stays empty until an admin shares the key', async () => {
     const { wrapper } = await mountInvite(`/invite/${TOKEN}`, true)
 
-    expect(wrapper.text()).toContain('They appear once an album admin opens Avapeek')
+    expect(wrapper.text()).toContain('They appear once an album admin approves you')
     expect(wrapper.text()).toContain('until then the album will look empty')
     expect(wrapper.text()).toContain("We'll notify you")
   })

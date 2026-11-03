@@ -5,6 +5,9 @@ import { apiErrorMessage, safeErrorSummary } from '@/lib/util'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedStore } from '@/stores/feed'
 import { useRecentsStore } from '@/stores/recents'
+import { invalidatePendingGrants } from '@/services/pending-grants'
+import { invalidatePendingInvites } from '@/services/pending-invites'
+import { createSharedRequest } from '@/lib/shared-request'
 import { clearDecryptedCache } from '@/lib/cache/decrypted-cache'
 import {
   generateDEK,
@@ -20,6 +23,9 @@ export type AccessReminderResult =
   | { status: 'sent' }
   | { status: 'already_sent'; retryAfter: number | null }
   | { status: 'error'; message: string }
+
+/** A loaded child list is kept this long before `fetchChildren` asks the server again. */
+const CHILDREN_TTL_MS = 30_000
 
 export const useChildStore = defineStore('child', () => {
   const children = ref<Child[]>([])
@@ -153,13 +159,23 @@ export const useChildStore = defineStore('child', () => {
     }
   }
 
-  async function fetchChildren(): Promise<void> {
+  const childrenRequest = createSharedRequest(async () => {
+    const response = await api.get<{ data: Child[] }>('/children')
+    return response.data.data
+  }, CHILDREN_TTL_MS)
+
+  /**
+   * Loads the child list. Concurrent callers share one request, and a list loaded in the last
+   * few seconds is kept; pass `force` when something outside this store changed the list.
+   */
+  async function fetchChildren(options: { force?: boolean } = {}): Promise<void> {
+    if (!options.force && childrenLoaded.value && childrenRequest.isFresh()) return
+
     isLoading.value = true
     error.value = null
 
     try {
-      const response = await api.get<{ data: Child[] }>('/children')
-      children.value = response.data.data
+      children.value = await childrenRequest.get(options)
       childrenLoaded.value = true
     } catch (err) {
       console.error('Failed to fetch children:', err)
@@ -242,6 +258,7 @@ export const useChildStore = defineStore('child', () => {
       }
 
       children.value.push(child)
+      childrenRequest.invalidate()
 
       try {
         await createKeyForChild(child)
@@ -339,6 +356,7 @@ export const useChildStore = defineStore('child', () => {
       const existing = idx >= 0 ? children.value[idx] : undefined
       const updated: Child = existing ? { ...existing, ...response.data.data } : response.data.data
       if (idx >= 0) children.value[idx] = updated
+      childrenRequest.invalidate()
 
       return updated
     } catch (err) {
@@ -356,6 +374,8 @@ export const useChildStore = defineStore('child', () => {
 
     try {
       await api.delete(`/children/${childId}`)
+      childrenRequest.invalidate()
+      invalidatePendingGrants()
 
       const authStore = useAuthStore()
       authStore.setEncryptionKeys(authStore.encryptionKeys.filter((k) => k.child_id !== childId))
@@ -397,6 +417,7 @@ export const useChildStore = defineStore('child', () => {
         can_upload: canUpload,
       })
 
+      invalidatePendingInvites()
       return response.data.data
     } catch (err) {
       console.error('Failed to create invite:', err)
@@ -434,6 +455,7 @@ export const useChildStore = defineStore('child', () => {
       user_id: inviteeUserId,
       wrapped_dek: wrappedDek,
     })
+    invalidatePendingGrants()
   }
 
   /**
@@ -493,6 +515,7 @@ export const useChildStore = defineStore('child', () => {
       const idx = children.value.findIndex((c) => c.id === childId)
       const existing = idx >= 0 ? children.value[idx] : undefined
       if (idx >= 0 && existing) children.value[idx] = { ...existing, role: 'admin' }
+      childrenRequest.invalidate()
     } catch (err) {
       console.error('Failed to transfer ownership:', safeErrorSummary(err))
       error.value = apiErrorMessage(err, 'Failed to transfer ownership.')
@@ -513,6 +536,8 @@ export const useChildStore = defineStore('child', () => {
       throw err
     }
 
+    childrenRequest.invalidate()
+    invalidatePendingGrants()
     const authStore = useAuthStore()
     authStore.setEncryptionKeys(authStore.encryptionKeys.filter((k) => k.child_id !== childId))
     clearDEKCache()

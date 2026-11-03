@@ -20,6 +20,23 @@ const busy = ref(false)
 const error = ref<string | null>(null)
 let publicKey: string | null = null
 
+/**
+ * User-facing text for a failed enable. Each stuck step has its own wording so a
+ * report from a user says which one failed.
+ */
+function enableErrorMessage(err: unknown): string {
+  switch (err instanceof Error ? err.message : '') {
+    case 'permission-denied':
+      return 'Notifications are blocked. Allow them in your browser settings to turn this on.'
+    case 'service-worker-timeout':
+      return "Avapeek's background service did not start. Close Avapeek completely, open it again and try once more."
+    case 'subscribe-timeout':
+      return 'Your device did not finish setting up notifications. Please try again in a moment.'
+    default:
+      return 'Could not turn on notifications. Please try again.'
+  }
+}
+
 function readPermission(): PermissionState {
   return typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
 }
@@ -58,10 +75,7 @@ export function usePushNotifications() {
       subscribed.value = true
     } catch (err) {
       subscribed.value = false
-      error.value =
-        err instanceof Error && err.message === 'permission-denied'
-          ? 'Notifications are blocked. Allow them in your browser settings to turn this on.'
-          : 'Could not turn on notifications. Please try again.'
+      error.value = enableErrorMessage(err)
     } finally {
       permission.value = readPermission()
       busy.value = false

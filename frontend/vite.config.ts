@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
 import { defineConfig } from 'vite'
@@ -6,8 +7,16 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 import { VitePWA } from 'vite-plugin-pwa'
 import { isPwaEnabled, pwaManifest } from './pwa.config'
 
+// package.json is the single source of truth for the app version.
+const { version: appVersion } = JSON.parse(
+  readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf-8'),
+) as { version: string }
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   plugins: [
     vue(),
     ...(process.env.NODE_ENV !== 'production' ? [vueDevTools()] : []),
@@ -22,6 +31,9 @@ export default defineConfig({
             manifestFilename: 'manifest.webmanifest',
             injectRegister: false,
             manifest: pwaManifest,
+            // The icons are already matched by globPatterns below; including them
+            // again would list them twice in the precache manifest.
+            includeManifestIcons: false,
             injectManifest: {
               globPatterns: ['**/*.{js,css,html,woff2,png,ico}'],
               // Lazy HEIC decoder (3 MB) is not part of the shell; fetched on demand.

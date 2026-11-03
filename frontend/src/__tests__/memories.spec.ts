@@ -114,4 +114,16 @@ describe('OnThisDayCard', () => {
     expect(wrapper.findAll('.tile')).toHaveLength(2)
     expect(wrapper.text()).toContain('On this day')
   })
+
+  it('keeps every group in one scrolling strip of fixed-size, touch-sized tiles', async () => {
+    respond([photo(1, '2024-06-15T12:00:00'), photo(2, '2023-06-15T12:00:00')])
+    const wrapper = mount(OnThisDayCard, { global: { stubs: { PhotoTile: PhotoTileStub } } })
+    await flushPromises()
+    expect(wrapper.findAll('.otd__strip')).toHaveLength(1)
+    expect(wrapper.findAll('.otd__strip .otd__group')).toHaveLength(2)
+    expect(wrapper.findAll('.otd__year').map((y) => y.text())).toEqual([
+      expect.stringContaining('2024'),
+      expect.stringContaining('2023'),
+    ])
+  })
 })

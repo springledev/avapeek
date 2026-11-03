@@ -16,10 +16,7 @@ vi.mock('@/services/push', () => ({
 }))
 
 vi.mock('@/services/key-sync', () => ({
-  syncEncryptionKeys: vi.fn<() => Promise<{ granted: number; failed: number }>>(async () => ({
-    granted: 0,
-    failed: 0,
-  })),
+  syncEncryptionKeys: vi.fn<() => Promise<void>>(async () => undefined),
 }))
 
 vi.mock('@/services/api', () => ({
@@ -125,6 +122,7 @@ describe('App', () => {
       vi.mocked(api.get).mockResolvedValue({
         data: { data: Array.from({ length: pending }, (_, i) => ({ child_id: 1, user_id: i + 1 })) },
       })
+      usePendingGrants().reset()
       await usePendingGrants().refresh()
       vi.useFakeTimers()
       const wrapper = mount(App, {
@@ -144,6 +142,36 @@ describe('App', () => {
       await vi.advanceTimersByTimeAsync(60_000)
       expect(syncEncryptionKeys).toHaveBeenCalled()
       expect(api.get).toHaveBeenCalledWith('/encryption-keys/pending-grants')
+      wrapper.unmount()
+    })
+
+    it('updates who is waiting for admins when the app comes back into view', async () => {
+      const wrapper = await mountAs('owner', 0)
+      await vi.advanceTimersByTimeAsync(60_001)
+      document.dispatchEvent(new Event('visibilitychange'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(api.get).toHaveBeenCalledWith('/encryption-keys/pending-grants')
+      wrapper.unmount()
+    })
+
+    it('does not ask plain members who is waiting when the app comes back into view', async () => {
+      const wrapper = await mountAs('member', 0)
+      await vi.advanceTimersByTimeAsync(60_001)
+      document.dispatchEvent(new Event('visibilitychange'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(syncEncryptionKeys).toHaveBeenCalled()
+      expect(api.get).not.toHaveBeenCalled()
+      wrapper.unmount()
+    })
+
+    it('forgets who is waiting on sign-out', async () => {
+      const wrapper = await mountAs('owner', 1)
+      useAuthStore().user = { id: 1 } as User
+      await vi.advanceTimersByTimeAsync(0)
+      expect(usePendingGrants().pendingCount.value).toBe(1)
+      useAuthStore().user = null
+      await vi.advanceTimersByTimeAsync(0)
+      expect(usePendingGrants().pendingCount.value).toBe(0)
       wrapper.unmount()
     })
 

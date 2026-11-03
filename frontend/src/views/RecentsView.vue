@@ -14,6 +14,7 @@ import { apiErrorMessage } from '@/lib/util'
 import RecentUploadGroup from '@/components/RecentUploadGroup.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
+import UiLoadError from '@/components/ui/UiLoadError.vue'
 import { toast } from 'vue-sonner'
 import type { Photo } from '@/types/photo'
 
@@ -232,6 +233,12 @@ onMounted(async () => {
       <div v-for="i in 3" :key="i" class="recents__skeleton" />
     </div>
 
+    <UiLoadError
+      v-else-if="recentsStore.loadFailed && recentsStore.photos.length === 0"
+      title="Couldn't load recent uploads"
+      @retry="recentsStore.fetchRecents()"
+    />
+
     <UiEmptyState
       v-else-if="recentsStore.photos.length === 0"
       title="No recent uploads"
@@ -243,6 +250,14 @@ onMounted(async () => {
     </UiEmptyState>
 
     <div v-else class="recents__groups">
+      <UiLoadError
+        v-if="recentsStore.loadFailed"
+        compact
+        title="Couldn't refresh recent uploads"
+        message="Showing what was loaded earlier."
+        :retrying="recentsStore.isLoading"
+        @retry="recentsStore.fetchRecents()"
+      />
       <RecentUploadGroup
         v-for="group in grouped"
         :key="group.key"

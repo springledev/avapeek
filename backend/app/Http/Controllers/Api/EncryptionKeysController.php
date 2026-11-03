@@ -125,6 +125,9 @@ class EncryptionKeysController extends Controller
     /**
      * Members who joined a child the requester administers but can't see its
      * photos yet because nobody has shared the child's DEK with them.
+     *
+     * The client shows these to the admin, who approves or declines each one.
+     * The display name is what the server says it is, so it isn't proof of identity.
      */
     public function pendingGrants(Request $request): JsonResponse
     {
@@ -147,10 +150,11 @@ class EncryptionKeysController extends Controller
             ->where('child_users.user_id', '!=', $user->id)
             ->whereNotNull('users.encrypted_private_key')
             ->whereNull('encryption_keys.id')
-            ->get(['child_users.child_id', 'child_users.user_id', 'users.public_key'])
+            ->get(['child_users.child_id', 'child_users.user_id', 'users.display_name', 'users.public_key'])
             ->map(fn (object $row): array => [
                 'child_id' => (int) $row->child_id,
                 'user_id' => (int) $row->user_id,
+                'display_name' => $row->display_name,
                 'public_key' => $row->public_key,
             ]);
 
