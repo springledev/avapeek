@@ -199,6 +199,51 @@ describe('PhotoViewer', () => {
     wrapper.unmount()
   })
 
+  describe('info details', () => {
+    async function openInfo(photo: Photo) {
+      vi.mocked(api.get).mockResolvedValue(ok(makeListResponse([])))
+      const view = mountViewer(photo)
+      await flushPromises()
+      await view.wrapper.find('[aria-label="More actions"]').trigger('click')
+      const info = view.wrapper.findAll('[role="menuitem"]').find((el) => el.text() === 'Info')
+      await info?.trigger('click')
+      return view.wrapper
+    }
+
+    it('shows date taken, uploader and decrypted filename', async () => {
+      vi.mocked(decryptBlob).mockResolvedValue(encoded('beach.jpg'))
+      const wrapper = await openInfo(
+        makePhoto({
+          taken_at: '2026-07-04T12:00:00.000Z',
+          uploader_name: 'Ana',
+          name_encrypted: btoa('cipher'),
+          iv_name: HEX_IV,
+        }),
+      )
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-test="info-filename"]').text()).toBe('beach.jpg')
+      })
+      expect(wrapper.find('[data-test="info-taken"]').text()).toContain('2026')
+      expect(wrapper.find('[data-test="info-uploader"]').text()).toBe('Ana')
+      wrapper.unmount()
+    })
+
+    it('falls back to Unknown for older photos without these values', async () => {
+      const wrapper = await openInfo(makePhoto())
+      for (const key of ['taken', 'uploader', 'filename']) {
+        expect(wrapper.find(`[data-test="info-${key}"]`).text()).toBe('Unknown')
+      }
+      wrapper.unmount()
+    })
+
+    it('falls back to Unknown when the filename cannot be decrypted', async () => {
+      vi.mocked(decryptBlob).mockRejectedValue(new Error('bad key'))
+      const wrapper = await openInfo(makePhoto({ name_encrypted: btoa('x'), iv_name: HEX_IV }))
+      expect(wrapper.find('[data-test="info-filename"]').text()).toBe('Unknown')
+      wrapper.unmount()
+    })
+  })
+
   it('condensed action row exposes a MessageSquare button with the count and a ⋮ menu', async () => {
     await mockThreeComments()
     const { wrapper } = mountViewer(makePhoto())

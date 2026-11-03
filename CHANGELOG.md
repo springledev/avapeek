@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+
+- The photo Info panel shows the date taken, who uploaded the photo and its original filename
+
 ### Changed
 
 - Removed the non-functional favorite heart from the photo viewer

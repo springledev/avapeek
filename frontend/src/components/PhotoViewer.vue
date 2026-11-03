@@ -19,7 +19,7 @@ import {
   MoreVertical,
 } from '@lucide/vue'
 import { fetchOriginal, fetchThumbnail, getPEKForPhoto, cleanupComponent } from '@/services/storage'
-import { prepareOriginalDownload } from '@/services/export'
+import { prepareOriginalDownload, decryptPhotoName } from '@/services/export'
 import { saveBlob } from '@/lib/export/sink'
 import { toast } from 'vue-sonner'
 import { useMotionPolicy } from '@/composables/useMotionPolicy'
@@ -143,6 +143,14 @@ const canManageTags = computed(() =>
 )
 
 const displayTags = computed(() => dedupeTagsByName(props.photo.tags ?? []))
+const fileName = ref<string | null>(null)
+const takenAtLabel = computed(() => {
+  const iso = props.photo.taken_at
+  if (!iso) return null
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString(undefined, { dateStyle: 'long' })
+})
+const uploaderLabel = computed(() => props.photo.uploader_name || null)
 const visibleChildren = computed(() => props.photo.children.slice(0, 3))
 
 const neighborPhotos = computed(() =>
@@ -567,6 +575,7 @@ async function warmPeeks() {
 
 async function loadImage() {
   const token = ++loadToken
+  fileName.value = null
   const slidingIn = gesturePhase.value === 'slide' && dismissDir.value === 0
   const promoted = slidingIn ? heldPeekUrl : null
   heldPeekUrl = null
@@ -611,6 +620,9 @@ async function loadImage() {
       return
     }
     currentPek.value = pek
+    void decryptPhotoName(props.photo, pek).then((name) => {
+      if (token === loadToken) fileName.value = name
+    })
     void commentsStore.fetchComments(props.photo.id, pek)
     void commentsStore.prefetchComments(neighborPhotos.value, props.photo.id)
     void warmPeeks()
@@ -1037,6 +1049,18 @@ onBeforeUnmount(() => {
 
     <UiSheet :open="showInfo" title="Photo info" elevated @close="showInfo = false">
       <div class="info-sheet">
+        <section class="info-sheet__section">
+          <h3 class="info-sheet__label">Details</h3>
+          <dl class="info-sheet__details">
+            <dt>Date taken</dt>
+            <dd data-test="info-taken">{{ takenAtLabel ?? 'Unknown' }}</dd>
+            <dt>Uploaded by</dt>
+            <dd data-test="info-uploader">{{ uploaderLabel ?? 'Unknown' }}</dd>
+            <dt>Filename</dt>
+            <dd data-test="info-filename">{{ fileName ?? 'Unknown' }}</dd>
+          </dl>
+        </section>
+
         <section v-if="visibleChildren.length > 0" class="info-sheet__section">
           <h3 class="info-sheet__label">In this photo</h3>
           <ul class="info-sheet__kids">
@@ -1721,6 +1745,24 @@ onBeforeUnmount(() => {
 .info-sheet__tag {
   max-width: 100%;
   display: flex;
+}
+
+.info-sheet__details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.info-sheet__details dt {
+  color: var(--color-text-muted, inherit);
+}
+
+.info-sheet__details dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .info-sheet__empty {
