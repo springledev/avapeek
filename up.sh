@@ -151,6 +151,20 @@ replace_if_equals() {
 
 gen_hex() { openssl rand -hex "$1"; }
 
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+
+# gen_vapid_keys: sets VAPID_PUB and VAPID_PRIV to a Web Push (VAPID) key pair in
+# the format `php artisan avapeek:push-keys` prints: a P-256 key, the public key as
+# the base64url 65-byte uncompressed point, the private key as the 32-byte scalar.
+gen_vapid_keys() {
+    local pem
+    pem="$(openssl ecparam -name prime256v1 -genkey -noout 2>/dev/null)" || return 1
+    VAPID_PUB="$(printf '%s\n' "${pem}" | openssl ec -pubout -outform DER 2>/dev/null | tail -c 65 | b64url)"
+    # SEC1 DER: 30 77 02 01 01 04 20 <32-byte private scalar> ...
+    VAPID_PRIV="$(printf '%s\n' "${pem}" | openssl ec -outform DER 2>/dev/null | dd bs=1 skip=7 count=32 2>/dev/null | b64url)"
+    [ "${#VAPID_PUB}" -eq 87 ] && [ "${#VAPID_PRIV}" -eq 43 ]
+}
+
 prompt() {
     # prompt "Question" "default" -> echoes answer
     local answer=""
@@ -247,6 +261,22 @@ prepare_env() {
     set_var "${BACKEND_ENV}" DB_USERNAME "$(get_var "${ROOT_ENV}" DB_USERNAME)"
     set_if_empty "${BACKEND_ENV}" DB_PASSWORD "$(get_var "${ROOT_ENV}" DB_PASSWORD)" || true
     set_if_empty "${BACKEND_ENV}" REDIS_PASSWORD "$(get_var "${ROOT_ENV}" REDIS_PASSWORD)" || true
+
+    # Web Push keys. Only when both are empty: an existing key is never replaced
+    # (devices' subscriptions are bound to it) or paired with a new one.
+    # Set PUSH_ENABLED=false in backend/.env to keep push off.
+    local push_enabled
+    push_enabled="$(get_var "${BACKEND_ENV}" PUSH_ENABLED | tr '[:upper:]' '[:lower:]')"
+    if ! case "${push_enabled}" in false | 0 | off | no) true ;; *) false ;; esac \
+        && [ -z "$(get_var "${BACKEND_ENV}" VAPID_PUBLIC_KEY)" ] \
+        && [ -z "$(get_var "${BACKEND_ENV}" VAPID_PRIVATE_KEY)" ]; then
+        if gen_vapid_keys; then
+            set_var "${BACKEND_ENV}" VAPID_PUBLIC_KEY "${VAPID_PUB}"
+            set_var "${BACKEND_ENV}" VAPID_PRIVATE_KEY "${VAPID_PRIV}"
+        else
+            echo "warning: could not generate push notification keys; push stays off. See docs/configuration.md."
+        fi
+    fi
 
     if [ -n "${app_url}" ]; then
         set_var "${BACKEND_ENV}" APP_URL "${app_url}"

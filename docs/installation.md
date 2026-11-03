@@ -34,7 +34,7 @@ cd avapeek
 `up.sh` will:
 
 1. check for Docker, Compose >= 2.20 and `openssl`;
-2. create `.env` and `backend/.env` from the `*.env.production.example` files and generate every secret (`APP_KEY`, database and Redis passwords, and for Garage the RPC secret, admin token and S3 key pair). Existing values are **never** overwritten; only empty or placeholder values are filled;
+2. create `.env` and `backend/.env` from the `*.env.production.example` files and generate every secret (`APP_KEY`, database and Redis passwords, the Web Push key pair, and for Garage the RPC secret, admin token and S3 key pair). Existing values are **never** overwritten; only empty or placeholder values are filled;
 3. ask for your public domain and storage mode (or use flags, below);
 4. pull the images, start the stack with `docker compose up -d`, wait for the backend's `/up` health endpoint, and run `php artisan migrate --force`;
 5. run `php artisan storage:check` and print the URL.

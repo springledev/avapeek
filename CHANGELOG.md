@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+
+- `up.sh` generates the Web Push (VAPID) key pair when none is set, so push notifications work on new installs without a manual step. Existing keys are never replaced, and `PUSH_ENABLED=false` keeps push off
+
 ## [0.1.0] - 2026-11-02
 
 First public release.
