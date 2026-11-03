@@ -103,9 +103,12 @@ describe('services/push', () => {
       value: { ready: new Promise(() => {}) },
     })
 
-    const result = expect(subscribe('AQID')).rejects.toThrow('service-worker-timeout')
+    const outcome = subscribe('AQID').then(
+      () => null,
+      (error: unknown) => error,
+    )
     await vi.advanceTimersByTimeAsync(PUSH_STEP_TIMEOUT_MS)
-    await result
+    expect((await outcome) as Error).toHaveProperty('message', 'service-worker-timeout')
 
     expect(mocked.post).not.toHaveBeenCalled()
     expect(isPushEnabledOnDevice()).toBe(false)
@@ -117,9 +120,12 @@ describe('services/push', () => {
     const { pushManager } = installBrowser(null)
     pushManager.subscribe.mockReturnValue(new Promise(() => {}))
 
-    const result = expect(subscribe('AQID')).rejects.toThrow('subscribe-timeout')
+    const outcome = subscribe('AQID').then(
+      () => null,
+      (error: unknown) => error,
+    )
     await vi.advanceTimersByTimeAsync(PUSH_STEP_TIMEOUT_MS)
-    await result
+    expect((await outcome) as Error).toHaveProperty('message', 'subscribe-timeout')
 
     expect(mocked.post).not.toHaveBeenCalled()
     expect(isPushEnabledOnDevice()).toBe(false)
