@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+
+- Documentation for letting your family reach a self-hosted install from outside your home: Cloudflare Tunnel, Cloudflare Access, a VPN or your own reverse proxy, with the trade-offs of each
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed

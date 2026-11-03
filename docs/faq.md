@@ -26,9 +26,13 @@ Only the first account can register freely. Others need an invite link created b
 - The frontend calls `/api` on the same origin. Your reverse proxy must forward `/api/*` (and `/photos/*` for Garage) to the stack, not just `/`.
 - Passkeys need HTTPS (or `localhost`) and `FRONTEND_URL` to match the origin.
 
+## How do my relatives reach it from outside my home?
+
+Use a Cloudflare Tunnel for most home installs, optionally with Cloudflare Access in front of it, or a VPN if your whole family will really use one. Do not forward port 88 on your router: the app needs HTTPS. See [Reaching Avapeek from outside your home](installation.md#reaching-avapeek-from-outside-your-home).
+
 ## Login or encryption fails on a remote server over HTTP
 
-Browsers expose the Web Crypto API only in secure contexts (HTTPS or `localhost`). Put TLS in front, see [TLS and reverse proxies](installation.md#tls-and-reverse-proxies).
+Browsers expose the Web Crypto API only in secure contexts (HTTPS or `localhost`). Put TLS in front, see [Reaching Avapeek from outside your home](installation.md#reaching-avapeek-from-outside-your-home).
 
 ## Photos upload but never display (Garage)
 

@@ -93,6 +93,78 @@ docker compose -f docker-compose.prod.yml -f docker-compose.release.yml exec bac
 
 `--no-build` matters: it tells Compose to use the pulled images rather than building the `build:` sections. The backend container runs `config:cache` and `route:cache` on every start in production, so after editing `backend/.env` just recreate it with `up -d`.
 
+## Reaching Avapeek from outside your home
+
+Your family needs to reach the app from their own phones, and the app only works over HTTPS (or on `localhost`): browsers do not offer the encryption API, the service worker or push notifications on plain HTTP. Forwarding port 88 on your router is therefore not an option.
+
+| Option | Best for | What you need | Trade-off |
+| --- | --- | --- | --- |
+| [Cloudflare Tunnel](#cloudflare-tunnel) (recommended) | Most home installs, including behind CGNAT | A free Cloudflare account and a domain on Cloudflare | Cloudflare sits in the middle of the connection |
+| [Tunnel plus Cloudflare Access](#adding-cloudflare-access) | Keeping everyone but your family away from the app altogether | The same, plus a list of your family's email addresses | A second sign-in for your family, and more to maintain |
+| [A VPN](#a-vpn-such-as-tailscale-or-wireguard) | A family that will all install and keep using a VPN app (rare) | A VPN on every device | Relatives cannot open an invite link until the VPN is set up |
+| [Your own reverse proxy](#tls-and-reverse-proxies) | A VPS, or a home connection with a public IP | An open port 443 and a certificate | You expose your server's IP address and keep the proxy patched |
+
+Whichever you choose, your photos, comments and tag names stay encrypted, because the browser encrypts them before they leave the device. Nobody between your family and your server can read them in transit.
+
+### Cloudflare Tunnel
+
+A small `cloudflared` container makes an outbound connection to Cloudflare, so you open no ports and your home IP address stays hidden. Cloudflare provides the HTTPS certificate.
+
+1. Add your domain to Cloudflare, then go to **Networking > Tunnels** in the Cloudflare dashboard and create a tunnel. Choose Docker and copy the tunnel token. Keep it secret: anyone holding it can serve traffic for your tunnel.
+2. Run `cloudflared` on the Avapeek network. The network is named after the folder you cloned into, so check it with `docker network ls` (it is `avapeek_app-network` by default):
+
+   ```sh
+   docker run -d --name cloudflared --restart unless-stopped \
+     --network avapeek_app-network \
+     cloudflare/cloudflared:latest tunnel --no-autoupdate run --token <TUNNEL_TOKEN>
+   ```
+
+3. Add a **Published application** route to the tunnel: your hostname (for example `photos.example.com`) with the service URL `http://caddy:80`.
+4. Tell Avapeek its public address. This updates `APP_URL` and the related settings, and restarts the stack:
+
+   ```sh
+   ./up.sh --url https://photos.example.com
+   ```
+
+5. Open `https://photos.example.com` from a phone on mobile data, and upload a photo to check the whole route works.
+
+Things worth knowing:
+
+- **What Cloudflare can see.** Cloudflare terminates HTTPS, so it handles the same traffic your server does: ciphertext, but also account emails, child names and other plaintext metadata, your one-way auth hash and session tokens. It also delivers the app's code to the browser, so like the operator of the server it would be in a position to alter it. If that does not fit your [threat model](security.md), use a VPN or your own reverse proxy.
+- **Upload size.** Cloudflare's Free and Pro plans accept requests up to 100 MB, above Avapeek's 64 MB limit, so photos are not affected.
+- **Features that rewrite pages.** Turn off Cloudflare features that inject scripts, such as Rocket Loader. Avapeek's Content-Security-Policy blocks them and they can break the app.
+- **Availability.** If Cloudflare or your home connection is down, so is the app. Keep your [backups](#backups) outside your home.
+
+### Adding Cloudflare Access
+
+[Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/) puts a login page in front of a tunnel, so requests from anyone not on your list never reach your server. Avapeek's login, invite and API endpoints are no longer exposed to the internet at large.
+
+Create a self-hosted application for your hostname under **Zero Trust > Access**, with an Allow policy listing your family's email addresses and one-time PIN by email as the login method. Check [Cloudflare's plans](https://www.cloudflare.com/plans/) for the current limit on free users.
+
+Decide with your family in mind, because it adds friction:
+
+- **Everyone signs in twice:** once to Access, then with their Avapeek password. Access does not replace the Avapeek password, which is what unlocks the photos.
+- **Invite links need an extra step.** Add a relative's email to the policy before sending them the link, or the link stops at the Access page.
+- **Sessions expire.** When an Access session ends, the installed app can no longer reach the API and shows connection errors until the person signs in to Access again, which can be awkward in an app installed to the home screen. Choose a long session duration.
+- **Do not allow "everyone with a valid email".** A policy that only requires the one-time PIN login method lets anyone who has an email address in.
+
+For most families Tunnel alone is enough, since Avapeek already requires an invite to register. Consider Access if you would rather not have the login page reachable by the public.
+
+### A VPN, such as Tailscale or WireGuard
+
+If everyone in your family will realistically install a VPN app on every device and leave it on, a VPN is the most private option: nothing is exposed to the internet and no third party terminates HTTPS. In practice that is rarely true of grandparents, and an invite link does nothing until the relative is on the VPN.
+
+The app still needs HTTPS, even inside a VPN. With [Tailscale](https://tailscale.com/docs/reference/tailscale-cli/serve), `tailscale serve` provides a certificate for your machine's `ts.net` name:
+
+```sh
+tailscale serve --bg 88
+./up.sh --url https://<machine>.<tailnet>.ts.net
+```
+
+With plain WireGuard, run a [reverse proxy](#tls-and-reverse-proxies) with a certificate for a name that resolves to the server's VPN address, for example one obtained through a DNS challenge.
+
+Push notifications keep working when a device is off the VPN, because they arrive through the browser vendor's push service. Opening the app from one still needs the VPN.
+
 ## TLS and reverse proxies
 
 The bundled Caddy (`docker/caddy/Caddyfile`) listens on **plain HTTP** inside the stack and is published on host port **88**. It routes:

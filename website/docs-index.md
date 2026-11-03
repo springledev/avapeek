@@ -15,7 +15,7 @@ The self-hosting guides are the same Markdown files as the `docs/` folder in the
 
 | Guide | Contents |
 | --- | --- |
-| [Installation](./installation) | Requirements, `up.sh`, manual install, TLS, upgrades, backups, uninstall |
+| [Installation](./installation) | Requirements, `up.sh`, manual install, external access, TLS, upgrades, backups, uninstall |
 | [Configuration](./configuration) | Every environment variable |
 | [Storage](./storage) | Garage, AWS S3, Backblaze B2, Cloudflare R2, CORS, quota |
 | [FAQ and troubleshooting](./faq) | Common problems |
