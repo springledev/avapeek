@@ -1,15 +1,10 @@
 import { toast } from 'vue-sonner'
 import { api } from '@/services/api'
+import { fetchPendingGrants } from '@/services/pending-grants'
 import { useAuthStore } from '@/stores/auth'
 import { useChildStore } from '@/stores/child'
 import { rewrapSharedDEK, unwrapPrivateKey } from '@/crypto/keychain'
 import type { EncryptionKey } from '@/types/auth'
-
-interface PendingGrant {
-  child_id: number
-  user_id: number
-  public_key: string
-}
 
 /** Outcome of one sync: grants shared with members, and grants that failed. */
 export interface KeySyncResult {
@@ -94,11 +89,11 @@ async function acceptSharedKeys(): Promise<void> {
 
 async function shareKeysWithNewMembers(): Promise<KeySyncResult> {
   const result: KeySyncResult = { granted: 0, failed: 0 }
-  const { data } = await api.get<{ data: PendingGrant[] }>('/encryption-keys/pending-grants')
-  if (data.data.length === 0) return result
+  const grants = await fetchPendingGrants()
+  if (grants.length === 0) return result
 
   const childStore = useChildStore()
-  for (const grant of data.data) {
+  for (const grant of grants) {
     try {
       await childStore.grantAccess(grant.child_id, grant.user_id, grant.public_key)
       result.granted++

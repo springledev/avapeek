@@ -5,6 +5,7 @@ import { apiErrorMessage, safeErrorSummary } from '@/lib/util'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedStore } from '@/stores/feed'
 import { useRecentsStore } from '@/stores/recents'
+import { invalidatePendingGrants } from '@/services/pending-grants'
 import { clearDecryptedCache } from '@/lib/cache/decrypted-cache'
 import {
   generateDEK,
@@ -434,6 +435,7 @@ export const useChildStore = defineStore('child', () => {
       user_id: inviteeUserId,
       wrapped_dek: wrappedDek,
     })
+    invalidatePendingGrants()
   }
 
   /**

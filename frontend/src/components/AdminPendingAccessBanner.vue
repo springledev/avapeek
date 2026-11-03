@@ -4,6 +4,7 @@ import { useChildStore } from '@/stores/child'
 import { useAuthStore } from '@/stores/auth'
 import { usePendingGrants } from '@/composables/usePendingGrants'
 import { syncEncryptionKeys } from '@/services/key-sync'
+import { hasFreshPendingGrants, invalidatePendingGrants } from '@/services/pending-grants'
 import UiButton from '@/components/ui/UiButton.vue'
 
 const childStore = useChildStore()
@@ -32,6 +33,7 @@ async function shareNow() {
   if (isSharing.value) return
   isSharing.value = true
   try {
+    invalidatePendingGrants() // a person asked: look again rather than reuse a recent list
     await syncAndRefresh()
   } finally {
     isSharing.value = false
@@ -42,7 +44,9 @@ let started = false
 async function start() {
   if (started || !administersAlbum.value || !authStore.kek) return
   started = true
-  await syncAndRefresh()
+  // Moving between pages remounts this banner; only look again when the list has gone stale.
+  if (hasFreshPendingGrants()) await refresh()
+  else await syncAndRefresh()
 }
 
 onMounted(start)
