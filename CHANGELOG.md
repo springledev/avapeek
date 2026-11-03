@@ -26,6 +26,11 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 ### Changed
 
 - Leaving or deleting a child now refers to their album, such as "Leave Emma's album", across the settings page and its confirmations
+- The photo Info panel shows the date taken, who uploaded the photo and its original filename
+
+### Changed
+
+- Removed the non-functional favorite heart from the photo viewer
 
 ## [0.1.1] - 2026-11-02
 
