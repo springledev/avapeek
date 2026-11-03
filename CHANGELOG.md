@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Fixed
+
+- View-only members no longer see the invite link button in kid settings, which they could not use
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed

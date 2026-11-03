@@ -474,7 +474,7 @@ function formatLastActive(dateStr: string | null): string {
         <UiButton variant="danger" @click="leaveFamily">Leave this kid</UiButton>
       </div>
 
-      <div class="child-settings__section">
+      <div v-if="canManageMembers" class="child-settings__section">
         <h3 class="child-settings__section-title">Invite</h3>
         <UiButton variant="accent" @click="showInviteSheet = true"> Generate invite link </UiButton>
       </div>

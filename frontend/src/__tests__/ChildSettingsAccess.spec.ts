@@ -146,3 +146,19 @@ describe('ChildSettingsView waiting for access', () => {
     expect(toast.success).not.toHaveBeenCalled()
   })
 })
+
+describe('ChildSettingsView invite control', () => {
+  beforeEach(() => {
+    members = [member(3, 'Max', false)]
+  })
+
+  it.each(['owner', 'admin'])('shows Generate invite link for %s', async (role) => {
+    const wrapper = await mountView(role)
+    expect(wrapper.text()).toContain('Generate invite link')
+  })
+
+  it('hides Generate invite link for plain members', async () => {
+    const wrapper = await mountView('member')
+    expect(wrapper.text()).not.toContain('Generate invite link')
+  })
+})
