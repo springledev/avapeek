@@ -68,4 +68,24 @@ describe('AppShell', () => {
     await flushPromises()
     expect(fetchChildren).toHaveBeenCalledTimes(1)
   })
+
+  it('does not fetch the feed again when the feed view already has or is loading it', async () => {
+    for (const state of [{ isLoading: true }, { photos: [{ id: 1 }] }]) {
+      setActivePinia(createPinia())
+      const router = makeRouter()
+      await router.push('/feed')
+      await router.isReady()
+      useAuthStore().user = { id: 3 } as User
+      const feed = useFeedStore()
+      Object.assign(feed, state)
+      vi.spyOn(useChildStore(), 'fetchChildren').mockResolvedValue()
+      vi.spyOn(useRecentsStore(), 'fetchUnseenCount').mockResolvedValue()
+      const fetchPhotos = vi.spyOn(feed, 'fetchPhotos').mockResolvedValue()
+
+      mount(AppShell, { global: { plugins: [router], stubs: { AppTabBar: true } } })
+      await flushPromises()
+
+      expect(fetchPhotos).not.toHaveBeenCalled()
+    }
+  })
 })

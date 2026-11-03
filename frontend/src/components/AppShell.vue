@@ -38,7 +38,8 @@ watch(
       return
     }
     void recentsStore.fetchUnseenCount()
-    void feedStore.fetchPhotos(true, true)
+    // The feed view may already be loading or have loaded the first page while kids were fetched.
+    if (feedStore.photos.length === 0 && !feedStore.isLoading) void feedStore.fetchPhotos(true, true)
   },
   { immediate: true },
 )
