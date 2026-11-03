@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Fixed
+
+- The frontend container healthcheck now uses `127.0.0.1` instead of `localhost`, so installs on IPv6-capable hosts no longer report the frontend as unhealthy
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed
