@@ -1,8 +1,27 @@
+# Who may tell Caddy the real client address (docs/configuration.md#client-ip).
+# With UPSTREAM_TRUSTED_PROXIES empty, the default, nobody may: forwarding headers
+# are ignored and the client is whoever connected. The strict option reads a chain
+# from the right, because the left end of X-Forwarded-For is client-controlled when
+# the upstream proxy appends to it.
+{
+    servers {
+        trusted_proxies static {$UPSTREAM_TRUSTED_PROXIES}
+        trusted_proxies_strict
+        client_ip_headers {$UPSTREAM_CLIENT_IP_HEADER:X-Forwarded-For}
+    }
+}
+
 :80 {
     # API routes -> FrankenPHP/Laravel backend
     handle /api/* {
         reverse_proxy backend:80 {
             header_up X-Forwarded-Proto {scheme}
+            # The backend trusts this hop, so it gets one value Caddy resolved
+            # itself and no other client-address header.
+            header_up X-Forwarded-For {client_ip}
+            header_up -CF-Connecting-IP
+            header_up -X-Real-IP
+            header_up -Forwarded
         }
     }
 

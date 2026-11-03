@@ -21,6 +21,31 @@ Some values appear in both and must match. After editing `backend/.env`, recreat
 | `S3_SECRET_ACCESS_KEY` | generated | with `garage` | 64 hex chars. Must equal `AWS_SECRET_ACCESS_KEY` |
 | `GARAGE_ADMIN_TOKEN` | falls back to `GARAGE_RPC_SECRET` | no | Garage admin API token |
 | `AVAPEEK_VERSION` | `latest` | no | Image tag pulled by the release compose file (`./up.sh` without `--build`). Not in the example file by default (commented) |
+| `UPSTREAM_TRUSTED_PROXIES` | empty (off) | behind a proxy or tunnel | Space-separated IPs or CIDR ranges allowed to tell Caddy the client address. See [Client IP](#client-ip) |
+| `UPSTREAM_CLIENT_IP_HEADER` | `X-Forwarded-For` | no | Header read from those sources. `CF-Connecting-IP` for Cloudflare Tunnel. See [Client IP](#client-ip) |
+
+## Client IP
+
+Rate limits on login, registration, pre-login, MFA and invite previews are per client IP. Caddy works out that address and passes it to the backend, which trusts only Caddy (`BACKEND_TRUSTED_PROXIES`, set to `caddy` by `docker-compose.prod.yml`; leave it alone).
+
+**By default nothing upstream is trusted.** Caddy ignores `X-Forwarded-For`, `CF-Connecting-IP` and similar headers and uses the address that connected to it, so clients cannot forge another IP. If a proxy or tunnel connects to Caddy, that address is the proxy's, and all clients share one set of limits until you opt in:
+
+| Deployment | `UPSTREAM_TRUSTED_PROXIES` | `UPSTREAM_CLIENT_IP_HEADER` |
+| --- | --- | --- |
+| Clients connect directly to port 88 | leave empty | leave unset |
+| TLS proxy on another machine | that machine's IP | leave unset |
+| TLS proxy on the Docker host, connecting to `127.0.0.1:88` | the Docker network's gateway | leave unset |
+| TLS proxy in a container on `app-network` | the network's subnet | leave unset |
+| Cloudflare Tunnel | the address `cloudflared` connects from, as in the proxy rows above | `CF-Connecting-IP` |
+
+Find the gateway and subnet with `docker network inspect avapeek_app-network` (the prefix is your project directory's name). They can change if the network is recreated. Limits are then shared again until you update the value; forging does not become possible. Put the values in the root `.env` and re-run `./up.sh`.
+
+**Anything listed can claim to be any client**, so:
+
+- Make sure nothing else can reach port 88 from a listed address. Listing the Docker gateway is only safe if port 88 is not reachable from other machines: Docker-published ports usually bypass `ufw`, and on setups where Docker's userland proxy handles the connection (IPv6, rootless Docker, Docker Desktop) every client appears to come from the gateway. Block the port in your provider's or Docker's (`DOCKER-USER`) firewall.
+- `CF-Connecting-IP` is only as trustworthy as the source. Only enable it when requests really come through the tunnel; choosing the header alone does nothing without a listed source.
+- List only the proxy. Avoid wide ranges and `private_ranges` (Caddy's shorthand for all private addresses): every device on your LAN could then forge its IP, and a client inside a listed range counts as a proxy, not a client.
+- The proxy must set the header to the address it sees, or append to it. Caddy reads `X-Forwarded-For` from the right and takes the first address that is not listed, so a client cannot get a new limit by prepending values. The [nginx example](installation.md#tls-and-reverse-proxies) does this.
 
 ## `backend/.env`
 
@@ -149,6 +174,6 @@ Things to know about direct uploads:
 
 ## Behaviour that is not configurable via env
 
-- Rate limits (per minute unless noted): API 60, login 5, register 3, MFA 10, password-confirm 10, upload 30 (also applied to completing a direct upload), upload-intent 60, invites 10 per hour.
+- Rate limits (per minute unless noted, keyed by user or [client IP](#client-ip)): API 60, login 5, register 3, MFA 10, password-confirm 10, upload 30 (also applied to completing a direct upload), upload-intent 60, invites 10 per hour.
 - Photos are capped at 50 MB (ciphertext) plus a 5 MB thumbnail. The 64 MB per-request PHP cap (`docker/php/uploads.ini`) applies only to the proxy fallback (`UPLOADS_DIRECT=false`).
 - Registration is open only until the first account exists; afterwards it is invite-only.

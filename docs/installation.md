@@ -230,6 +230,8 @@ server {
 
 Traefik: route `Host(`photos.example.com`)` to a service at `http://<docker-host>:88`, or attach Traefik to the stack network `app-network` and target `caddy:80`.
 
+Behind any proxy or Cloudflare Tunnel, set `UPSTREAM_TRUSTED_PROXIES` in the root `.env`. Otherwise all clients share one set of login and registration rate limits, so one person's failed logins can lock out everyone. See [Client IP](configuration.md#client-ip).
+
 ## Installing as an app
 
 Avapeek is an installable PWA. Browsers only offer installation (and run the service worker) on HTTPS or `localhost`, so a plain-HTTP remote install cannot be installed. On Android Chrome, "Share" to Avapeek from the gallery works once the app is installed; iOS Safari supports Add to Home Screen but not sharing into the app.

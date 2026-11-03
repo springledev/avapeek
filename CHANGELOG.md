@@ -18,6 +18,11 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 ### Fixed
 
 - The frontend container healthcheck now uses `127.0.0.1` instead of `localhost`, so installs on IPv6-capable hosts no longer report the frontend as unhealthy
+- `UPSTREAM_TRUSTED_PROXIES` and `UPSTREAM_CLIENT_IP_HEADER` settings for installs behind a TLS proxy or Cloudflare Tunnel, off by default
+
+### Fixed
+
+- Login, registration, MFA and invite preview rate limits apply per client instead of being shared by the whole instance, and forged forwarding headers cannot get around them
 
 ## [0.1.1] - 2026-11-02
 
