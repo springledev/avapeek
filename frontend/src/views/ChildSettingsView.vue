@@ -32,6 +32,12 @@ const inviteRelationship = ref('')
 const inviteResult = ref<InviteResponse | null>(null)
 
 const members = ref<ChildMember[]>([])
+const ROLE_ORDER: Record<string, number> = { owner: 0, admin: 1, member: 2 }
+
+const sortedMembers = computed(() =>
+  [...members.value].sort((a, b) => (ROLE_ORDER[a.role] ?? 3) - (ROLE_ORDER[b.role] ?? 3)),
+)
+
 const pendingChildInvites = ref<
   Array<{
     id: number
@@ -433,7 +439,7 @@ function formatLastActive(dateStr: string | null): string {
         <div v-if="members.length > 0" class="child-settings__members">
           <component
             :is="memberHasActions(member) ? 'button' : 'div'"
-            v-for="member in members"
+            v-for="member in sortedMembers"
             :key="member.id"
             :type="memberHasActions(member) ? 'button' : undefined"
             class="child-settings__member"

@@ -8,6 +8,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 - Pending invites can be copied again with a Copy link button, in Settings and in kid settings
 
+### Changed
+
+- The family list in kid settings is ordered owner first, then admins, then members
+
 ### Fixed
 
 - View-only members no longer see the invite link button in kid settings, which they could not use

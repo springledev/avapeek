@@ -164,6 +164,20 @@ describe('ChildSettingsView invite control', () => {
   })
 })
 
+describe('ChildSettingsView member order', () => {
+  it('lists owner first, then admins, then members', async () => {
+    members = [
+      { ...member(2, 'Mia', false), role: 'member' },
+      { ...member(3, 'Ben', false), role: 'admin' },
+      { ...member(4, 'Zed', false), role: 'owner' },
+      { ...member(5, 'Amy', false), role: 'member' },
+    ]
+    const wrapper = await mountView('owner')
+    const names = wrapper.findAll('.child-settings__member-name').map((n) => n.text())
+    expect(names).toEqual(['Zed', 'Ben', 'Mia', 'Amy'])
+  })
+})
+
 describe('ChildSettingsView pending invite link', () => {
   beforeEach(() => {
     vi.mocked(toast.success).mockReset()
