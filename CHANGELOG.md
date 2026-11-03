@@ -9,6 +9,7 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 - The feed no longer requests the same page twice on load or when you scroll, and no longer fetches comments for photos you have not opened
 - Waiting family members are checked for far less often when moving between pages, which keeps the app well inside the request limit
 - Kids and pending invites are loaded once and shared between Settings pages instead of being requested again on each page, and tag lists that fail to load are not retried straight away
+- The API allows 180 requests a minute per user instead of 60, so flicking quickly through photos no longer hits the limit; sign-in and other sensitive routes keep their stricter limits
 
 ## [0.1.1] - 2026-11-02
 
