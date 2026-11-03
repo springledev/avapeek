@@ -35,6 +35,8 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 - The "On this day" card on the feed is now a compact single-row strip of small thumbnails so it no longer pushes the feed off the first screen
 - After uploading, the "photos added" notice has a View button that opens Recents, where the new photos are at the top
+- Settings now shows how much storage is used, with a retry when it cannot be loaded
+- Settings now shows the app version, to include in bug reports
 
 ## [0.1.1] - 2026-11-02
 

@@ -8,14 +8,9 @@ interface QuotaData {
   percentage: number | null
 }
 
-const props = withDefaults(defineProps<{
-  childId?: number | null
-}>(), {
-  childId: null,
-})
-
 const quota = ref<QuotaData | null>(null)
 const isLoading = ref(false)
+const hasFailed = ref(false)
 
 const percentage = computed(() => Math.min(quota.value?.percentage ?? 0, 100))
 
@@ -29,7 +24,7 @@ const hasLimit = computed(() => quota.value?.limit_bytes != null)
 
 function freeBytes(): number {
   if (!quota.value || quota.value.limit_bytes == null) return 0
-  return quota.value.limit_bytes - quota.value.used_bytes
+  return Math.max(0, quota.value.limit_bytes - quota.value.used_bytes)
 }
 
 const barColorClass = computed(() => {
@@ -46,12 +41,15 @@ const textColorClass = computed(() => {
 
 async function fetchQuota() {
   isLoading.value = true
+  hasFailed.value = false
   try {
-    const endpoint = props.childId ? `/children/${props.childId}/quota` : '/quota'
-    const response = await api.get(endpoint)
-    quota.value = response.data.data as QuotaData
+    const response = await api.get('/quota')
+    const data = response.data?.data as QuotaData | undefined
+    if (!data || typeof data.used_bytes !== 'number') throw new Error('Malformed quota response')
+    quota.value = data
   } catch {
     quota.value = null
+    hasFailed.value = true
   } finally {
     isLoading.value = false
   }
@@ -89,4 +87,12 @@ defineExpose({ refresh: fetchQuota })
     </div>
   </div>
   <div v-else-if="isLoading" class="h-14 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-700" />
+  <div
+    v-else-if="hasFailed"
+    class="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3 text-xs text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400"
+    data-testid="quota-error"
+  >
+    <span>Storage usage unavailable</span>
+    <button type="button" class="min-h-12 px-2 font-semibold underline" @click="fetchQuota">Retry</button>
+  </div>
 </template>

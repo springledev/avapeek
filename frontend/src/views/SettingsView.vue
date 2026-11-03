@@ -21,7 +21,9 @@ import { useChildStore } from '@/stores/child'
 import { useGridDensity, type FeedDensity } from '@/composables/useGridDensity'
 import { useDarkMode } from '@/composables/useDarkMode'
 import { usePushNotifications } from '@/composables/usePushNotifications'
+import QuotaBar from '@/components/QuotaBar.vue'
 
+const appVersion = __APP_VERSION__
 const route = useRoute()
 const childStore = useChildStore()
 const { density, setDensity } = useGridDensity()
@@ -196,6 +198,11 @@ onMounted(() => {
         </router-link>
       </template>
 
+      <div class="settings__storage" data-testid="settings-storage">
+        <p class="settings__label">Storage</p>
+        <QuotaBar />
+      </div>
+
       <button type="button" class="settings__row settings__row--danger" @click="handleLogout">
         <div class="settings__icon settings__icon--danger">
           <LogOut :size="20" />
@@ -204,6 +211,8 @@ onMounted(() => {
           <p class="settings__label">Log out</p>
         </div>
       </button>
+
+      <p class="settings__version" data-testid="settings-version">Avapeek v{{ appVersion }}</p>
     </div>
 
     <div v-if="!hasSubRoute && isAdmin && pendingInvites.length > 0" class="settings__invites">
@@ -317,6 +326,20 @@ a.settings__row:hover {
 
 .settings__row--danger:hover {
   background: var(--color-surface-2);
+}
+
+.settings__storage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings__version {
+  margin: var(--space-2) 0 0;
+  text-align: center;
+  font-size: var(--text-meta);
+  color: var(--color-ink-soft);
+  user-select: all;
 }
 
 .settings__text {
