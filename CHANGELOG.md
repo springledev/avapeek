@@ -7,6 +7,7 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 ### Changed
 
 - The "On this day" card on the feed is now a compact single-row strip of small thumbnails so it no longer pushes the feed off the first screen
+- After uploading, the "photos added" notice has a View button that opens Recents, where the new photos are at the top
 
 ## [0.1.1] - 2026-11-02
 
