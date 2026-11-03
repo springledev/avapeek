@@ -38,7 +38,7 @@ watch(
       return
     }
     void recentsStore.fetchUnseenCount()
-    void feedStore.fetchPhotos()
+    void feedStore.fetchPhotos(true, true)
   },
   { immediate: true },
 )

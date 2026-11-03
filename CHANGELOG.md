@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Changed
+
+- The feed no longer requests the same page twice on load or when you scroll, and no longer fetches comments for photos you have not opened
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed
