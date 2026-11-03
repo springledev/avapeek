@@ -92,4 +92,39 @@ describe('UploadView partial failure', () => {
     expect(vi.mocked(toast.error).mock.calls[0]![0]).toContain(MSG.uploadFailed)
     expect(router.currentRoute.value.path).toBe('/')
   })
+
+  it('offers a View action to Recents after a fully successful upload', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: UploadView },
+        { path: '/feed', component: { template: '<div />' } },
+        { path: '/recents', component: { template: '<div />' } },
+      ],
+    })
+    router.push('/')
+    await router.isReady()
+    wrapper = mount(UploadView, {
+      global: {
+        plugins: [router],
+        stubs: { BatchReview: BatchReviewStub, UploadPicker: PickerStub },
+      },
+    })
+    uploadMock.mockResolvedValue({ succeeded: 1, failed: 0 })
+    vi.mocked(toast.success).mockReset()
+
+    wrapper.findComponent(BatchReviewStub).vm.$emit('upload', [goodFile], [3])
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/feed')
+
+    const [message, options] = vi.mocked(toast.success).mock.calls[0] as [
+      string,
+      { action: { label: string; onClick: () => void } },
+    ]
+    expect(message).toBe(MSG.photosAdded(1))
+    expect(options.action.label).toBe(MSG.viewUploaded)
+    options.action.onClick()
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/recents')
+  })
 })

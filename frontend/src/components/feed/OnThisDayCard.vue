@@ -23,11 +23,13 @@ function yearsAgoLabel(year: number): string {
 <template>
   <section v-if="isVisible" class="otd" aria-labelledby="otd-title">
     <h2 id="otd-title" class="otd__title">On this day</h2>
-    <div v-for="group in groups" :key="group.year" class="otd__group">
-      <h3 class="otd__year">{{ group.year }} · {{ yearsAgoLabel(group.year) }}</h3>
-      <div class="otd__row">
-        <div v-for="photo in group.photos" :key="photo.id" class="otd__item">
-          <PhotoTile :photo="photo" @click="emit('open', photo)" />
+    <div class="otd__strip">
+      <div v-for="group in groups" :key="group.year" class="otd__group">
+        <span class="otd__year">{{ group.year }} · {{ yearsAgoLabel(group.year) }}</span>
+        <div class="otd__row">
+          <div v-for="photo in group.photos" :key="photo.id" class="otd__item">
+            <PhotoTile :photo="photo" @click="emit('open', photo)" />
+          </div>
         </div>
       </div>
     </div>
@@ -35,36 +37,48 @@ function yearsAgoLabel(year: number): string {
 </template>
 
 <style scoped>
+/*
+ * Compact strip: one horizontally scrolling line of fixed-size thumbnails, so
+ * the card costs one tile of height at any viewport width (tiles are >= 48px).
+ */
 .otd {
-  margin: 0 0 var(--space-6);
+  margin: 0 0 var(--space-4);
 }
 
 .otd__title {
-  font-size: var(--text-body);
+  font-size: var(--text-meta);
   font-weight: 800;
   color: var(--color-ink);
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-2);
+}
+
+.otd__strip {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-4);
+  overflow-x: auto;
 }
 
 .otd__group {
-  margin-bottom: var(--space-3);
+  flex: 0 0 auto;
 }
 
 .otd__year {
+  display: block;
   font-size: var(--text-meta);
   font-weight: 700;
   color: var(--color-ink-soft);
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-1);
+  white-space: nowrap;
 }
 
 .otd__row {
   display: flex;
   gap: var(--feed-gap);
-  overflow-x: auto;
 }
 
 .otd__item {
-  flex: 0 0 min(40%, 160px);
-  min-width: 96px;
+  flex: 0 0 72px;
+  width: 72px;
 }
 </style>

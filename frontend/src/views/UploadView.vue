@@ -83,7 +83,10 @@ async function startUpload(files: File[], childIds: number[], tagNames: string[]
     return
   }
 
-  toast.success(MSG.photosAdded(succeeded))
+  // Feed order follows taken_at, so a new photo may sit far down; Recents lists by upload time.
+  toast.success(MSG.photosAdded(succeeded), {
+    action: { label: MSG.viewUploaded, onClick: () => void router.push('/recents') },
+  })
   showBatchReview.value = false
   selectedFiles.value = []
   router.push('/feed')

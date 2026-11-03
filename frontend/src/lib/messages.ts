@@ -29,6 +29,7 @@ export const MSG = {
   uploadViewOnly: "You have view-only access, so you can't upload photos.",
   uploadNeedsPhotos: 'Pick at least one photo first.',
   photosAdded: (n: number) => `${n} ${n === 1 ? 'photo' : 'photos'} added`,
+  viewUploaded: 'View',
   commentPostFailed: "Couldn't post that — try again",
   commentDeleteFailed: "Couldn't delete that — try again",
   downloadFailed: "Couldn't download that photo — try again",
