@@ -8,6 +8,19 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 - `up.sh` generates the Web Push (VAPID) key pair when none is set, so push notifications work on new installs without a manual step. Existing keys are never replaced, and `PUSH_ENABLED=false` keeps push off
 
+## [0.1.1] - 2026-11-02
+
+### Changed
+
+- The app's favicon now uses the full Avapeek logo, matching the installed app icon
+- Release images are built on native amd64 and arm64 runners instead of under emulation, and a release is only published once both architectures are available for every image
+- Documentation is published at [avapeek.com](https://avapeek.com), including a getting started guide for invited family members
+
+### Fixed
+
+- On iPhone and iPad, Settings now shows Notifications in a Safari tab too, with a hint to add Avapeek to the Home Screen first, instead of hiding it
+- Logged-out API requests without a JSON `Accept` header return a 401 instead of a 500
+
 ## [0.1.0] - 2026-11-02
 
 First public release.

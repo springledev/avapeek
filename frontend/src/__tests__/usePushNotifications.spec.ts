@@ -41,6 +41,20 @@ describe('usePushNotifications', () => {
     expect(mocked.getPushConfig).not.toHaveBeenCalled()
   })
 
+  it('still checks the server in an iOS Safari tab, where push is not exposed', async () => {
+    mocked.isPushSupported.mockReturnValue(false)
+    mocked.isIos.mockReturnValue(true)
+    const push = usePushNotifications()
+
+    await push.init()
+
+    expect(push.supported.value).toBe(false)
+    expect(push.needsInstall.value).toBe(true)
+    expect(push.available.value).toBe(true)
+    expect(push.subscribed.value).toBe(false)
+    expect(mocked.hasSubscription).not.toHaveBeenCalled()
+  })
+
   it('is unavailable when the server has no VAPID keys', async () => {
     mocked.getPushConfig.mockResolvedValue(null)
     const push = usePushNotifications()
