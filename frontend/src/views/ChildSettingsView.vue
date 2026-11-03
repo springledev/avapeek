@@ -11,7 +11,7 @@ import UiButton from '@/components/ui/UiButton.vue'
 import UiSheet from '@/components/ui/UiSheet.vue'
 import ChildExportSheet from '@/components/ChildExportSheet.vue'
 import PasswordConfirmSheet from '@/components/PasswordConfirmSheet.vue'
-import { syncEncryptionKeys } from '@/services/key-sync'
+import AdminPendingAccessBanner from '@/components/AdminPendingAccessBanner.vue'
 import { apiErrorMessage, firstValidationError } from '@/lib/util'
 import type { ChildMember, InviteResponse } from '@/types/child'
 
@@ -132,30 +132,6 @@ async function fetchMembers() {
     members.value = response.data.data.members || []
   } catch (err) {
     console.error('Failed to fetch members:', err)
-  }
-}
-
-const ACCESS_SHARED_MSG = 'Access shared with your family.'
-const ACCESS_SHARE_FAILED_MSG = "Couldn't share access — try again"
-const isSharingAccess = ref(false)
-
-const hasAwaitingMembers = computed(
-  () => canManageMembers.value && members.value.some((m) => m.awaiting_key),
-)
-
-async function shareAccessNow() {
-  if (isSharingAccess.value) return
-  isSharingAccess.value = true
-  try {
-    const result = await syncEncryptionKeys()
-    if (result.failed > 0) {
-      toast.error(ACCESS_SHARE_FAILED_MSG)
-    } else {
-      toast.success(ACCESS_SHARED_MSG)
-    }
-    await fetchMembers()
-  } finally {
-    isSharingAccess.value = false
   }
 }
 
@@ -451,16 +427,11 @@ function formatLastActive(dateStr: string | null): string {
               >Waiting for access</span
             >
           </component>
-          <UiButton
-            v-if="hasAwaitingMembers"
-            variant="subtle"
-            class="child-settings__share-access"
-            :disabled="isSharingAccess"
-            data-testid="share-access-now"
-            @click="shareAccessNow"
-          >
-            {{ isSharingAccess ? 'Sharing access…' : 'Share access now' }}
-          </UiButton>
+          <AdminPendingAccessBanner
+            v-if="canManageMembers"
+            :child-id="childId"
+            @changed="fetchMembers"
+          />
         </div>
         <p v-else-if="canManageMembers" class="child-settings__empty">No family members yet.</p>
         <p v-else class="child-settings__empty">Only owners and admins can see the member list.</p>
@@ -767,10 +738,6 @@ function formatLastActive(dateStr: string | null): string {
   color: var(--color-ink-soft);
   font-size: var(--text-meta);
   font-weight: 600;
-}
-
-.child-settings__share-access {
-  min-height: var(--target-min);
 }
 
 .child-settings__leave-hint {

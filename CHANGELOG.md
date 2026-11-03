@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Changed
+
+- Admins now approve or decline each person waiting for an album, seeing their name and the album; a key is only shared on Approve, and declining removes them from the album
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed
