@@ -89,9 +89,53 @@ async function registerOnServer(subscription: PushSubscription): Promise<void> {
   })
 }
 
+/** How long each browser push step may take before it is reported as stuck. */
+export const PUSH_STEP_TIMEOUT_MS = 10_000
+
+/**
+ * Rejects with `Error(code)` if `promise` has not settled in time. Browsers can
+ * leave these steps pending forever (iOS in particular), which would otherwise
+ * leave the toggle busy with no feedback.
+ */
+function withTimeout<T>(promise: Promise<T>, code: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(code)), PUSH_STEP_TIMEOUT_MS)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error: unknown) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
+/** The active service worker registration; `Error('service-worker-timeout')` if it never becomes ready. */
+function serviceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
+  return withTimeout(navigator.serviceWorker.ready, 'service-worker-timeout')
+}
+
+/** The browser's subscription, created if missing; `Error('subscribe-timeout')` if the browser stalls. */
+async function ensureBrowserSubscription(publicKey: string): Promise<PushSubscription> {
+  const registration = await serviceWorkerRegistration()
+  const existing = await withTimeout(registration.pushManager.getSubscription(), 'subscribe-timeout')
+  if (existing) return existing
+
+  return withTimeout(
+    registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    }),
+    'subscribe-timeout',
+  )
+}
+
 async function currentSubscription(): Promise<PushSubscription | null> {
-  const registration = await navigator.serviceWorker.ready
-  return registration.pushManager.getSubscription()
+  const registration = await serviceWorkerRegistration()
+  return withTimeout(registration.pushManager.getSubscription(), 'subscribe-timeout')
 }
 
 /**
@@ -105,13 +149,7 @@ export async function subscribe(publicKey: string): Promise<void> {
     throw new Error('permission-denied')
   }
 
-  const registration = await navigator.serviceWorker.ready
-  const subscription =
-    (await registration.pushManager.getSubscription()) ??
-    (await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
-    }))
+  const subscription = await ensureBrowserSubscription(publicKey)
 
   await registerOnServer(subscription)
   setPushEnabledOnDevice(true)
@@ -157,13 +195,7 @@ export async function resyncPushSubscription(): Promise<void> {
   const publicKey = await getPushConfig()
   if (!publicKey) return
 
-  const registration = await navigator.serviceWorker.ready
-  const subscription =
-    (await registration.pushManager.getSubscription()) ??
-    (await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
-    }))
+  const subscription = await ensureBrowserSubscription(publicKey)
   await registerOnServer(subscription)
 }
 
