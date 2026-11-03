@@ -5,11 +5,13 @@ import { dedupeTagsByName } from '@/lib/tags'
 import { LONG_PRESS_MS } from '@/composables/useSelection'
 import { MSG } from '@/lib/messages'
 import { Check } from '@lucide/vue'
+import UiAvatar from '@/components/ui/UiAvatar.vue'
 import type { Photo } from '@/types/photo'
 
 const props = defineProps<{
   photos: Photo[]
   uploaderName: string
+  childId: number
   childName: string
   childColor: string | null
   relativeTime: string
@@ -104,12 +106,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="group">
     <div class="group__header">
-      <div
-        class="group__avatar"
-        :style="{ backgroundColor: childColor || 'var(--color-accent)' }"
-      >
-        {{ childName.charAt(0).toUpperCase() }}
-      </div>
+      <UiAvatar :id="childId" :name="childName" :color-hex="childColor" :size="32" />
       <div class="group__info">
         <p class="group__title">
           {{ uploaderName }} uploaded {{ count }} {{ count === 1 ? 'photo' : 'photos' }}
@@ -196,19 +193,6 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
-}
-
-.group__avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--text-meta);
-  font-weight: 700;
-  color: var(--color-on-accent);
-  flex-shrink: 0;
 }
 
 .group__info {

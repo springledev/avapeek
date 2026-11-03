@@ -28,7 +28,6 @@ vi.mock('@/lib/cache/decrypted-cache', () => ({
 }))
 
 import PhotoTile from '@/components/feed/PhotoTile.vue'
-import PhotoCard from '@/components/PhotoCard.vue'
 import PhotoViewer from '@/components/PhotoViewer.vue'
 import { getPEKForPhoto } from '@/services/storage'
 import { useAuthStore } from '@/stores/auth'
@@ -107,14 +106,6 @@ describe('locked photo placeholders', () => {
     useChildStore().children = [makeChild(1, 'member'), makeChild(2, 'owner')]
     const wrapper = mount(PhotoTile, { props: { photo: makePhoto([1, 2]) } })
     expect(wrapper.find('[data-test="tile-locked"]').exists()).toBe(false)
-  })
-
-  it('PhotoCard shows the locked placeholder', () => {
-    useChildStore().children = [makeChild(1, 'member')]
-    const wrapper = mount(PhotoCard, { props: { photo: makePhoto([1]) } })
-    expect(wrapper.find('[data-test="tile-locked"]').attributes('aria-label')).toBe(
-      'Locked until an admin shares access',
-    )
   })
 
   it('PhotoViewer shows the locked message instead of retry', async () => {

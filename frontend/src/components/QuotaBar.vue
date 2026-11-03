@@ -27,16 +27,10 @@ function freeBytes(): number {
   return Math.max(0, quota.value.limit_bytes - quota.value.used_bytes)
 }
 
-const barColorClass = computed(() => {
-  if (percentage.value >= 95) return 'bg-red-500'
-  if (percentage.value >= 80) return 'bg-amber-500'
-  return 'bg-blue-500'
-})
-
-const textColorClass = computed(() => {
-  if (percentage.value >= 95) return 'text-red-600 dark:text-red-400'
-  if (percentage.value >= 80) return 'text-amber-600 dark:text-amber-400'
-  return 'text-slate-500 dark:text-slate-400'
+const usageLevel = computed(() => {
+  if (percentage.value >= 95) return 'danger'
+  if (percentage.value >= 80) return 'warning'
+  return 'safe'
 })
 
 async function fetchQuota() {
@@ -63,36 +57,136 @@ defineExpose({ refresh: fetchQuota })
 </script>
 
 <template>
-  <div v-if="quota" class="rounded-lg border border-gray-200 bg-white p-3 dark:border-slate-600 dark:bg-slate-800">
-    <div class="mb-1.5 flex items-center justify-between text-xs">
-      <span class="text-slate-500 dark:text-slate-400">
+  <div v-if="quota" class="quota">
+    <div class="quota__header">
+      <span>
         <template v-if="hasLimit">{{ formatBytes(quota.used_bytes) }} / {{ formatBytes(quota.limit_bytes!) }}</template>
         <template v-else>{{ formatBytes(quota.used_bytes) }} used</template>
       </span>
       <slot name="plan-info" :usage="quota">
-        <span v-if="hasLimit" :class="textColorClass">
+        <span v-if="hasLimit" :class="`quota__free--${usageLevel}`" data-testid="quota-free">
           {{ formatBytes(freeBytes()) }} free
         </span>
-        <span v-else class="text-slate-500 dark:text-slate-400" data-testid="quota-limit-unknown">
-          Limit unknown
-        </span>
+        <span v-else data-testid="quota-limit-unknown">Limit unknown</span>
       </slot>
     </div>
-    <div v-if="hasLimit" class="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+    <div v-if="hasLimit" class="quota__track" data-testid="quota-track">
       <div
-        class="h-full rounded-full transition-all duration-300"
-        :class="barColorClass"
+        class="quota__fill"
+        :class="`quota__fill--${usageLevel}`"
+        data-testid="quota-fill"
         :style="{ width: `${percentage}%` }"
       />
     </div>
   </div>
-  <div v-else-if="isLoading" class="h-14 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-700" />
-  <div
-    v-else-if="hasFailed"
-    class="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3 text-xs text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400"
-    data-testid="quota-error"
-  >
+  <div v-else-if="isLoading" class="quota__skeleton" />
+  <div v-else-if="hasFailed" class="quota quota--error" data-testid="quota-error">
     <span>Storage usage unavailable</span>
-    <button type="button" class="min-h-12 px-2 font-semibold underline" @click="fetchQuota">Retry</button>
+    <button type="button" class="quota__retry" @click="fetchQuota">Retry</button>
   </div>
 </template>
+
+<style scoped>
+.quota {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink-soft);
+  font-size: var(--text-meta);
+}
+
+.quota--error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block: 0;
+}
+
+.quota__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.quota__free--warning {
+  color: var(--color-accent-ink);
+  font-weight: 700;
+}
+
+.quota__free--danger {
+  color: var(--color-danger);
+  font-weight: 700;
+}
+
+.quota__track {
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-2);
+}
+
+.quota__fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  transition: width var(--dur-standard) var(--ease-soft);
+}
+
+.quota__fill--safe {
+  background: var(--color-success);
+}
+
+.quota__fill--warning {
+  background: var(--color-accent);
+}
+
+.quota__fill--danger {
+  background: var(--color-danger);
+}
+
+.quota__skeleton {
+  height: 56px;
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
+  animation: quota-pulse 1.4s ease-in-out infinite;
+}
+
+.quota__retry {
+  min-height: var(--target-min);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--color-accent-ink);
+  font-family: inherit;
+  font-size: var(--text-meta);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.quota__retry:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: -3px;
+  border-radius: var(--radius-card);
+}
+
+@keyframes quota-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quota__skeleton {
+    animation: none;
+  }
+}
+</style>
