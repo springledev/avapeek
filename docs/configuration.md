@@ -70,14 +70,14 @@ API tokens are Laravel Sanctum bearer tokens; the optional vars `SANCTUM_STATEFU
 
 ### Web Push notifications
 
-Optional. Push is **off** until both VAPID keys are set: `GET /api/push/config` returns 404, the app hides the notification settings and the server makes no outbound push requests. Generate a key pair with `docker compose exec backend php artisan avapeek:push-keys` (it only prints; paste the lines into `backend/.env`). Keep the private key secret and do not rotate it casually: existing browser subscriptions are bound to the public key and stop working until each device re-subscribes.
+Push is **off** until both VAPID keys are set: `GET /api/push/config` returns 404, the app hides the notification settings and the server makes no outbound push requests. `up.sh` generates a key pair when both keys are empty, so installs made with it have push on; it never replaces existing keys, and skips this when `PUSH_ENABLED` is `false`. For a manual install, generate a pair with `docker compose exec backend php artisan avapeek:push-keys` (it only prints; paste the lines into `backend/.env`). Keep the private key secret and do not rotate it casually: existing browser subscriptions are bound to the public key and stop working until each device re-subscribes. `up.sh` also sets `VAPID_SUBJECT` to your instance's `https://` URL while it is unset or still the placeholder; set your own `mailto:` address instead if you prefer.
 
 | Name | Default | Required | Description |
 | --- | --- | --- | --- |
 | `PUSH_ENABLED` | `true` | no | Set `false` to switch push off even when keys are present |
 | `VAPID_PUBLIC_KEY` | unset | for push | Sent to browsers so they can subscribe |
 | `VAPID_PRIVATE_KEY` | unset | for push | Signs requests to push services. Never exposed |
-| `VAPID_SUBJECT` | `mailto:admin@example.invalid` | for push | Operator contact (`mailto:` or `https://` URL) shown to push services. Use an operator address, not a user's email |
+| `VAPID_SUBJECT` | `mailto:admin@example.invalid` (`up.sh` sets your `https://` URL) | for push | Operator contact (`mailto:` or `https://` URL) shown to push services. Use an operator address, not a user's email |
 
 Notes:
 
