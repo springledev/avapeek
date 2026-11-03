@@ -297,4 +297,17 @@ describe('RegisterView', () => {
 
     expect(wrapper.text()).toContain("We can't see it or reset it")
   })
+
+  it('tells the user they need HTTPS on an insecure origin', async () => {
+    vi.mocked(api.get).mockImplementation(() =>
+      Promise.resolve(ok({ data: { mode: 'open' } })),
+    )
+    Object.defineProperty(window, 'isSecureContext', { value: false, configurable: true })
+    try {
+      const { wrapper } = await mountRegisterView('/register')
+      expect(wrapper.get('[data-test="insecure-context"]').text()).toContain('This needs HTTPS')
+    } finally {
+      Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true })
+    }
+  })
 })

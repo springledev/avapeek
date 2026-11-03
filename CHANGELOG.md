@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+
+- Sign-in and registration now explain that Avapeek needs HTTPS when opened over plain HTTP, and link to the installation guide
+
 ### Fixed
 
 - A failed load of the feed, recent uploads, kids list or member list now shows an error with a retry button instead of an empty state, and a failed refresh no longer clears photos already on screen
