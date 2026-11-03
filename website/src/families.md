@@ -24,7 +24,9 @@ Your password is the key to the photos. Nobody can see it or reset it, not even 
 
 ## 3. Wait a moment for access
 
-Right after you join, the album may look empty or show lock icons. That is normal. The photos are encrypted, and someone who already has access has to open Avapeek once to share the key with you. This happens on their device, so it can take a little while.
+Right after you join, the album may look empty or show lock icons. That is normal. The photos are encrypted, and an album admin has to open Avapeek and approve you, which shares the key with you from their device. Nothing is shared until they do, so it can take a little while.
+
+The admin sees the name on your account and the album you joined. If they decline, you are removed from the album and need a new invite. That name comes from the Avapeek server, so approval is a person's check and not proof of who you are. If the admin wants to be sure, tell them you have joined in another way, such as a message or a call. A way to compare key fingerprints is planned, not yet available.
 
 If it takes longer than you expected, tap **Remind admins**. You get a notification as soon as you can see the photos, and they appear without reloading the page.
 
