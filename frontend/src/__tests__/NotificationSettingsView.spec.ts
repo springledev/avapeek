@@ -79,6 +79,28 @@ describe('NotificationSettingsView', () => {
     expect(wrapper.find('[data-testid="push-device-toggle"]').exists()).toBe(false)
   })
 
+  it('shows the Add to Home Screen hint in a real iOS Safari tab without push support', async () => {
+    mocked.isIos.mockReturnValue(true)
+    mocked.isPushSupported.mockReturnValue(false)
+
+    const wrapper = await mountView()
+
+    expect(wrapper.find('[data-testid="push-ios-hint"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="push-unavailable"]').exists()).toBe(false)
+  })
+
+  it('says the server has push off in an iOS Safari tab when no keys are set', async () => {
+    mocked.isIos.mockReturnValue(true)
+    mocked.isPushSupported.mockReturnValue(false)
+    mocked.getPushConfig.mockResolvedValue(null)
+
+    const wrapper = await mountView()
+
+    expect(wrapper.find('[data-testid="push-unavailable"]').text()).toBe(
+      'Notifications are not turned on for this server.',
+    )
+  })
+
   it('renders the device toggle and a row per child with saved states', async () => {
     const wrapper = await mountView()
 

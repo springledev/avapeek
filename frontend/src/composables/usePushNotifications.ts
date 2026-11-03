@@ -35,14 +35,17 @@ export function usePushNotifications() {
     permission.value = readPermission()
     needsInstall.value = isIos() && !isStandalone()
 
-    if (!supported.value) {
+    // iOS only exposes push to apps opened from the Home Screen, so a Safari tab
+    // reports no support. Still ask the server, so the page can show the
+    // Add to Home Screen hint instead of hiding notifications entirely.
+    if (!supported.value && !needsInstall.value) {
       available.value = false
       return
     }
 
     publicKey = await getPushConfig()
     available.value = publicKey !== null
-    subscribed.value = available.value && (await hasSubscription())
+    subscribed.value = available.value && supported.value && (await hasSubscription())
   }
 
   /** Called from the toggle tap only. */
