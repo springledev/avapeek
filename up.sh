@@ -285,6 +285,16 @@ prepare_env() {
         set_if_empty "${BACKEND_ENV}" FRONTEND_URL "$(get_var "${BACKEND_ENV}" APP_URL)" || true
     fi
 
+    # Push services use VAPID_SUBJECT to contact the operator. Replace the shipped
+    # placeholder with the instance's public HTTPS URL; a subject you set is kept.
+    local vapid_subject public_url
+    vapid_subject="$(get_var "${BACKEND_ENV}" VAPID_SUBJECT)"
+    public_url="$(get_var "${BACKEND_ENV}" APP_URL)"
+    if { [ -z "${vapid_subject}" ] || [ "${vapid_subject}" = "mailto:admin@example.invalid" ]; } \
+        && [ "${public_url#https://}" != "${public_url}" ]; then
+        set_var "${BACKEND_ENV}" VAPID_SUBJECT "${public_url}"
+    fi
+
     if [ "${STORAGE}" = "garage" ]; then
         # Keep root S3_* and backend AWS_* identical. The root values are the
         # source of truth unless only the backend ones were customised.
