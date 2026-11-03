@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Changed
+
+- The "On this day" card on the feed is now a compact single-row strip of small thumbnails so it no longer pushes the feed off the first screen
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed
