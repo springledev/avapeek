@@ -6,9 +6,22 @@ import {
   precacheCacheName,
   shouldServeShell,
   toPrecachePath,
+  uniquePrecachePaths,
 } from '@/lib/sw-routes'
 
 describe('service worker routes', () => {
+  it('lists each precache path once, since Cache.addAll() rejects duplicates', () => {
+    const manifest = [
+      { url: 'index.html', revision: 'a' },
+      { url: 'icons/icon-192.png', revision: 'b' },
+      { url: 'assets/app.js', revision: null },
+      { url: 'icons/icon-192.png', revision: 'b' },
+      { url: '/icons/icon-192.png', revision: 'b' },
+    ]
+
+    expect(uniquePrecachePaths(manifest)).toEqual(['/index.html', '/icons/icon-192.png', '/assets/app.js'])
+  })
+
   it('denies shell navigation for /api/, /photos/ and /share-target', () => {
     expect(isNavigationDenied('/api/photos')).toBe(true)
     expect(isNavigationDenied('/photos/abc?X-Amz-Signature=1')).toBe(true)

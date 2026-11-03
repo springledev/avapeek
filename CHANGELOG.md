@@ -7,6 +7,9 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 ### Added
 
 - `up.sh` generates the Web Push (VAPID) key pair when none is set, so push notifications work on new installs without a manual step. It also sets `VAPID_SUBJECT` to the instance's `https://` URL while it is still the placeholder. Existing keys are never replaced, and `PUSH_ENABLED=false` keeps push off
+### Fixed
+
+- The service worker never finished installing on any device, because the app icons were listed twice in its precache. Push notifications and the offline app shell now work
 
 ## [0.1.1] - 2026-11-02
 

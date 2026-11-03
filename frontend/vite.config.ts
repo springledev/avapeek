@@ -22,6 +22,9 @@ export default defineConfig({
             manifestFilename: 'manifest.webmanifest',
             injectRegister: false,
             manifest: pwaManifest,
+            // The icons are already matched by globPatterns below; including them
+            // again would list them twice in the precache manifest.
+            includeManifestIcons: false,
             injectManifest: {
               globPatterns: ['**/*.{js,css,html,woff2,png,ico}'],
               // Lazy HEIC decoder (3 MB) is not part of the shell; fetched on demand.
