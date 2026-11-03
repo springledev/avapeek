@@ -16,6 +16,7 @@ vi.mock('@/services/api', () => ({
 
 vi.mock('@/lib/sign-out', () => ({ signOut: vi.fn<() => Promise<void>>() }))
 
+import pkg from '../../package.json'
 import { api } from '@/services/api'
 import SettingsView from '@/views/SettingsView.vue'
 
@@ -52,5 +53,12 @@ describe('SettingsView', () => {
 
     expect(api.get).toHaveBeenCalledWith('/quota')
     expect(wrapper.find('[data-testid="settings-storage"]').text()).toContain('512.0 MB / 1.0 GB')
+  })
+
+  it('shows the app version from package.json', async () => {
+    const wrapper = await mountView()
+
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+/)
+    expect(wrapper.find('[data-testid="settings-version"]').text()).toBe(`Avapeek v${pkg.version}`)
   })
 })

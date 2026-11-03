@@ -23,6 +23,7 @@ import { useDarkMode } from '@/composables/useDarkMode'
 import { usePushNotifications } from '@/composables/usePushNotifications'
 import QuotaBar from '@/components/QuotaBar.vue'
 
+const appVersion = __APP_VERSION__
 const route = useRoute()
 const childStore = useChildStore()
 const { density, setDensity } = useGridDensity()
@@ -210,6 +211,8 @@ onMounted(() => {
           <p class="settings__label">Log out</p>
         </div>
       </button>
+
+      <p class="settings__version" data-testid="settings-version">Avapeek v{{ appVersion }}</p>
     </div>
 
     <div v-if="!hasSubRoute && isAdmin && pendingInvites.length > 0" class="settings__invites">
@@ -329,6 +332,14 @@ a.settings__row:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+.settings__version {
+  margin: var(--space-2) 0 0;
+  text-align: center;
+  font-size: var(--text-meta);
+  color: var(--color-ink-soft);
+  user-select: all;
 }
 
 .settings__text {

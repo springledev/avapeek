@@ -7,6 +7,7 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 ### Added
 
 - Settings now shows how much storage is used, with a retry when it cannot be loaded
+- Settings now shows the app version, to include in bug reports
 
 ## [0.1.1] - 2026-11-02
 
