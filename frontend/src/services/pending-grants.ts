@@ -1,9 +1,11 @@
 import { api } from '@/services/api'
 import { createSharedRequest } from '@/lib/shared-request'
 
+/** Someone the server lists as waiting. The name and key are the server's word, not proof. */
 export interface PendingGrant {
   child_id: number
   user_id: number
+  display_name: string
   public_key: string
 }
 

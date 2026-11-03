@@ -165,8 +165,8 @@ onMounted(async () => {
           Accept invite
         </UiButton>
         <p class="invite__fineprint">
-          Photos stay encrypted. They appear once an album admin opens Avapeek and shares the key
-          with you — until then the album will look empty. We'll notify you as soon as you have
+          Photos stay encrypted. They appear once an album admin approves you in Avapeek, which
+          shares the key with you — until then the album will look empty. We'll notify you as soon as you have
           access.
         </p>
       </template>

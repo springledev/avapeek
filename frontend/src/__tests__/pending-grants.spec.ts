@@ -7,6 +7,7 @@ vi.mock('@/services/api', () => ({
   api: {
     get: vi.fn<(url: string) => Promise<unknown>>(),
     post: vi.fn<(url: string, data?: unknown) => Promise<unknown>>(),
+    delete: vi.fn<(url: string) => Promise<unknown>>(),
   },
 }))
 
@@ -123,24 +124,27 @@ describe('admin pending access banner remounts', () => {
     vi.mocked(syncEncryptionKeys).mockClear()
   })
 
-  it('does not sync or fetch again when navigating back within the reuse window', async () => {
+  it('does not fetch again when navigating back within the reuse window', async () => {
     const first = mount(AdminPendingAccessBanner)
     await flushPromises()
     first.unmount()
     const second = mount(AdminPendingAccessBanner)
     await flushPromises()
 
-    expect(syncEncryptionKeys).toHaveBeenCalledTimes(1)
+    expect(syncEncryptionKeys).not.toHaveBeenCalled()
     expect(api.get).toHaveBeenCalledTimes(1)
     expect(second.text()).toContain('1 family member waiting for access')
   })
 
-  it('looks again when a person taps share access now', async () => {
+  it('looks again after a decline rather than reusing the recent list', async () => {
+    vi.stubGlobal('confirm', () => true)
+    vi.mocked(api.delete).mockResolvedValue(ok({}))
     const wrapper = mount(AdminPendingAccessBanner)
     await flushPromises()
     vi.mocked(api.get).mockImplementation(async () => ok({ data: [] }))
-    await wrapper.get('[data-testid="pending-access-share"]').trigger('click')
+    await wrapper.get('[data-testid="pending-access-decline"]').trigger('click')
     await flushPromises()
+    vi.unstubAllGlobals()
 
     expect(api.get).toHaveBeenCalledTimes(2)
     expect(wrapper.find('[data-testid="pending-access-banner"]').exists()).toBe(false)

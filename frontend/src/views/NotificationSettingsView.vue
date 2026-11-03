@@ -228,7 +228,7 @@ onMounted(async () => {
           </div>
           <p v-if="row.isAdmin" class="notify__desc">
             As an admin you also hear when someone joins (see them under Settings, Kids, then
-            {{ row.name }}) and when a member comments on a photo (tap to open it). You are also told when a member is waiting for access, so you can share it.
+            {{ row.name }}) and when a member comments on a photo (tap to open it). You are also told when a member is waiting for access, so you can approve or decline them.
           </p>
         </div>
       </template>

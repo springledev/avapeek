@@ -57,6 +57,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 - Waiting family members are checked for far less often when moving between pages, which keeps the app well inside the request limit
 - Kids and pending invites are loaded once and shared between Settings pages instead of being requested again on each page, and tag lists that fail to load are not retried straight away
 - The API allows 180 requests a minute per user instead of 60, so flicking quickly through photos no longer hits the limit; sign-in and other sensitive routes keep their stricter limits
+### Changed
+
+- Admins now approve or decline each person waiting for an album, seeing their name and the album; a key is only shared on Approve, and declining removes them from the album
+- Waiting screens and notifications now say an admin has to approve you, or that you can approve or decline someone
 
 ## [0.1.1] - 2026-11-02
 

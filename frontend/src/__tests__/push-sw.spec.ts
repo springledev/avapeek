@@ -42,7 +42,7 @@ describe('push service worker helpers', () => {
     const joins = notificationForType('joins', '/settings/children/4')
     const adminComments = notificationForType('admin_comments', '/recents?photo=9')
 
-    expect(joins.options.body).toBe('Open Avapeek to give them access to the photos.')
+    expect(joins.options.body).toBe('Open Avapeek to approve or decline them.')
     expect(joins.options.data).toEqual({ url: '/settings/children/4' })
     expect(adminComments.options.body).toContain('commented on a photo')
     expect(adminComments.options.data).toEqual({ url: '/recents?photo=9' })
@@ -162,7 +162,7 @@ describe('push service worker helpers', () => {
 
     expect(requested.title).toBe('Someone is waiting for access')
     expect(requested.options.body).toBe(
-      "A family member can't see photos yet. Open Avapeek to share access.",
+      "A family member can't see photos yet. Open Avapeek to approve or decline them.",
     )
     expect(requested.options.data).toEqual({ url: '/settings/children/4' })
     expect(granted.title).toBe('You can see the photos now')

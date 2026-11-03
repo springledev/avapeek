@@ -51,6 +51,7 @@ import { toast } from 'vue-sonner'
 import { useAuthStore } from '@/stores/auth'
 import { syncEncryptionKeys } from '@/services/key-sync'
 import { invalidatePendingGrants } from '@/services/pending-grants'
+import { importPublicKey, rewrapDEKForPublicKey } from '@/crypto/keychain'
 import type { EncryptionKey } from '@/types/auth'
 
 function ok<T>(data: T): AxiosResponse<T> {
@@ -87,6 +88,8 @@ describe('syncEncryptionKeys', () => {
     vi.mocked(api.post).mockReset()
     vi.mocked(api.post).mockResolvedValue(ok({}))
     vi.mocked(toast.success).mockReset()
+    vi.mocked(rewrapDEKForPublicKey).mockClear()
+    vi.mocked(importPublicKey).mockClear()
   })
 
   it('does nothing without a KEK', async () => {
@@ -118,37 +121,35 @@ describe('syncEncryptionKeys', () => {
     )
   })
 
-  it('shares album keys with members who joined but have none', async () => {
-    signIn()
+  it('shares nothing with a new member while still re-wrapping own shared keys', async () => {
+    const store = signIn()
     respondWith(
-      [{ child_id: 1, child_name: 'Wren', encrypted_dek: 'own', wrap_type: 'kek', key_version: 1 }],
-      [{ child_id: 1, user_id: 9, public_key: 'member-jwk' }],
+      [
+        { child_id: 1, child_name: 'Wren', encrypted_dek: 'own', wrap_type: 'kek', key_version: 1 },
+        { child_id: 2, child_name: 'Ivy', encrypted_dek: 'shared', wrap_type: 'public_key', key_version: 1 },
+      ],
+      [{ child_id: 1, user_id: 9, display_name: 'Ben', public_key: 'member-jwk' }],
     )
 
     await syncEncryptionKeys()
 
-    expect(api.post).toHaveBeenCalledWith('/encryption-keys/wrap-for-invitee', {
-      child_id: 1,
-      user_id: 9,
-      wrapped_dek: 'rsa(own)',
+    expect(api.post).toHaveBeenCalledTimes(1)
+    expect(api.post).toHaveBeenCalledWith('/encryption-keys', {
+      child_id: 2,
+      wrapped_dek: 'kek(shared)',
     })
+    expect(api.post).not.toHaveBeenCalledWith('/encryption-keys/wrap-for-invitee', expect.anything())
+    expect(rewrapDEKForPublicKey).not.toHaveBeenCalled()
+    expect(importPublicKey).not.toHaveBeenCalled()
+    expect(store.encryptionKeys.find((key) => key.child_id === 2)?.wrap_type).toBe('kek')
   })
 
-  it('reports granted and failed grants without throwing', async () => {
+  it('does not throw when fetching keys fails', async () => {
     signIn()
-    respondWith(
-      [{ child_id: 1, child_name: 'Wren', encrypted_dek: 'own', wrap_type: 'kek', key_version: 1 }],
-      [
-        { child_id: 1, user_id: 9, public_key: 'a' },
-        { child_id: 1, user_id: 10, public_key: 'b' },
-      ],
-    )
-    vi.mocked(api.post).mockImplementation(async (_url: string, data?: unknown) => {
-      if ((data as { user_id?: number }).user_id === 10) throw new Error('boom')
-      return ok({})
-    })
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.mocked(api.get).mockRejectedValue(new Error('offline'))
 
-    await expect(syncEncryptionKeys()).resolves.toEqual({ granted: 1, failed: 1 })
+    await expect(syncEncryptionKeys()).resolves.toBeUndefined()
   })
 
   it('runs one sync at a time', async () => {

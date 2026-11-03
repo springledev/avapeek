@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { invalidatePendingGrants } from '@/services/pending-grants'
+import { invalidatePendingInvites } from '@/services/pending-invites'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -8,6 +10,7 @@ vi.mock('@/services/api', () => ({
   api: {
     get: vi.fn<(url: string) => Promise<unknown>>(),
     post: vi.fn<(url: string, data?: unknown) => Promise<unknown>>(),
+    delete: vi.fn<(url: string) => Promise<unknown>>(),
   },
   default: {
     setAuthToken: vi.fn<(token: string) => void>(),
@@ -16,7 +19,17 @@ vi.mock('@/services/api', () => ({
 }))
 
 vi.mock('@/services/key-sync', () => ({
-  syncEncryptionKeys: vi.fn<() => Promise<{ granted: number; failed: number }>>(),
+  syncEncryptionKeys: vi.fn<() => Promise<void>>(async () => undefined),
+}))
+
+vi.mock('@/crypto/keychain', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/crypto/keychain')>()),
+  importPublicKey: vi.fn<(jwk: string) => Promise<CryptoKey>>(
+    async () => ({ type: 'public' }) as unknown as CryptoKey,
+  ),
+  rewrapDEKForPublicKey: vi.fn<
+    (wrapped: string, kek: CryptoKey, publicKey: CryptoKey) => Promise<string>
+  >(async (wrapped: string) => `rsa(${wrapped})`),
 }))
 
 vi.mock('vue-sonner', () => ({
@@ -28,7 +41,6 @@ vi.mock('vue-sonner', () => ({
 
 import { api } from '@/services/api'
 import { toast } from 'vue-sonner'
-import { syncEncryptionKeys } from '@/services/key-sync'
 import { useAuthStore } from '@/stores/auth'
 import { useChildStore } from '@/stores/child'
 import ChildSettingsView from '@/views/ChildSettingsView.vue'
@@ -52,10 +64,17 @@ function member(id: number, name: string, awaiting: boolean): ChildMember {
 
 let members: ChildMember[]
 let pendingInvites: unknown[] = []
+let grants: Array<{ child_id: number; user_id: number; display_name: string; public_key: string }>
 
 async function mountView(role: string) {
+  invalidatePendingGrants()
+  invalidatePendingInvites()
   const pinia = createPinia()
   setActivePinia(pinia)
+  useAuthStore().kek = {} as CryptoKey
+  useAuthStore().encryptionKeys = [
+    { child_id: 7, child_name: 'Emma', encrypted_dek: 'own', wrap_type: 'kek', key_version: 1 },
+  ]
   useAuthStore().user = {
     id: 1,
     email: 'me@example.com',
@@ -81,6 +100,7 @@ async function mountView(role: string) {
   ]
   vi.mocked(api.get).mockImplementation(async (url: string) => {
     if (url === '/invites/pending') return ok({ data: pendingInvites })
+    if (url === '/encryption-keys/pending-grants') return ok({ data: grants })
     return ok({ data: { members } })
   })
   const router = createRouter({
@@ -100,51 +120,93 @@ describe('ChildSettingsView waiting for access', () => {
   beforeEach(() => {
     vi.mocked(toast.success).mockReset()
     vi.mocked(toast.error).mockReset()
-    vi.mocked(syncEncryptionKeys).mockReset()
+    vi.mocked(api.post).mockReset()
+    vi.mocked(api.delete).mockReset()
     members = [member(2, 'Ada', true), member(3, 'Max', false)]
+    grants = [{ child_id: 7, user_id: 2, display_name: 'Ada', public_key: 'ada-jwk' }]
   })
 
-  it('badges only awaiting members for admins', async () => {
+  it('badges only awaiting members and offers approve and decline to admins', async () => {
     const wrapper = await mountView('admin')
     const badges = wrapper.findAll('[data-testid="awaiting-badge"]')
     expect(badges).toHaveLength(1)
     expect(badges[0]!.text()).toBe('Waiting for access')
-    expect(wrapper.find('[data-testid="share-access-now"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="pending-access-item"]').text()).toContain(
+      'Ada wants to see photos of Emma',
+    )
   })
 
-  it('hides badge and button when nobody is waiting', async () => {
+  it('only lists people waiting for this album', async () => {
+    grants = [
+      { child_id: 7, user_id: 2, display_name: 'Ada', public_key: 'ada-jwk' },
+      { child_id: 8, user_id: 4, display_name: 'Other album', public_key: 'other-jwk' },
+    ]
+    const wrapper = await mountView('owner')
+    expect(wrapper.findAll('[data-testid="pending-access-item"]')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('Other album')
+  })
+
+  it('shares nothing just by opening the page', async () => {
+    await mountView('admin')
+    expect(api.post).not.toHaveBeenCalled()
+    expect(api.delete).not.toHaveBeenCalled()
+  })
+
+  it('hides the prompt when nobody is waiting', async () => {
     members = [member(3, 'Max', false)]
+    grants = []
     const wrapper = await mountView('owner')
     expect(wrapper.find('[data-testid="awaiting-badge"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="share-access-now"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="pending-access-banner"]').exists()).toBe(false)
   })
 
-  it('hides both for plain members', async () => {
+  it('hides badge and prompt for plain members', async () => {
     const wrapper = await mountView('member')
     expect(wrapper.find('[data-testid="awaiting-badge"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="share-access-now"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="pending-access-banner"]').exists()).toBe(false)
   })
 
-  it('syncs, refreshes the child and toasts success', async () => {
-    vi.mocked(syncEncryptionKeys).mockResolvedValue({ granted: 1, failed: 0 })
+  it('approve shares the key and refreshes the member list', async () => {
+    vi.mocked(api.post).mockResolvedValue(ok({}))
     const wrapper = await mountView('admin')
-    const before = vi.mocked(api.get).mock.calls.length
     members = [member(2, 'Ada', false)]
-    await wrapper.get('[data-testid="share-access-now"]').trigger('click')
+    grants = []
+    await wrapper.get('[data-testid="pending-access-approve"]').trigger('click')
     await flushPromises()
-    expect(syncEncryptionKeys).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(api.get).mock.calls.length).toBeGreaterThan(before)
-    expect(toast.success).toHaveBeenCalledWith('Access shared with your family.')
+    expect(api.post).toHaveBeenCalledWith('/encryption-keys/wrap-for-invitee', {
+      child_id: 7,
+      user_id: 2,
+      wrapped_dek: 'rsa(own)',
+    })
+    expect(toast.success).toHaveBeenCalledWith('Ada can now see photos of Emma.')
     expect(wrapper.find('[data-testid="awaiting-badge"]').exists()).toBe(false)
   })
 
-  it('toasts an error when a grant fails', async () => {
-    vi.mocked(syncEncryptionKeys).mockResolvedValue({ granted: 0, failed: 1 })
+  it('toasts an error when approving fails and keeps them waiting', async () => {
+    vi.mocked(api.post).mockRejectedValue(new Error('boom'))
     const wrapper = await mountView('admin')
-    await wrapper.get('[data-testid="share-access-now"]').trigger('click')
+    await wrapper.get('[data-testid="pending-access-approve"]').trigger('click')
     await flushPromises()
     expect(toast.error).toHaveBeenCalledWith("Couldn't share access — try again")
     expect(toast.success).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="pending-access-item"]').exists()).toBe(true)
+  })
+
+  it('decline removes the membership and refreshes the member list', async () => {
+    vi.stubGlobal(
+      'confirm',
+      vi.fn<(message: string) => boolean>(() => true),
+    )
+    vi.mocked(api.delete).mockResolvedValue(ok({}))
+    const wrapper = await mountView('admin')
+    members = [member(3, 'Max', false)]
+    grants = []
+    await wrapper.get('[data-testid="pending-access-decline"]').trigger('click')
+    await flushPromises()
+    expect(api.delete).toHaveBeenCalledWith('/children/7/members/2')
+    expect(api.post).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="awaiting-badge"]').exists()).toBe(false)
+    vi.unstubAllGlobals()
   })
 })
 
