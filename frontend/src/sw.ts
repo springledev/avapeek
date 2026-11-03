@@ -24,6 +24,7 @@ import {
   precacheCacheName,
   shouldServeShell,
   toPrecachePath,
+  uniquePrecachePaths,
   type PrecacheEntry,
 } from './lib/sw-routes'
 import { notificationForType, parsePushType, parsePushUrl, routeNotificationClick } from './lib/push-sw'
@@ -39,7 +40,7 @@ const precachedPaths = new Set(manifest.map((entry) => toPrecachePath(entry.url)
 async function precacheAssets(): Promise<void> {
   const cache = await caches.open(CACHE_NAME)
   await cache.addAll(
-    manifest.map((entry) => new Request(toPrecachePath(entry.url), { cache: 'reload' })),
+    uniquePrecachePaths(manifest).map((path) => new Request(path, { cache: 'reload' })),
   )
 }
 

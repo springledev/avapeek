@@ -35,6 +35,15 @@ export function isShareTargetRequest(method: string, pathname: string): boolean 
   return method === 'POST' && pathname === SHARE_TARGET_PATH
 }
 
+/**
+ * The manifest's distinct absolute paths, in order. `Cache.addAll()` rejects the
+ * whole batch on a duplicate URL, which fails the service worker install, so a
+ * file listed twice in the manifest must only be requested once.
+ */
+export function uniquePrecachePaths(manifest: readonly PrecacheEntry[]): string[] {
+  return [...new Set(manifest.map((entry) => toPrecachePath(entry.url)))]
+}
+
 /** Normalises a manifest url ("assets/x.js") into an absolute path ("/assets/x.js"). */
 export function toPrecachePath(url: string): string {
   return url.startsWith('/') ? url : `/${url}`

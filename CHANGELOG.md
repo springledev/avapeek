@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Fixed
+
+- The service worker never finished installing on any device, because the app icons were listed twice in its precache. Push notifications and the offline app shell now work
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed
