@@ -56,7 +56,8 @@ Product risks to be honest about at release
 
 ## Nice to have
 
-- [ ] Demo instance or a short screen recording; a seed command for demo data.
+- [x] Seed command for demo data (`avapeek:demo-seed`, `avapeek:demo-clear`, `up.sh --demo`).
+- [ ] Demo instance or a short screen recording.
 - [ ] GitHub Discussions or a `SUPPORT.md` explaining where to ask questions.
 - [ ] `FUNDING.yml` if you want sponsorship.
 - [ ] Reproducible-build notes and signed release images (cosign).

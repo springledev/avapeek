@@ -6,6 +6,7 @@
 #   ./up.sh --domain photos.example.com --storage garage --yes
 #   ./up.sh --build                           build images from source instead
 #   ./up.sh --env-only                        only write .env files, start nothing
+#   ./up.sh --domain localhost --yes --demo   try it with a made-up family
 #
 # See docs/installation.md.
 set -euo pipefail
@@ -26,6 +27,7 @@ BUILD=0
 YES=0
 ENV_ONLY=0
 SKIP_CHECK=0
+DEMO=0
 
 usage() {
     cat <<'EOF'
@@ -40,6 +42,8 @@ Usage: ./up.sh [options]
   --yes, -y          Never prompt; use flags/defaults.
   --env-only         Write/complete the .env files and exit (also: --dry-run).
   --skip-check       Do not run `php artisan storage:check` at the end.
+  --demo             Fill a new instance with a made-up family to try Avapeek out.
+                     Refused if real accounts exist. Undo with avapeek:demo-clear.
   -h, --help         Show this help.
 
 Environment: AVAPEEK_VERSION (root .env) selects the image tag, default "latest".
@@ -64,6 +68,7 @@ while [ $# -gt 0 ]; do
         --yes | -y) YES=1; shift ;;
         --env-only | --dry-run) ENV_ONLY=1; shift ;;
         --skip-check) SKIP_CHECK=1; shift ;;
+        --demo) DEMO=1; shift ;;
         -h | --help) usage; exit 0 ;;
         *) usage >&2; die "unknown option: $1" ;;
     esac
@@ -364,6 +369,19 @@ if [ "${SKIP_CHECK}" -eq 0 ]; then
 fi
 
 app_url="$(get_var "${BACKEND_ENV}" APP_URL)"
+
+if [ "${DEMO}" -eq 1 ]; then
+    info "adding the demo family"
+    if "${COMPOSE[@]}" exec -T backend php artisan avapeek:demo-seed; then
+        echo
+        echo "Avapeek is running with demo data: ${app_url}"
+        echo "To start for real: docker compose -f docker-compose.prod.yml exec backend php artisan avapeek:demo-clear"
+        echo "then register your first account. To remove everything instead, see docs/installation.md#uninstall"
+        exit 0
+    fi
+    echo "warning: demo data was not added. See the message above." >&2
+fi
+
 echo
 echo "Avapeek is running: ${app_url}"
 echo "Open it and register the first account (the first user can register freely;"
