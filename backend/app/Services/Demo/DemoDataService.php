@@ -85,7 +85,7 @@ class DemoDataService
             ['email' => $this->email('alex'), 'name' => 'Alex Rivera', 'access' => 'Parent, owner of both children'],
             ['email' => $this->email('sam'), 'name' => 'Sam Rivera', 'access' => 'Parent, admin of both children'],
             ['email' => $this->email('rose'), 'name' => 'Grandma Rose', 'access' => 'View-only member of both children'],
-            ['email' => $this->email('ben'), 'name' => 'Uncle Ben', 'access' => 'Joined Leo, waiting for the key until an admin signs in'],
+            ['email' => $this->email('ben'), 'name' => 'Uncle Ben', 'access' => 'Joined Leo, waiting for an admin to approve'],
         ];
     }
 

@@ -62,7 +62,7 @@ docker compose -f docker-compose.dev.yml exec backend php artisan avapeek:demo-s
 docker compose -f docker-compose.dev.yml exec backend php artisan avapeek:demo-clear
 ```
 
-Seeding only runs on an instance with no accounts; all accounts share one password, printed by the command. It covers an owner, an admin, a view-only member and a member waiting for the album key (the key is shared as soon as an admin signs in, so sign in as that member first to see the waiting state). `App\Services\Demo\DemoCrypto` writes the same formats as `frontend/src/crypto/`. It is the only server-side encryption code and only ever handles made-up content; `DemoDataTest` pins it to known answers from the browser code, so update that test if the formats change.
+Seeding only runs on an instance with no accounts; all accounts share one password, printed by the command. It covers an owner, an admin, a view-only member and a member waiting for the album key (they keep waiting until an admin approves them). `App\Services\Demo\DemoCrypto` writes the same formats as `frontend/src/crypto/`. It is the only server-side encryption code and only ever handles made-up content; `DemoDataTest` pins it to known answers from the browser code, so update that test if the formats change.
 
 ## Tests and checks
 
