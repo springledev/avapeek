@@ -51,6 +51,7 @@ function member(id: number, name: string, awaiting: boolean): ChildMember {
 }
 
 let members: ChildMember[]
+let pendingInvites: unknown[] = []
 
 async function mountView(role: string) {
   const pinia = createPinia()
@@ -79,7 +80,7 @@ async function mountView(role: string) {
     },
   ]
   vi.mocked(api.get).mockImplementation(async (url: string) => {
-    if (url === '/invites/pending') return ok({ data: [] })
+    if (url === '/invites/pending') return ok({ data: pendingInvites })
     return ok({ data: { members } })
   })
   const router = createRouter({
@@ -144,5 +145,72 @@ describe('ChildSettingsView waiting for access', () => {
     await flushPromises()
     expect(toast.error).toHaveBeenCalledWith("Couldn't share access — try again")
     expect(toast.success).not.toHaveBeenCalled()
+  })
+})
+
+describe('ChildSettingsView invite control', () => {
+  beforeEach(() => {
+    members = [member(3, 'Max', false)]
+  })
+
+  it.each(['owner', 'admin'])('shows Generate invite link for %s', async (role) => {
+    const wrapper = await mountView(role)
+    expect(wrapper.text()).toContain('Generate invite link')
+  })
+
+  it('hides Generate invite link for plain members', async () => {
+    const wrapper = await mountView('member')
+    expect(wrapper.text()).not.toContain('Generate invite link')
+  })
+})
+
+describe('ChildSettingsView member order', () => {
+  it('lists owner first, then admins, then members', async () => {
+    members = [
+      { ...member(2, 'Mia', false), role: 'member' },
+      { ...member(3, 'Ben', false), role: 'admin' },
+      { ...member(4, 'Zed', false), role: 'owner' },
+      { ...member(5, 'Amy', false), role: 'member' },
+    ]
+    const wrapper = await mountView('owner')
+    const names = wrapper.findAll('.child-settings__member-name').map((n) => n.text())
+    expect(names).toEqual(['Zed', 'Ben', 'Mia', 'Amy'])
+  })
+})
+
+describe('ChildSettingsView pending invite link', () => {
+  beforeEach(() => {
+    vi.mocked(toast.success).mockReset()
+    vi.mocked(toast.error).mockReset()
+    members = []
+    pendingInvites = [
+      {
+        id: 5,
+        child_name: 'Emma',
+        role: 'member',
+        relationship: null,
+        token: 'tok123',
+        expires_at: '2026-12-01T00:00:00Z',
+      },
+    ]
+  })
+
+  it('copies the invite link again', async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const wrapper = await mountView('admin')
+    await wrapper.get('[data-testid="copy-invite-link"]').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/invite/tok123`)
+    expect(toast.success).toHaveBeenCalledWith('Link copied to clipboard.')
+  })
+
+  it('toasts an error when the clipboard is unavailable', async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockRejectedValue(new Error('no'))
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const wrapper = await mountView('owner')
+    await wrapper.get('[data-testid="copy-invite-link"]').trigger('click')
+    await flushPromises()
+    expect(toast.error).toHaveBeenCalledWith("Couldn't copy the link — try again")
   })
 })

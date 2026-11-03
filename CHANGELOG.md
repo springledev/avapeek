@@ -42,6 +42,15 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 ### Fixed
 
 - A failed load of the feed, recent uploads, kids list or member list now shows an error with a retry button instead of an empty state, and a failed refresh no longer clears photos already on screen
+- Pending invites can be copied again with a Copy link button, in Settings and in kid settings
+
+### Changed
+
+- The family list in kid settings is ordered owner first, then admins, then members
+
+### Fixed
+
+- View-only members no longer see the invite link button in kid settings, which they could not use
 
 ## [0.1.1] - 2026-11-02
 

@@ -114,4 +114,6 @@ export const MSG = {
   profileUpdated: 'Profile updated.',
   inviteRevoked: 'Invite revoked.',
   inviteRevokeFailed: "Couldn't revoke that invite — try again",
+  inviteLinkCopied: 'Link copied to clipboard.',
+  inviteLinkCopyFailed: "Couldn't copy the link — try again",
 } as const

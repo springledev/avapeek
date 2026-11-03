@@ -13,7 +13,7 @@ import UiLoadError from '@/components/ui/UiLoadError.vue'
 import ChildExportSheet from '@/components/ChildExportSheet.vue'
 import PasswordConfirmSheet from '@/components/PasswordConfirmSheet.vue'
 import { syncEncryptionKeys } from '@/services/key-sync'
-import { apiErrorMessage, firstValidationError } from '@/lib/util'
+import { apiErrorMessage, copyInviteLink as copyInviteLinkToClipboard, firstValidationError } from '@/lib/util'
 import type { ChildMember, InviteResponse } from '@/types/child'
 
 const route = useRoute()
@@ -38,8 +38,20 @@ const members = ref<ChildMember[]>([])
 const membersLoaded = ref(false)
 const membersFailed = ref(false)
 const isLoadingMembers = ref(false)
+const ROLE_ORDER: Record<string, number> = { owner: 0, admin: 1, member: 2 }
+
+const sortedMembers = computed(() =>
+  [...members.value].sort((a, b) => (ROLE_ORDER[a.role] ?? 3) - (ROLE_ORDER[b.role] ?? 3)),
+)
+
 const pendingChildInvites = ref<
-  Array<{ id: number; role: string; relationship: string | null; expires_at: string }>
+  Array<{
+    id: number
+    role: string
+    relationship: string | null
+    token: string
+    expires_at: string
+  }>
 >([])
 
 const currentUserRole = computed(() => {
@@ -200,6 +212,14 @@ async function createInvite() {
         ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
         : undefined
     toast.error(message || "Couldn't create invite — try again")
+  }
+}
+
+async function copyPendingInvite(token: string) {
+  if (await copyInviteLinkToClipboard(token)) {
+    toast.success(MSG.inviteLinkCopied)
+  } else {
+    toast.error(MSG.inviteLinkCopyFailed)
   }
 }
 
@@ -432,7 +452,7 @@ function formatLastActive(dateStr: string | null): string {
         <div v-if="members.length > 0" class="child-settings__members">
           <component
             :is="memberHasActions(member) ? 'button' : 'div'"
-            v-for="member in members"
+            v-for="member in sortedMembers"
             :key="member.id"
             :type="memberHasActions(member) ? 'button' : undefined"
             class="child-settings__member"
@@ -496,7 +516,7 @@ function formatLastActive(dateStr: string | null): string {
         <UiButton variant="danger" @click="leaveFamily">Leave {{ albumLabel }}</UiButton>
       </div>
 
-      <div class="child-settings__section">
+      <div v-if="canManageMembers" class="child-settings__section">
         <h3 class="child-settings__section-title">Invite</h3>
         <UiButton variant="accent" @click="showInviteSheet = true"> Generate invite link </UiButton>
       </div>
@@ -524,6 +544,14 @@ function formatLastActive(dateStr: string | null): string {
               <span class="child-settings__pending-expires"
                 >Expires {{ new Date(inv.expires_at).toLocaleDateString() }}</span
               >
+              <button
+                type="button"
+                class="child-settings__action"
+                data-testid="copy-invite-link"
+                @click="copyPendingInvite(inv.token)"
+              >
+                Copy link
+              </button>
               <button type="button" class="child-settings__revoke" @click="revokeInvite(inv.id)">
                 Revoke
               </button>
@@ -848,7 +876,9 @@ function formatLastActive(dateStr: string | null): string {
   margin: 0;
 }
 
+.child-settings__action,
 .child-settings__revoke {
+  min-height: 48px;
   border: 0;
   background: transparent;
   color: var(--color-danger);
@@ -861,6 +891,11 @@ function formatLastActive(dateStr: string | null): string {
   flex-shrink: 0;
 }
 
+.child-settings__action {
+  color: var(--color-ink);
+}
+
+.child-settings__action:hover,
 .child-settings__revoke:hover {
   background: var(--color-surface-2);
 }
