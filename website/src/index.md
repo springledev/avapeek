@@ -32,7 +32,7 @@ cd avapeek
 
 Open the URL it prints (`http://localhost:88`) and register the first account. Only the first account can sign up freely; everyone else joins by invite.
 
-`up.sh` generates all secrets, pulls the prebuilt images, starts the stack and runs the database migrations. Re-run it to upgrade. For a real domain with HTTPS, follow the [installation guide](/docs/installation#tls-and-reverse-proxies).
+`up.sh` generates all secrets, pulls the prebuilt images, starts the stack and runs the database migrations. Re-run it to upgrade. To let your family reach it from outside your home, see [external access](/docs/installation#reaching-avapeek-from-outside-your-home): Cloudflare Tunnel, Cloudflare Access, a VPN or your own HTTPS proxy.
 
 ::: warning Back up your database
 It holds the wrapped encryption keys. Losing it means losing every photo, even if the storage bucket survives. See [backups](/docs/installation#backups).
@@ -41,7 +41,7 @@ It holds the wrapped encryption keys. Losing it means losing every photo, even i
 ## Documentation
 
 <ul class="entry-points">
-  <li><a href="./docs/installation">Installation</a><p>Requirements, <code>up.sh</code>, TLS, upgrades and backups.</p></li>
+  <li><a href="./docs/installation">Installation</a><p>Requirements, <code>up.sh</code>, external access, TLS, upgrades and backups.</p></li>
   <li><a href="./docs/storage">Storage</a><p>Garage, AWS S3, Backblaze B2 or Cloudflare R2.</p></li>
   <li><a href="./security">How the encryption works</a><p>What is encrypted and what the server can see.</p></li>
   <li><a href="./docs/faq">FAQ and troubleshooting</a><p>Common problems and their fixes.</p></li>

@@ -50,7 +50,7 @@ cd avapeek
 
 Want to look around first? Add `--demo` to get a made-up family with photos, comments and tags to click through ([try before you commit](docs/installation.md#try-it-with-demo-data)).
 
-`up.sh` generates all secrets, pulls the prebuilt images from `ghcr.io/springledev`, starts the stack, waits for it to be healthy and runs the database migrations. To upgrade, run `git pull` and then `./up.sh` again (see [upgrading](docs/installation.md#upgrading)). For a real domain with HTTPS, see the [installation guide](docs/installation.md#tls-and-reverse-proxies).
+`up.sh` generates all secrets, pulls the prebuilt images from `ghcr.io/springledev`, starts the stack, waits for it to be healthy and runs the database migrations. To upgrade, run `git pull` and then `./up.sh` again (see [upgrading](docs/installation.md#upgrading)). For a real domain with HTTPS, see the [installation guide](docs/installation.md#tls-and-reverse-proxies). To let your family reach it from outside your home, see [external access](docs/installation.md#reaching-avapeek-from-outside-your-home) (Cloudflare Tunnel, Cloudflare Access, a VPN or your own HTTPS proxy).
 
 > **Back up your database.** It holds the wrapped encryption keys; losing it means losing every photo, even if the bucket survives. See [backups](docs/installation.md#backups).
 
@@ -58,7 +58,7 @@ Want to look around first? Add `--demo` to get a made-up family with photos, com
 
 | Guide | Contents |
 | --- | --- |
-| [Installation](docs/installation.md) | Requirements, `up.sh`, manual install, TLS, upgrades, backups, uninstall |
+| [Installation](docs/installation.md) | Requirements, `up.sh`, manual install, external access, TLS, upgrades, backups, uninstall |
 | [Configuration](docs/configuration.md) | Every environment variable |
 | [Storage](docs/storage.md) | Garage, AWS S3, Backblaze B2, Cloudflare R2, CORS, quota |
 | [Security](docs/security.md) | Encryption design, what the server can see, threat model, limitations |
