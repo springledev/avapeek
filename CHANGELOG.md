@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Fixed
+
+- A failed load of the feed, recent uploads, kids list or member list now shows an error with a retry button instead of an empty state, and a failed refresh no longer clears photos already on screen
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed

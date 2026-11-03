@@ -9,6 +9,7 @@ import { toast } from 'vue-sonner'
 import UiAvatar from '@/components/ui/UiAvatar.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiSheet from '@/components/ui/UiSheet.vue'
+import UiLoadError from '@/components/ui/UiLoadError.vue'
 import ChildExportSheet from '@/components/ChildExportSheet.vue'
 import PasswordConfirmSheet from '@/components/PasswordConfirmSheet.vue'
 import { syncEncryptionKeys } from '@/services/key-sync'
@@ -32,6 +33,9 @@ const inviteRelationship = ref('')
 const inviteResult = ref<InviteResponse | null>(null)
 
 const members = ref<ChildMember[]>([])
+const membersLoaded = ref(false)
+const membersFailed = ref(false)
+const isLoadingMembers = ref(false)
 const pendingChildInvites = ref<
   Array<{ id: number; role: string; relationship: string | null; expires_at: string }>
 >([])
@@ -125,13 +129,19 @@ onMounted(async () => {
 })
 
 async function fetchMembers() {
+  isLoadingMembers.value = true
+  membersFailed.value = false
   try {
     const response = await api.get<{ data: { members: ChildMember[] } }>(
       `/children/${childId.value}`,
     )
     members.value = response.data.data.members || []
+    membersLoaded.value = true
   } catch (err) {
     console.error('Failed to fetch members:', err)
+    membersFailed.value = true
+  } finally {
+    isLoadingMembers.value = false
   }
 }
 
@@ -462,7 +472,16 @@ function formatLastActive(dateStr: string | null): string {
             {{ isSharingAccess ? 'Sharing access…' : 'Share access now' }}
           </UiButton>
         </div>
-        <p v-else-if="canManageMembers" class="child-settings__empty">No family members yet.</p>
+        <UiLoadError
+          v-else-if="membersFailed"
+          compact
+          title="Couldn't load the member list"
+          :retrying="isLoadingMembers"
+          @retry="fetchMembers"
+        />
+        <p v-else-if="canManageMembers && membersLoaded" class="child-settings__empty">
+          No family members yet.
+        </p>
         <p v-else class="child-settings__empty">Only owners and admins can see the member list.</p>
       </div>
 

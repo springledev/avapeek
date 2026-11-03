@@ -10,15 +10,17 @@ export const useRecentsStore = defineStore('recents', () => {
   const page = ref(1)
   const hasMore = ref(true)
   const isLoading = ref(false)
+  /** True when the last fetch failed. Photos already loaded are kept, so a failed refresh never empties the screen. */
+  const loadFailed = ref(false)
 
   async function fetchRecents(reset = true): Promise<void> {
     if (reset) {
       page.value = 1
-      photos.value = []
       hasMore.value = true
     }
 
     isLoading.value = true
+    loadFailed.value = false
 
     try {
       const response = await api.get<PhotoListResponse>('/recents', {
@@ -36,6 +38,8 @@ export const useRecentsStore = defineStore('recents', () => {
       hasMore.value = response.data.meta.current_page < response.data.meta.last_page
     } catch (err) {
       console.error('Failed to fetch recents:', err)
+      loadFailed.value = true
+      if (!reset) page.value--
     } finally {
       isLoading.value = false
     }
@@ -65,6 +69,7 @@ export const useRecentsStore = defineStore('recents', () => {
     page,
     hasMore,
     isLoading,
+    loadFailed,
     fetchRecents,
     fetchUnseenCount,
     markAsSeen,
