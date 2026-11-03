@@ -546,3 +546,58 @@ describe('POST /api/encryption-keys/wrap-for-invitee', function () {
             ->assertJsonValidationErrors(['user_id']);
     });
 });
+
+describe('GET /api/invites/pending', function () {
+    function pendingTestMember(Child $child, string $role): User
+    {
+        $user = User::factory()->create();
+        ChildUser::create(['child_id' => $child->id, 'user_id' => $user->id, 'role' => $role]);
+
+        return $user;
+    }
+
+    it('returns tokens only for the caller own invites on children they administer', function () {
+        $child = Child::factory()->create();
+        $otherChild = Child::factory()->create();
+        $owner = pendingTestMember($child, 'owner');
+        $admin = pendingTestMember($child, 'admin');
+        $otherAdmin = pendingTestMember($otherChild, 'admin');
+
+        $ownerInvite = Invite::factory()->create(['child_id' => $child->id, 'invited_by' => $owner->id]);
+        $adminInvite = Invite::factory()->create(['child_id' => $child->id, 'invited_by' => $admin->id]);
+        Invite::factory()->create(['child_id' => $otherChild->id, 'invited_by' => $otherAdmin->id]);
+
+        $this->actingAs($owner, 'sanctum')->getJson('/api/invites/pending')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.token', $ownerInvite->token);
+
+        $this->actingAs($admin, 'sanctum')->getJson('/api/invites/pending')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.token', $adminInvite->token);
+
+        $this->actingAs($otherAdmin, 'sanctum')->getJson('/api/invites/pending')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonMissing(['token' => $ownerInvite->token])
+            ->assertJsonMissing(['token' => $adminInvite->token]);
+    });
+
+    it('returns nothing to a plain member, even for a stale invite they created', function () {
+        $child = Child::factory()->create();
+        $owner = pendingTestMember($child, 'owner');
+        $member = pendingTestMember($child, 'member');
+        Invite::factory()->create(['child_id' => $child->id, 'invited_by' => $owner->id]);
+        $stale = Invite::factory()->create(['child_id' => $child->id, 'invited_by' => $member->id]);
+
+        $this->actingAs($member, 'sanctum')->getJson('/api/invites/pending')
+            ->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonMissing(['token' => $stale->token]);
+    });
+
+    it('requires authentication', function () {
+        $this->getJson('/api/invites/pending')->assertUnauthorized();
+    });
+});

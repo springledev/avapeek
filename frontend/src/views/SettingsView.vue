@@ -17,6 +17,7 @@ import {
 import { api } from '@/services/api'
 import { toast } from 'vue-sonner'
 import { signOut } from '@/lib/sign-out'
+import { copyInviteLink } from '@/lib/util'
 import { useChildStore } from '@/stores/child'
 import { useGridDensity, type FeedDensity } from '@/composables/useGridDensity'
 import { useDarkMode } from '@/composables/useDarkMode'
@@ -56,6 +57,14 @@ async function fetchPendingInvites() {
     pendingInvites.value = data.data
   } catch {
     /**/
+  }
+}
+
+async function copyPendingInvite(token: string) {
+  if (await copyInviteLink(token)) {
+    toast.success(MSG.inviteLinkCopied)
+  } else {
+    toast.error(MSG.inviteLinkCopyFailed)
   }
 }
 
@@ -219,6 +228,14 @@ onMounted(() => {
           <span class="settings__invite-expires"
             >Expires {{ new Date(inv.expires_at).toLocaleDateString() }}</span
           >
+          <button
+            type="button"
+            class="settings__action"
+            data-testid="copy-invite-link"
+            @click="copyPendingInvite(inv.token)"
+          >
+            Copy link
+          </button>
           <button type="button" class="settings__revoke" @click="revokeInvite(inv.id)">
             Revoke
           </button>
@@ -448,7 +465,9 @@ a.settings__row:hover {
   color: var(--color-ink-soft);
 }
 
+.settings__action,
 .settings__revoke {
+  min-height: 48px;
   border: 0;
   background: transparent;
   color: var(--color-danger);
@@ -460,6 +479,11 @@ a.settings__row:hover {
   border-radius: var(--radius-card);
 }
 
+.settings__action {
+  color: var(--color-ink);
+}
+
+.settings__action:hover,
 .settings__revoke:hover {
   background: var(--color-surface-2);
 }

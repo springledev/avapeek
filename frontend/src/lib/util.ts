@@ -46,3 +46,18 @@ export function firstValidationError(err: unknown): string | null {
   const firstKey = Object.keys(errors)[0]
   return firstKey ? (errors[firstKey]?.[0] ?? null) : null
 }
+
+/** Build the shareable invite link for a pending invite token. */
+export function inviteLinkFromToken(token: string): string {
+  return `${window.location.origin}/invite/${token}`
+}
+
+/** Copy a pending invite's link to the clipboard; returns whether it worked. */
+export async function copyInviteLink(token: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(inviteLinkFromToken(token))
+    return true
+  } catch {
+    return false
+  }
+}

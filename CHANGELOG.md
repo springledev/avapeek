@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Added
+
+- Pending invites can be copied again with a Copy link button, in Settings and in kid settings
+
 ### Fixed
 
 - View-only members no longer see the invite link button in kid settings, which they could not use
