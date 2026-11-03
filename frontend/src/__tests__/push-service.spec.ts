@@ -14,6 +14,7 @@ import {
   getPreferences,
   getPushConfig,
   isPushEnabledOnDevice,
+  PUSH_STEP_TIMEOUT_MS,
   resyncPushSubscription,
   setPreferences,
   subscribe,
@@ -92,6 +93,52 @@ describe('services/push', () => {
       keys: { p256dh: 'P256', auth: 'AUTH' },
     })
     expect(isPushEnabledOnDevice()).toBe(true)
+  })
+
+  it('gives up with service-worker-timeout when the service worker never becomes ready', async () => {
+    vi.useFakeTimers()
+    installBrowser(null)
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: { ready: new Promise(() => {}) },
+    })
+
+    const result = expect(subscribe('AQID')).rejects.toThrow('service-worker-timeout')
+    await vi.advanceTimersByTimeAsync(PUSH_STEP_TIMEOUT_MS)
+    await result
+
+    expect(mocked.post).not.toHaveBeenCalled()
+    expect(isPushEnabledOnDevice()).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('gives up with subscribe-timeout when the browser never finishes subscribing', async () => {
+    vi.useFakeTimers()
+    const { pushManager } = installBrowser(null)
+    pushManager.subscribe.mockReturnValue(new Promise(() => {}))
+
+    const result = expect(subscribe('AQID')).rejects.toThrow('subscribe-timeout')
+    await vi.advanceTimersByTimeAsync(PUSH_STEP_TIMEOUT_MS)
+    await result
+
+    expect(mocked.post).not.toHaveBeenCalled()
+    expect(isPushEnabledOnDevice()).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('does not time out a step that finishes in time', async () => {
+    vi.useFakeTimers()
+    const { pushManager, created } = installBrowser(null)
+    pushManager.subscribe.mockReturnValue(
+      new Promise((resolve) => setTimeout(() => resolve(created), PUSH_STEP_TIMEOUT_MS - 1)),
+    )
+
+    const result = subscribe('AQID')
+    await vi.advanceTimersByTimeAsync(PUSH_STEP_TIMEOUT_MS)
+    await result
+
+    expect(mocked.post).toHaveBeenCalledWith('/push/subscriptions', expect.anything())
+    vi.useRealTimers()
   })
 
   it('does not subscribe when permission is denied', async () => {

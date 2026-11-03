@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Fixed
+
+- Turning on notifications can no longer hang with the toggle greyed out: if the browser does not finish a step within 10 seconds, the app stops and says which step failed
+
 ## [0.1.1] - 2026-11-02
 
 ### Changed
