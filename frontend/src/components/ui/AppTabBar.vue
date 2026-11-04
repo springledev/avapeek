@@ -76,7 +76,7 @@ async function handleLogout() {
   padding-bottom: var(--safe-area-b);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
-  box-shadow: 0 -1px 4px rgb(46 32 22 / 0.06);
+  box-shadow: var(--shadow-tabbar);
 }
 
 .tabbar__list {

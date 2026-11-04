@@ -40,6 +40,7 @@ const grouped = computed(() => {
   const groups: {
     key: string
     uploaderName: string
+    childId: number
     childName: string
     childColor: string | null
     relativeTime: string
@@ -68,6 +69,7 @@ const grouped = computed(() => {
     groups.push({
       key,
       uploaderName: first.uploader_name || 'Someone',
+      childId: child?.id ?? 0,
       childName: child?.name || 'Unknown',
       childColor: child?.avatar_color || null,
       relativeTime,
@@ -263,6 +265,7 @@ onMounted(async () => {
         :key="group.key"
         :photos="group.photos"
         :uploader-name="group.uploaderName"
+        :child-id="group.childId"
         :child-name="group.childName"
         :child-color="group.childColor"
         :relative-time="group.relativeTime"

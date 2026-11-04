@@ -26,8 +26,22 @@ describe('QuotaBar', () => {
 
     expect(wrapper.text()).toContain('512.0 MB / 1.0 GB')
     expect(wrapper.text()).toContain('free')
-    expect(wrapper.find('.h-1\\.5').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="quota-track"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="quota-limit-unknown"]').exists()).toBe(false)
+  })
+
+  it.each([
+    [50, 'safe'],
+    [80, 'warning'],
+    [95, 'danger'],
+  ])('styles %i%% usage as the %s level using theme classes', async (percentage, level) => {
+    mockQuota({ used_bytes: percentage, limit_bytes: 100, percentage })
+    const wrapper = mount(QuotaBar)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="quota-fill"]').classes()).toContain(`quota__fill--${level}`)
+    expect(wrapper.find('[data-testid="quota-free"]').classes()).toContain(`quota__free--${level}`)
+    expect(wrapper.html()).not.toMatch(/slate-|gray-|blue-|amber-|red-/)
   })
 
   it('renders a graceful unknown-limit state when limit_bytes is null', async () => {
@@ -39,7 +53,7 @@ describe('QuotaBar', () => {
     expect(wrapper.find('[data-testid="quota-limit-unknown"]').text()).toBe('Limit unknown')
     expect(wrapper.text()).not.toContain('NaN')
     expect(wrapper.text()).not.toContain('free')
-    expect(wrapper.find('.h-1\\.5').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="quota-track"]').exists()).toBe(false)
   })
 
   it('requests the system-wide /quota endpoint', async () => {
