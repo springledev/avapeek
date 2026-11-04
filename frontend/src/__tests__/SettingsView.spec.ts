@@ -29,7 +29,9 @@ async function mountView() {
   })
   await router.push('/settings')
   await router.isReady()
-  const wrapper = mount(SettingsView, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(SettingsView, {
+    global: { plugins: [pinia, router], stubs: { RouterView: true } },
+  })
   await flushPromises()
   return wrapper
 }
@@ -60,5 +62,18 @@ describe('SettingsView', () => {
 
     expect(pkg.version).toMatch(/^\d+\.\d+\.\d+/)
     expect(wrapper.find('[data-testid="settings-version"]').text()).toBe(`Avapeek v${pkg.version}`)
+  })
+
+  it('offers photo size as named options and applies the chosen one', async () => {
+    const wrapper = await mountView()
+    const options = wrapper.findAll('.settings__toggle-btn')
+
+    expect(options.map((option) => option.text())).toEqual(['Large', 'Small'])
+
+    await options[1]!.trigger('click')
+
+    expect(document.documentElement.dataset.feedDensity).toBe('3')
+    expect(options[1]!.classes()).toContain('settings__toggle-btn--active')
+    expect(options[0]!.classes()).not.toContain('settings__toggle-btn--active')
   })
 })

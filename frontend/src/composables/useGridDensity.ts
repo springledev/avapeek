@@ -1,6 +1,9 @@
 import { ref, watch } from 'vue'
 
-/** Feed tile density. '2' is the hero default; '3' is a compact option in Settings. */
+/**
+ * Feed tile density: '2' is the Large default, '3' is Small. These are tiers, not column
+ * counts; the actual columns also scale with screen width (see tokens.css).
+ */
 export type FeedDensity = '2' | '3'
 
 const STORAGE_KEY = 'avapeek-feed-density'

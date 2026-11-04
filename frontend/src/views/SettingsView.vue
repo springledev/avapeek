@@ -154,8 +154,7 @@ onMounted(() => {
           <LayoutGrid :size="20" />
         </div>
         <div class="settings__text">
-          <p class="settings__label">Grid density</p>
-          <p class="settings__desc">{{ density === '2' ? 'Comfortable' : 'Compact' }}</p>
+          <p class="settings__label">Photo size</p>
         </div>
         <div class="settings__toggle-group">
           <button
@@ -164,7 +163,7 @@ onMounted(() => {
             :class="{ 'settings__toggle-btn--active': density === '2' }"
             @click="onDensityChange('2')"
           >
-            2
+            Large
           </button>
           <button
             type="button"
@@ -172,7 +171,7 @@ onMounted(() => {
             :class="{ 'settings__toggle-btn--active': density === '3' }"
             @click="onDensityChange('3')"
           >
-            3
+            Small
           </button>
         </div>
       </div>

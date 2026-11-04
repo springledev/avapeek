@@ -4,6 +4,10 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+### Changed
+
+- The grid density setting is now called Photo size and offers Large and Small instead of 2 and 3, which did not match the number of columns on larger screens
+
 ## [0.1.3] - 2026-11-04
 
 ### Changed
