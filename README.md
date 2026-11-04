@@ -1,4 +1,4 @@
-# Avapeek
+# <img src="frontend/src/assets/logo.svg" alt="" width="36" height="36" align="top"> Avapeek
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
@@ -8,7 +8,34 @@ Website and documentation: **[avapeek.com](https://avapeek.com)**. Invited by yo
 
 Avapeek lets you share photos of your children with grandparents, relatives and friends without trusting a server with them. Photos, thumbnails, EXIF data and comments are encrypted in the browser before they are uploaded. The database, the backups and the object storage only ever hold ciphertext. (A malicious or compromised server operator is a different matter: see the security notes below.) You run all of it yourself, on a small VPS, a NAS or a Raspberry Pi.
 
-> Screenshots: _to be added._
+## Screenshots
+
+Avapeek is an installable web app built for your phone. The family and pictures below are made up, created by [`avapeek:demo-seed`](docs/development.md#demo-data). The images follow your GitHub light or dark theme.
+
+<table>
+  <tr>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-feed-dark.png"><img src="docs/screenshots/mobile-feed-light.png" alt="Photo feed on a phone, with On this day memories and photos grouped by month" width="200"></picture><br><sub>Your family's photos</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-viewer-dark.png"><img src="docs/screenshots/mobile-viewer-light.png" alt="A photo opened on a phone, with its tag and comments from family members" width="200"></picture><br><sub>Tags and encrypted comments</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-family-dark.png"><img src="docs/screenshots/mobile-family-light.png" alt="Settings for one child, listing family members and their roles, with invite and export options" width="200"></picture><br><sub>One family per child</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-approval-dark.png"><img src="docs/screenshots/mobile-approval-light.png" alt="A banner asking an admin to approve a relative who is waiting for access" width="200"></picture><br><sub>You approve who gets the key</sub></td>
+  </tr>
+</table>
+
+<details>
+<summary>More screens, and desktop</summary>
+<br>
+
+<table>
+  <tr>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-recents-dark.png"><img src="docs/screenshots/mobile-recents-light.png" alt="Recent uploads from family members on a phone" width="200"></picture><br><sub>Recent uploads</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-security-dark.png"><img src="docs/screenshots/mobile-security-light.png" alt="Security settings on a phone, with authenticator app and passkey options" width="200"></picture><br><sub>Optional two-factor</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-login-dark.png"><img src="docs/screenshots/mobile-login-light.png" alt="The sign-in screen on a phone" width="200"></picture><br><sub>Sign in</sub></td>
+  </tr>
+</table>
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-feed-dark.png"><img src="docs/screenshots/desktop-feed-light.png" alt="The photo feed on a desktop browser, with a sidebar instead of the bottom tab bar" width="800"></picture>
+
+</details>
 
 ## Why Avapeek?
 

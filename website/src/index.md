@@ -18,6 +18,12 @@ Photos, EXIF data, tags and comments are encrypted in the browser before they ar
 - **Yours.** Pick your own storage, and any member can export everything.
 - **Family only.** One group per child, invite-only. No public profiles, no followers.
 
+<div class="screens" tabindex="0">
+<figure><img class="shot-light" src="../../docs/screenshots/mobile-feed-light.png" alt="Photo feed on a phone, with On this day memories and photos grouped by month" width="780" height="1688" loading="lazy"><img class="shot-dark" src="../../docs/screenshots/mobile-feed-dark.png" alt="Photo feed on a phone, with On this day memories and photos grouped by month" width="780" height="1688" loading="lazy"><figcaption>Your family's photos</figcaption></figure>
+<figure><img class="shot-light" src="../../docs/screenshots/mobile-viewer-light.png" alt="A photo opened on a phone, with its tag and comments from family members" width="780" height="1688" loading="lazy"><img class="shot-dark" src="../../docs/screenshots/mobile-viewer-dark.png" alt="A photo opened on a phone, with its tag and comments from family members" width="780" height="1688" loading="lazy"><figcaption>Tags and comments</figcaption></figure>
+<figure><img class="shot-light" src="../../docs/screenshots/mobile-family-light.png" alt="Settings for one child, listing family members and their roles" width="780" height="1688" loading="lazy"><img class="shot-dark" src="../../docs/screenshots/mobile-family-dark.png" alt="Settings for one child, listing family members and their roles" width="780" height="1688" loading="lazy"><figcaption>One family per child</figcaption></figure>
+</div>
+
 Two things to know up front: there is **no password reset**, and the project has **not been independently audited** yet. More in [Why Avapeek?](/why)
 
 ## Quickstart

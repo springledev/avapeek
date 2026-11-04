@@ -21,7 +21,7 @@ Release hygiene
 - [x] **Issue templates.** Bug report form plus `config.yml` routing security reports to private reporting. No PR template.
 - [x] **`CHANGELOG.md` and versioning.** SemVer, the `vX.Y.Z` tag is the source of truth, `frontend/package.json` is 0.1.0, and `release.yml` checks the tag matches and creates a GitHub Release from the changelog section.
 - [x] **Boilerplate sub-READMEs replaced**, and `backend/composer.json` renamed to `springledev/avapeek` with a real description.
-- [ ] **Screenshots for the README** ("Screenshots: _to be added._"). Use seeded demo data with no real people, light and dark, mobile and desktop. *Manual.*
+- [x] **Screenshots for the README.** In `docs/screenshots/`, from `avapeek:demo-seed` data with no real people, light and dark, mobile and desktop.
 - [ ] **Website link in the README.** The site is `https://avapeek.com/` (VitePress in `website/`); add the link once it is deployed.
 - [ ] **Deploy the website** to avapeek.com (static `website/.vitepress/dist`), plus a one-page project summary at springle.dev/avapeek.
 - [x] **Docker compose smoke test in CI** (builds from source with `up.sh --build`, waits for `/up`, runs `storage:check`, checks the SPA returns 200). Not yet run on GitHub; check the first run.
