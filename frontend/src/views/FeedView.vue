@@ -281,7 +281,7 @@ async function updateDate(photoId: number, takenAt: string) {
       :child-name="child.name"
     />
 
-    <AdminPendingAccessBanner />
+    <AdminPendingAccessBanner class="feed-pending-access" />
 
     <FeedToolbar />
 
@@ -421,6 +421,10 @@ async function updateDate(photoId: number, takenAt: string) {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
+.feed-pending-access {
   margin: 0 0 var(--space-4);
 }
 
