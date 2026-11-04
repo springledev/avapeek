@@ -4,6 +4,19 @@ All notable changes to Avapeek are documented here. The format follows [Keep a C
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-04
+
+### Changed
+
+- The storage section in Settings now follows the app's theme in light and dark mode
+- Avatars in Recents now use the same themed kid colors as the rest of the app
+- The README and website now show screenshots of the app, made with demo data
+
+### Fixed
+
+- The tab bar's shadow now suits dark mode instead of using the light theme's color
+- The banner about people waiting for approval now has space between it and the feed toolbar
+
 ## [0.1.2] - 2026-11-03
 
 ### Added
