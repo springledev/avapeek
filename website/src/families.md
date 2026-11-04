@@ -28,6 +28,10 @@ Right after you join, the album may look empty or show lock icons. That is norma
 
 The admin sees the name on your account and the album you joined. If they decline, you are removed from the album and need a new invite. That name comes from the Avapeek server, so approval is a person's check and not proof of who you are. If the admin wants to be sure, tell them you have joined in another way, such as a message or a call. A way to compare key fingerprints is planned, not yet available.
 
+<div class="screens" tabindex="0">
+<figure><img class="shot-light" src="../../docs/screenshots/mobile-approval-light.png" alt="A banner asking an admin to approve a relative who is waiting for access" width="780" height="1688" loading="lazy"><img class="shot-dark" src="../../docs/screenshots/mobile-approval-dark.png" alt="A banner asking an admin to approve a relative who is waiting for access" width="780" height="1688" loading="lazy"><figcaption>What the admin sees</figcaption></figure>
+</div>
+
 If it takes longer than you expected, tap **Remind admins**. You get a notification as soon as you can see the photos, and they appear without reloading the page.
 
 ## 4. Put Avapeek on your home screen
@@ -43,6 +47,11 @@ On iPhone and iPad, notifications only work after Avapeek has been added to the 
 ## What can I do in Avapeek?
 
 You can scroll through the photos, open them full size and leave comments. Depending on what the person who invited you chose, you may also be able to upload photos yourself.
+
+<div class="screens" tabindex="0">
+<figure><img class="shot-light" src="../../docs/screenshots/mobile-feed-light.png" alt="Photo feed on a phone, with On this day memories and photos grouped by month" width="780" height="1688" loading="lazy"><img class="shot-dark" src="../../docs/screenshots/mobile-feed-dark.png" alt="Photo feed on a phone, with On this day memories and photos grouped by month" width="780" height="1688" loading="lazy"><figcaption>Your family's photos</figcaption></figure>
+<figure><img class="shot-light" src="../../docs/screenshots/mobile-viewer-light.png" alt="A photo opened on a phone, with its tag and comments from family members" width="780" height="1688" loading="lazy"><img class="shot-dark" src="../../docs/screenshots/mobile-viewer-dark.png" alt="A photo opened on a phone, with its tag and comments from family members" width="780" height="1688" loading="lazy"><figcaption>Tags and comments</figcaption></figure>
+</div>
 
 ## I forgot my password
 

@@ -115,3 +115,40 @@ html {
   line-height: 1.6;
   color: var(--vp-c-text-2);
 }
+
+/* Screenshots: phones in a row, scrolling sideways on narrow screens. */
+.vp-doc .screens {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(160px, 220px);
+  gap: 16px;
+  margin: 24px 0;
+  overflow-x: auto;
+}
+
+.vp-doc .screens figure {
+  margin: 0;
+}
+
+.vp-doc .screens img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+}
+
+.vp-doc .screens figcaption {
+  margin-top: 8px;
+  color: var(--vp-c-text-2);
+  font-size: 14px;
+  text-align: center;
+}
+
+.vp-doc .screens .shot-dark,
+.dark .vp-doc .screens .shot-light {
+  display: none;
+}
+
+.dark .vp-doc .screens .shot-dark {
+  display: block;
+}
