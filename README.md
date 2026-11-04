@@ -1,4 +1,4 @@
-# Avapeek
+# <img src="frontend/src/assets/logo.svg" alt="" width="36" height="36" align="top"> Avapeek
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
