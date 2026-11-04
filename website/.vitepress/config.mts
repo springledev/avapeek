@@ -27,6 +27,8 @@ export default defineConfig({
   description: 'End-to-end encrypted, self-hosted family photo sharing.',
   lang: 'en',
   srcDir: 'src',
+  // Screenshots are imported from the repository's docs/screenshots.
+  vite: { server: { fs: { allow: ['..'] } } },
   base: '/',
   cleanUrls: true,
   lastUpdated: false,
