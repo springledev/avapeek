@@ -73,7 +73,7 @@ services:
 
   # --- Mailpit (local email catcher) ---
   mailpit:
-    image: axllent/mailpit:v1.32.0
+    image: axllent/mailpit:v1.33.0
     container_name: avapeek-mailpit
     ports:
       - "1025:1025"
